@@ -36,6 +36,13 @@ import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.data.repository.AuthBodies
 
+/**
+ * 注册页：页面里不再内嵌图形验证码。
+ * 点「注册」或「获取验证码」都会弹出 CaptchaDialog，验证通过后由 ViewModel
+ * 自动继续刚才的动作（注册 / 发邮箱验证码）。
+ *
+ * 本站 captcha_client_verify=1，发邮箱验证码也必须带图形验证码凭证，所以两个入口都走弹窗。
+ */
 @Composable
 fun RegisterScreen(
     onSuccess: (Boolean) -> Unit,
@@ -54,7 +61,6 @@ fun RegisterScreen(
     var confirm by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) { vm.loadCaptcha() }
     LaunchedEffect(state.success) {
         if (state.success) {
             vm.consumeSuccess()
@@ -73,7 +79,7 @@ fun RegisterScreen(
         ) {
             Text(Strings.REGISTER, style = MaterialTheme.typography.headlineMedium)
             Text(
-                "本站仅开放邮箱注册，需先完成图形验证码再获取邮箱验证码",
+                "本站仅开放邮箱注册，提交时会弹出图形验证码",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -104,20 +110,6 @@ fun RegisterScreen(
                 visualTransformation = PasswordVisualTransformation()
             )
 
-            Text(
-                Strings.CAPTCHA_HINT,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            CaptchaField(
-                challenge = state.captcha,
-                ticket = state.captchaTicket,
-                loading = state.captchaLoading,
-                onSubmit = { vm.submitCaptcha(it) },
-                onRefresh = { vm.refreshCaptcha() },
-                modifier = Modifier.fillMaxWidth()
-            )
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -131,10 +123,22 @@ fun RegisterScreen(
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
-                Button(onClick = { vm.sendEmailCode(email.trim(), AuthBodies.ACTION_REGISTER) }) {
-                    Text(Strings.SEND_CODE)
-                }
+                Button(onClick = {
+                    vm.openCaptcha(
+                        CaptchaRequest(
+                            purpose = CaptchaPurpose.SEND_CODE,
+                            email = email.trim(),
+                            action = AuthBodies.ACTION_REGISTER
+                        )
+                    )
+                }) { Text(Strings.SEND_CODE) }
             }
+
+            Text(
+                Strings.CAPTCHA_HINT,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             state.error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -145,13 +149,21 @@ fun RegisterScreen(
 
             Button(
                 onClick = {
-                    if (password != confirm) {
-                        vm.showInfo("两次输入的密码不一致")
-                    } else {
-                        vm.register(email.trim(), password, confirm, code.trim())
+                    when {
+                        email.isBlank() -> vm.showInfo("请先填写邮箱")
+                        password != confirm -> vm.showInfo("两次输入的密码不一致")
+                        else -> vm.openCaptcha(
+                            CaptchaRequest(
+                                purpose = CaptchaPurpose.REGISTER,
+                                email = email.trim(),
+                                password = password,
+                                confirmPassword = confirm,
+                                emailCode = code.trim()
+                            )
+                        )
                     }
                 },
-                enabled = !state.loading && email.isNotBlank() && password.isNotBlank(),
+                enabled = !state.loading && !state.captchaDialog,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (state.loading) {
@@ -168,5 +180,16 @@ fun RegisterScreen(
                 Text(Strings.HAS_ACCOUNT)
             }
         }
+    }
+
+    if (state.captchaDialog) {
+        CaptchaDialog(
+            challenge = state.captcha,
+            loading = state.captchaLoading,
+            error = state.captchaError,
+            onSubmit = { vm.submitCaptcha(it) },
+            onRefresh = { vm.refreshCaptcha() },
+            onDismiss = { vm.dismissCaptcha() }
+        )
     }
 }

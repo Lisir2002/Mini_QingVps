@@ -4,9 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.navigation.compose.rememberNavController
@@ -20,9 +21,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         AppContainer.init(applicationContext)
         setContent {
-            QingVpsTheme {
-                // 业务 401 后整个导航图重建到登录页，避免返回键回到已失效的个人中心
-                var sessionEpoch by remember { mutableStateOf(0) }
+            // 个人中心的「应用设置」写入 SettingsStore，这里收集后让主题立即生效
+            val themeMode by AppContainer.settings.themeMode.collectAsState()
+            QingVpsTheme(themeMode = themeMode) {
+                // 业务 401 后整个导航图重建到登录页，避免返回键回到已失效的 Tab 容器
+                var sessionEpoch by remember { mutableIntStateOf(0) }
                 LaunchedEffect(Unit) {
                     UnauthorizedBus.events.collect { sessionEpoch++ }
                 }
@@ -31,7 +34,7 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     AppNavHost(
                         navController = navController,
-                        startDestination = if (AppContainer.isLoggedIn()) Routes.PROFILE else Routes.LOGIN
+                        startDestination = if (AppContainer.isLoggedIn()) Routes.MAIN else Routes.LOGIN
                     )
                 }
             }

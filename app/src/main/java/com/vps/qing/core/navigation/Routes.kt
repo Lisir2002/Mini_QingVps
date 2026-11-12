@@ -6,7 +6,8 @@ object Routes {
     const val LOGIN = "login"
     const val REGISTER = "register"
     const val FORGOT = "forgot"
-    const val PROFILE = "profile"
+    /** 底栏 Tab 主容器（仪表盘 / 选购 / 消息 / 个人中心）。 */
+    const val MAIN = "main"
     const val WEB = "web"
 
     /** WebView 兜底页：url 需要编码后放进路径，避免 ? & 被当作导航参数分隔。 */

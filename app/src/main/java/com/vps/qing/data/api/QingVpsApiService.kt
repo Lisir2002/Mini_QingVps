@@ -14,8 +14,9 @@ import retrofit2.http.Url
 /**
  * 站点接口。基址 `https://vps.qingyayun.cn/console/v1/`（见 AppContainer.BASE_API）。
  *
- * 端点与字段来自站点自身前端 JS（api/common.js、login.js、regist.js、forget.js）
- * 与匿名实测，不是猜测。图形验证码的 refresh/verify 不在 /console/v1 下，用 @Url 走绝对地址。
+ * 端点与字段来自站点自身前端 JS（api/common.js、login.js、regist.js、forget.js、
+ * cart 模板的 product.js / goodsList.js）与匿名实测，不是猜测。
+ * 图形验证码的 refresh/verify 不在 /console/v1 下，用 @Url 走绝对地址。
  */
 interface QingVpsApiService {
 
@@ -28,6 +29,29 @@ interface QingVpsApiService {
 
     @GET("menu")
     suspend fun menu(): ApiEnvelope
+
+    @GET("news/index")
+    suspend fun news(): ApiEnvelope
+
+    // ---- 商品与分类（选购页）----
+    /** 一级分组：data.list[{id,name,type}]，匿名实测 200。 */
+    @GET("product/group/first")
+    suspend fun firstGroups(): ApiEnvelope
+
+    /** 二级分组：data.list[{id,name,parent_id,type,description}]，匿名实测 200。 */
+    @GET("product/group/second")
+    suspend fun secondGroups(@Query("id") id: String): ApiEnvelope
+
+    /** 商品列表：data.list[...]，匿名实测 fpg_id=1&spg_id=4 返回 20 条。 */
+    @GET("product")
+    suspend fun products(
+        @Query("fpg_id") fpgId: String,
+        @Query("spg_id") spgId: String
+    ): ApiEnvelope
+
+    /** 站点购物车（需登录态，匿名返回 data.list=[]）。第一版仅保留定义，结算走 WebView。 */
+    @GET("cart")
+    suspend fun cart(): ApiEnvelope
 
     // ---- 图形验证码（GET /captcha 返回 data.html 片段）----
     @GET("captcha")

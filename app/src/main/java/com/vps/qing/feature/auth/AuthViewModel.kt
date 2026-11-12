@@ -17,6 +17,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.IOException
 
+/** 图形验证码弹窗是为哪个动作弹出的。 */
+enum class CaptchaPurpose { SEND_CODE, REGISTER, RESET }
+
+/** 弹窗触发时把表单暂存到这里，验证通过后按 purpose 自动分发，用户不需要再点一次。 */
+data class CaptchaRequest(
+    val purpose: CaptchaPurpose,
+    val email: String = "",
+    val action: String = "",
+    val password: String = "",
+    val confirmPassword: String = "",
+    val emailCode: String = "",
+    val newPassword: String = ""
+)
+
 data class AuthUiState(
     val loading: Boolean = false,
     val error: String? = null,
@@ -24,11 +38,12 @@ data class AuthUiState(
     val success: Boolean = false,
     val autoLogin: Boolean = false,
     val config: SiteConfig = SiteConfig(),
-    /** 当前待校验的图形验证码（token + 图片 base64）。 */
+    /** 是否显示图形验证码弹窗（点注册 / 获取验证码 / 重置密码时才为 true）。 */
+    val captchaDialog: Boolean = false,
     val captcha: CaptchaChallenge? = null,
-    /** 已校验通过的凭证，用于「发送邮箱验证码」。 */
-    val captchaTicket: CaptchaTicket? = null,
-    val captchaLoading: Boolean = false
+    val captchaLoading: Boolean = false,
+    val captchaError: String? = null,
+    val pending: CaptchaRequest? = null
 )
 
 class AuthViewModel(
@@ -45,30 +60,48 @@ class AuthViewModel(
         }
     }
 
+    /** 本站只保留这一种登录方式：邮箱 + 密码。 */
     fun loginByPassword(account: String, password: String) =
         runAuth { auth.loginByPassword(account, password) }
 
-    fun loginByCode(account: String, code: String) =
-        runAuth { auth.loginByCode(account, code) }
+    // ---- 图形验证码弹窗 ----
 
-    fun register(email: String, password: String, confirmPassword: String, emailCode: String) =
-        runAuth { auth.register(email, password, confirmPassword, emailCode) }
+    /** 点击「注册」「获取验证码」「提交找回」时调用：弹窗 + 拉取验证码。 */
+    fun openCaptcha(request: CaptchaRequest) {
+        _ui.update {
+            it.copy(
+                captchaDialog = true,
+                pending = request,
+                captcha = null,
+                captchaError = null,
+                captchaLoading = false
+            )
+        }
+        loadCaptcha()
+    }
 
-    fun resetPassword(email: String, code: String, newPassword: String) =
-        runAuth { auth.resetPassword(email, code, newPassword) }
+    fun dismissCaptcha() {
+        _ui.update {
+            it.copy(
+                captchaDialog = false,
+                pending = null,
+                captcha = null,
+                captchaError = null,
+                captchaLoading = false
+            )
+        }
+    }
 
-    // ---- 图形验证码 ----
-
-    fun loadCaptcha() {
+    private fun loadCaptcha() {
         if (_ui.value.captchaLoading) return
         viewModelScope.launch {
-            _ui.update { it.copy(captchaLoading = true) }
+            _ui.update { it.copy(captchaLoading = true, captchaError = null) }
             when (val r = auth.captchaChallenge()) {
                 is ApiResult.Success -> _ui.update {
-                    it.copy(captcha = r.data, captchaTicket = null, captchaLoading = false)
+                    it.copy(captcha = r.data, captchaLoading = false)
                 }
                 else -> _ui.update {
-                    it.copy(captchaLoading = false, info = "图形验证码加载失败，可用网页注册兜底")
+                    it.copy(captchaLoading = false, captchaError = "图形验证码加载失败，请点「换一张」重试")
                 }
             }
         }
@@ -76,72 +109,75 @@ class AuthViewModel(
 
     fun refreshCaptcha() {
         viewModelScope.launch {
+            _ui.update { it.copy(captchaLoading = true, captchaError = null) }
             when (val r = auth.refreshCaptcha()) {
                 is ApiResult.Success -> _ui.update {
-                    it.copy(captcha = r.data, captchaTicket = null, info = null)
+                    it.copy(captcha = r.data, captchaLoading = false)
                 }
-                else -> _ui.update { it.copy(info = "刷新验证码失败，请重试") }
+                else -> _ui.update {
+                    it.copy(captchaLoading = false, captchaError = "刷新失败，请重试")
+                }
             }
         }
     }
 
-    /** 用户输入图形验证码后校验，成功后凭证存进 state。 */
+    /** 弹窗里输入后校验；通过后立即执行 pending 的动作（注册 / 发码 / 重置）。 */
     fun submitCaptcha(input: String) {
         val token = _ui.value.captcha?.token
         if (input.isBlank() || token.isNullOrBlank()) {
-            _ui.update { it.copy(info = "请输入图形验证码") }
+            _ui.update { it.copy(captchaError = "请输入图形验证码") }
             return
         }
         viewModelScope.launch {
-            _ui.update { it.copy(captchaLoading = true, error = null, info = null) }
+            _ui.update { it.copy(captchaLoading = true, captchaError = null) }
             when (val r = auth.verifyCaptcha(input.trim(), token)) {
-                is ApiResult.Success -> _ui.update {
-                    it.copy(captchaTicket = r.data, captchaLoading = false, info = "图形验证通过，可以获取邮箱验证码了")
+                is ApiResult.Success -> {
+                    val request = _ui.value.pending
+                    _ui.update {
+                        it.copy(
+                            captchaDialog = false,
+                            pending = null,
+                            captcha = null,
+                            captchaLoading = false,
+                            captchaError = null
+                        )
+                    }
+                    if (request != null) dispatch(request, r.data)
                 }
                 is ApiResult.Failure -> {
-                    _ui.update { it.copy(captchaLoading = false, error = "[${r.code}] ${r.msg}") }
+                    _ui.update { it.copy(captchaLoading = false, captchaError = "[${r.code}] ${r.msg}") }
                     refreshCaptcha()
                 }
                 is ApiResult.Error -> {
-                    _ui.update { it.copy(captchaLoading = false, error = friendly(r.throwable)) }
+                    _ui.update { it.copy(captchaLoading = false, captchaError = friendly(r.throwable)) }
                     refreshCaptcha()
                 }
             }
         }
     }
 
-    /**
-     * 发送邮箱验证码。本站 captcha_client_verify=1，必须先完成图形验证码；
-     * 凭证是一次性的，发送成功后清空，下次需重新验证。
-     */
-    fun sendEmailCode(email: String, action: String) {
-        if (email.isBlank()) {
-            _ui.update { it.copy(info = "请先填写邮箱") }
-            return
+    private fun dispatch(request: CaptchaRequest, ticket: CaptchaTicket) {
+        when (request.purpose) {
+            // 发送邮箱验证码需要把图形验证码凭证带上（captcha_client_verify=1）
+            CaptchaPurpose.SEND_CODE -> sendEmailCodeInternal(request.email, request.action, ticket)
+            // 站点注册体 / 找回密码体本身不含 captcha 字段，图形验证只是提交前的人机校验
+            CaptchaPurpose.REGISTER -> runAuth {
+                auth.register(request.email, request.password, request.confirmPassword, request.emailCode)
+            }
+            CaptchaPurpose.RESET -> runAuth {
+                auth.resetPassword(request.email, request.emailCode, request.newPassword)
+            }
         }
-        val ticket = _ui.value.captchaTicket
-        if (_ui.value.config.captchaOnVerifyCode && ticket == null) {
-            _ui.update { it.copy(info = "请先完成上方图形验证码") }
-            return
-        }
+    }
+
+    /** 图形验证码凭证是一次性的，发送后即丢弃，下次要重新验证。 */
+    private fun sendEmailCodeInternal(email: String, action: String, ticket: CaptchaTicket) {
         viewModelScope.launch {
             _ui.update { it.copy(info = null, error = null) }
-            when (val r = auth.sendEmailCode(
-                email, action,
-                ticket?.captcha.orEmpty(), ticket?.token.orEmpty()
-            )) {
-                is ApiResult.Success -> {
-                    _ui.update { it.copy(info = "验证码已发送，请查收邮箱", captchaTicket = null) }
-                    loadCaptcha()
-                }
-                is ApiResult.Failure -> {
-                    _ui.update { it.copy(info = "[${r.code}] ${r.msg}", captchaTicket = null) }
-                    loadCaptcha()
-                }
-                is ApiResult.Error -> {
-                    _ui.update { it.copy(info = friendly(r.throwable), captchaTicket = null) }
-                    loadCaptcha()
-                }
+            when (val r = auth.sendEmailCode(email, action, ticket.captcha, ticket.token)) {
+                is ApiResult.Success -> _ui.update { it.copy(info = "验证码已发送，请查收邮箱") }
+                is ApiResult.Failure -> _ui.update { it.copy(info = "[${r.code}] ${r.msg}") }
+                is ApiResult.Error -> _ui.update { it.copy(info = friendly(r.throwable)) }
             }
         }
     }

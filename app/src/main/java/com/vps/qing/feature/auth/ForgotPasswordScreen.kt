@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +35,7 @@ import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.data.repository.AuthBodies
 
+/** 找回密码：与注册一致，图形验证码改为提交时弹窗。 */
 @Composable
 fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
     val vm: AuthViewModel = viewModel(
@@ -46,7 +49,6 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
     var code by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) { vm.loadCaptcha() }
     LaunchedEffect(state.success) {
         if (state.success) {
             vm.consumeSuccess()
@@ -59,10 +61,16 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 24.dp, vertical = 32.dp),
+                .padding(horizontal = 24.dp, vertical = 32.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(Strings.FORGOT_PASSWORD, style = MaterialTheme.typography.headlineMedium)
+            Text(
+                Strings.CAPTCHA_HINT,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             OutlinedTextField(
                 value = email,
@@ -71,15 +79,6 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
-            )
-
-            CaptchaField(
-                challenge = state.captcha,
-                ticket = state.captchaTicket,
-                loading = state.captchaLoading,
-                onSubmit = { vm.submitCaptcha(it) },
-                onRefresh = { vm.refreshCaptcha() },
-                modifier = Modifier.fillMaxWidth()
             )
 
             Row(
@@ -95,14 +94,20 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
-                Button(onClick = { vm.sendEmailCode(email.trim(), AuthBodies.ACTION_PASSWORD_RESET) }) {
-                    Text(Strings.SEND_CODE)
-                }
+                Button(onClick = {
+                    vm.openCaptcha(
+                        CaptchaRequest(
+                            purpose = CaptchaPurpose.SEND_CODE,
+                            email = email.trim(),
+                            action = AuthBodies.ACTION_PASSWORD_RESET
+                        )
+                    )
+                }) { Text(Strings.SEND_CODE) }
             }
             OutlinedTextField(
                 value = newPassword,
                 onValueChange = { newPassword = it; vm.clearMessages() },
-                label = { Text("新密码") },
+                label = { Text(Strings.NEW_PASSWORD) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 visualTransformation = PasswordVisualTransformation(),
@@ -117,19 +122,39 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
             }
 
             Button(
-                onClick = { vm.resetPassword(email.trim(), code.trim(), newPassword) },
-                enabled = !state.loading && email.isNotBlank() && newPassword.isNotBlank(),
+                onClick = {
+                    vm.openCaptcha(
+                        CaptchaRequest(
+                            purpose = CaptchaPurpose.RESET,
+                            email = email.trim(),
+                            emailCode = code.trim(),
+                            newPassword = newPassword
+                        )
+                    )
+                },
+                enabled = !state.loading && !state.captchaDialog && email.isNotBlank() && newPassword.isNotBlank(),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (state.loading) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp))
                 } else {
-                    Text("提交")
+                    Text(Strings.SUBMIT)
                 }
             }
             TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
                 Text(Strings.BACK)
             }
         }
+    }
+
+    if (state.captchaDialog) {
+        CaptchaDialog(
+            challenge = state.captcha,
+            loading = state.captchaLoading,
+            error = state.captchaError,
+            onSubmit = { vm.submitCaptcha(it) },
+            onRefresh = { vm.refreshCaptcha() },
+            onDismiss = { vm.dismissCaptcha() }
+        )
     }
 }

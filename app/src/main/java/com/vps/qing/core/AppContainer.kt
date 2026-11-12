@@ -2,6 +2,7 @@ package com.vps.qing.core
 
 import android.content.Context
 import android.net.Uri
+import com.google.gson.Gson
 import com.vps.qing.core.network.ApiEnvelope
 import com.vps.qing.core.network.AuthInterceptor
 import com.vps.qing.core.network.ContentTypeGuardInterceptor
@@ -11,9 +12,9 @@ import com.vps.qing.core.network.TokenProvider
 import com.vps.qing.core.network.UnauthorizedBus
 import com.vps.qing.data.api.QingVpsApiService
 import com.vps.qing.data.repository.AuthRepository
+import com.vps.qing.data.repository.CatalogRepository
 import com.vps.qing.data.repository.ProfileRepository
 import com.vps.qing.data.repository.SiteConfigRepository
-import com.google.gson.Gson
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -30,16 +31,22 @@ object AppContainer {
     const val SITE_ORIGIN = "https://vps.qingyayun.cn/"
     const val BASE_API = "https://vps.qingyayun.cn/console/v1/"
 
+    /** 站点购物车页，实测 goodsList.htm 里的链接就是这个路径，结算走 WebView 兜底。 */
+    const val CART_WEB_PATH = "cart/shoppingCar.htm"
+
     /** 图形验证码的刷新/校验不在 /console/v1 下，走站点根路径。 */
     const val CAPTCHA_REFRESH_URL = SITE_ORIGIN + "captcha/tp_captcha/index/refresh"
     const val CAPTCHA_VERIFY_URL = SITE_ORIGIN + "captcha/tp_captcha/index/verify"
+
+    private lateinit var appContext: Context
 
     lateinit var tokenManager: TokenManager
         private set
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (::tokenManager.isInitialized) return
-        tokenManager = TokenManager(context.applicationContext)
+        tokenManager = TokenManager(appContext)
     }
 
     private val okHttp: OkHttpClient by lazy {
@@ -75,9 +82,11 @@ object AppContainer {
             .create(QingVpsApiService::class.java)
     }
 
+    val settings: SettingsStore by lazy { SettingsStore(appContext) }
     val authRepository: AuthRepository by lazy { AuthRepository(api, tokenManager) }
     val profileRepository: ProfileRepository by lazy { ProfileRepository(api, tokenManager) }
     val siteConfigRepository: SiteConfigRepository by lazy { SiteConfigRepository(api) }
+    val catalogRepository: CatalogRepository by lazy { CatalogRepository(api) }
 
     fun isLoggedIn(): Boolean = !tokenManager.cachedToken.isNullOrBlank()
 

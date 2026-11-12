@@ -12,9 +12,13 @@ import com.vps.qing.core.navigation.Routes
 import com.vps.qing.feature.auth.ForgotPasswordScreen
 import com.vps.qing.feature.auth.LoginScreen
 import com.vps.qing.feature.auth.RegisterScreen
-import com.vps.qing.feature.profile.ProfileScreen
+import com.vps.qing.feature.main.MainScreen
 import com.vps.qing.feature.web.WebViewScreen
 
+/**
+ * 顶层导航：登录 / 注册 / 找回密码 是独立页；登录成功后进入 MAIN（底栏 Tab 容器）。
+ * 站点插件页等长尾功能仍走 WebView 兜底，登录态由 queryParam 自动同步。
+ */
 @Composable
 fun AppNavHost(
     navController: NavHostController,
@@ -28,16 +32,13 @@ fun AppNavHost(
     ) {
         composable(Routes.LOGIN) {
             LoginScreen(
-                onSuccess = { autoLogin ->
-                    if (autoLogin) {
-                        navController.navigate(Routes.PROFILE) {
-                            popUpTo(Routes.LOGIN) { inclusive = true }
-                        }
+                onSuccess = { _ ->
+                    navController.navigate(Routes.MAIN) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
                     }
                 },
                 onRegister = { navController.navigate(Routes.REGISTER) },
-                onForgot = { navController.navigate(Routes.FORGOT) },
-                onWebLogin = { navController.navigate(Routes.web(AppContainer.webUrl("login.htm"))) }
+                onForgot = { navController.navigate(Routes.FORGOT) }
             )
         }
 
@@ -45,7 +46,7 @@ fun AppNavHost(
             RegisterScreen(
                 onSuccess = { autoLogin ->
                     if (autoLogin) {
-                        navController.navigate(Routes.PROFILE) {
+                        navController.navigate(Routes.MAIN) {
                             popUpTo(Routes.LOGIN) { inclusive = true }
                         }
                     } else {
@@ -66,14 +67,14 @@ fun AppNavHost(
             )
         }
 
-        composable(Routes.PROFILE) {
-            ProfileScreen(
+        composable(Routes.MAIN) {
+            MainScreen(
+                onOpenWeb = { url -> navController.navigate(Routes.web(url)) },
                 onLoggedOut = {
                     navController.navigate(Routes.LOGIN) {
-                        popUpTo(Routes.PROFILE) { inclusive = true }
+                        popUpTo(Routes.MAIN) { inclusive = true }
                     }
-                },
-                onOpenWeb = { url -> navController.navigate(Routes.web(url)) }
+                }
             )
         }
 
