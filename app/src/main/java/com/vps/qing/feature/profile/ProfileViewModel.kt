@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.IOException
 
-/** 服务面板板块。 */
+/** 账号与服务子页面板块。 */
 enum class ServicePanel { HOSTS, ORDERS, TRANSACTIONS, TICKETS, SUB_ACCOUNTS, SECURITY }
 
 data class ServicePanelData(
@@ -39,11 +39,14 @@ data class ProfileUiState(
     val account: AccountInfo? = null,
     val error: String? = null,
     val loggedOut: Boolean = false,
-    /** 当前展开的服务板块；null = 全部折叠。 */
-    val openPanel: ServicePanel? = null,
+    /** 各服务子页面的数据缓存（进入页面懒加载）。 */
     val panels: Map<ServicePanel, ServicePanelData> = emptyMap()
 )
 
+/**
+ * v1.3.1：账号与服务从手风琴面板改为独立子页面。
+ * 进入子页面时懒加载（ensurePanel），页面内刷新按钮强制重拉（refreshPanel）。
+ */
 class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
 
     private val _ui = MutableStateFlow(ProfileUiState())
@@ -70,48 +73,50 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
         }
     }
 
-    /** 展开服务板块（再点收起）。板块数据懒加载：展开才拉取，已有数据直接复用。 */
-    fun togglePanel(panel: ServicePanel) {
-        val current = _ui.value
-        if (current.openPanel == panel) {
-            _ui.update { it.copy(openPanel = null) }
-            return
-        }
-        _ui.update { it.copy(openPanel = panel) }
-        val existing = current.panels[panel]
-        if (existing == null || !existing.loaded) fetchPanel(panel)
+    /** 进入子页面：未加载过则拉取，已加载直接复用缓存。 */
+    fun ensurePanel(panel: ServicePanel) {
+        val existing = _ui.value.panels[panel]
+        if (existing != null && existing.loaded) return
+        fetchPanel(panel)
     }
 
-    /** 手动刷新当前展开板块（重新拉站点数据）。 */
-    fun refreshOpenPanel() {
-        _ui.value.openPanel?.let { fetchPanel(it) }
+    /** 子页面手动刷新：强制重新拉站点数据。 */
+    fun refreshPanel(panel: ServicePanel) {
+        fetchPanel(panel)
     }
 
     private fun fetchPanel(panel: ServicePanel) {
         viewModelScope.launch {
             setPanel(panel) { it.copy(loading = true, error = null) }
-            val r: ApiResult<(ServicePanelData) -> ServicePanelData> = when (panel) {
-                ServicePanel.HOSTS -> repo.hosts().lift { s, d -> s.copy(hosts = d) }
-                ServicePanel.ORDERS -> repo.orders().lift { s, d -> s.copy(orders = d) }
-                ServicePanel.TRANSACTIONS -> repo.transactions().lift { s, d -> s.copy(txns = d) }
-                ServicePanel.TICKETS -> repo.tickets().lift { s, d -> s.copy(tickets = d) }
-                ServicePanel.SUB_ACCOUNTS -> repo.subAccounts().lift { s, d -> s.copy(subAccounts = d) }
+            when (panel) {
+                ServicePanel.HOSTS -> settle(panel, repo.hosts()) { s, d -> s.copy(hosts = d) }
+                ServicePanel.ORDERS -> settle(panel, repo.orders()) { s, d -> s.copy(orders = d) }
+                ServicePanel.TRANSACTIONS -> settle(panel, repo.transactions()) { s, d -> s.copy(txns = d) }
+                ServicePanel.TICKETS -> settle(panel, repo.tickets()) { s, d -> s.copy(tickets = d) }
+                ServicePanel.SUB_ACCOUNTS -> settle(panel, repo.subAccounts()) { s, d -> s.copy(subAccounts = d) }
                 ServicePanel.SECURITY -> {
                     val rows = _ui.value.account?.let { ServiceParser.security(it) } ?: emptyList()
                     setPanel(panel) { it.copy(loading = false, loaded = true, security = rows, error = null) }
-                    return@launch
                 }
             }
-            when (r) {
-                is ApiResult.Success -> setPanel(panel) {
-                    r.data(it).copy(loading = false, loaded = true, error = null)
-                }
-                is ApiResult.Failure -> setPanel(panel) {
-                    it.copy(loading = false, loaded = true, error = "[${r.code}] ${r.msg}")
-                }
-                is ApiResult.Error -> setPanel(panel) {
-                    it.copy(loading = false, loaded = true, error = friendly(r.throwable))
-                }
+        }
+    }
+
+    /** 统一落盘：Success 写数据，Failure/Error 写错误。 */
+    private suspend fun <T> settle(
+        panel: ServicePanel,
+        result: ApiResult<T>,
+        write: (ServicePanelData, T) -> ServicePanelData
+    ) {
+        when (result) {
+            is ApiResult.Success -> setPanel(panel) {
+                write(it, result.data).copy(loading = false, loaded = true, error = null)
+            }
+            is ApiResult.Failure -> setPanel(panel) {
+                it.copy(loading = false, loaded = true, error = "[${result.code}] ${result.msg}")
+            }
+            is ApiResult.Error -> setPanel(panel) {
+                it.copy(loading = false, loaded = true, error = friendly(result.throwable))
             }
         }
     }
@@ -121,15 +126,6 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
             val data = transform(it.panels[panel] ?: ServicePanelData())
             it.copy(panels = it.panels + (panel to data))
         }
-    }
-
-    /** 把 ApiResult<T> 映射成「把 T 写入面板」的变换，统一错误处理。 */
-    private fun <T> ApiResult<T>.lift(
-        f: (ServicePanelData, T) -> ServicePanelData
-    ): ApiResult<(ServicePanelData) -> ServicePanelData> = when (this) {
-        is ApiResult.Success -> ApiResult.Success { s -> f(s, data) }
-        is ApiResult.Failure -> this
-        is ApiResult.Error -> this
     }
 
     fun logout() {
