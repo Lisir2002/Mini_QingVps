@@ -3,7 +3,7 @@ package com.vps.qing.core.ui
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.2.0"
+    const val APP_VERSION = "1.2.2"
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"
@@ -77,6 +77,15 @@ object Strings {
     const val SPEC_MORE = "等 %d 项配置"
     const val CUSTOMIZE = "自定义配置"
     const val WEB_ORDER = "前往网页选购"
+
+    // ---- mf_cloud 深度适配（大带宽等套餐型）----
+    const val MF_AREA = "区域 / 线路"
+    const val MF_CPU = "CPU"
+    const val MF_MEMORY = "内存"
+    const val MF_SYSTEM_DISK = "系统盘"
+    const val MF_DATA_DISK = "数据盘"
+    const val MF_BANDWIDTH = "带宽"
+    const val MF_IMAGE = "操作系统"
 
     // ---- 自定义配置弹窗 ----
     const val CONFIG_TITLE = "配置你的服务器"

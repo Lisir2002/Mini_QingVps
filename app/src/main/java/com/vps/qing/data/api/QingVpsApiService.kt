@@ -77,9 +77,24 @@ interface QingVpsApiService {
     @POST("product/{id}/config_option")
     suspend fun calcPrice(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
 
-    /**  mf_cloud 套餐型商品订购页配置（识别用，本版不深挖字段）。 */
+    /**  mf_cloud 套餐型商品订购页配置（区域/线路/CPU/内存/磁盘）。 */
     @GET("product/{id}/remf_cloud/order_page")
     suspend fun packageOrderPage(@Path("id") id: String): ApiEnvelope
+
+    /** mf_cloud 操作系统两级列表（系统分组 → 镜像）。 */
+    @GET("product/{id}/remf_cloud/image")
+    suspend fun mfImages(@Path("id") id: String): ApiEnvelope
+
+    /** mf_cloud 线路详情（bill_type + bw/flow 档位）。 */
+    @GET("product/{id}/remf_cloud/line/{lineId}")
+    suspend fun mfLineDetail(@Path("id") id: String, @Path("lineId") lineId: Int): ApiEnvelope
+
+    /**
+     * mf_cloud 周期列表：body = 配置参数平铺 + id。
+     * 返回 data[{id,name,price,is_default}]。
+     */
+    @POST("product/{id}/remf_cloud/duration")
+    suspend fun mfDuration(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
 
     // ---- 站点云端购物车（匿名 cart_cookie 会话即可，无需登录态）----
     /** 真实加入站点购物车：实测「添加成功」，GET /cart 立即可见。 */

@@ -115,7 +115,8 @@ object CatalogParser {
     /**
      * 本地分类过滤。站点 GET /product 会忽略 fpg_id/spg_id 恒返回全量商品，
      * 因此不能靠接口参数区分分类，只能按每条商品自带的分组 id 归类（2026-11 实测确认）。
-     * 二级分类优先；未选二级或该二级无商品时按一级分类展示。
+     * v1.2.2 起二级分类严格过滤：选中无商品的二级分类时返回空列表，
+     * 让 UI 显示「该分类下暂无商品」空态，而不是悄悄回退到一级分类全量。
      */
     fun byGroup(
         all: List<ProductInfo>,
@@ -123,8 +124,7 @@ object CatalogParser {
         secondId: String?
     ): List<ProductInfo> {
         if (!secondId.isNullOrBlank()) {
-            val matched = all.filter { it.groupSecondId == secondId }
-            if (matched.isNotEmpty()) return matched
+            return all.filter { it.groupSecondId == secondId }
         }
         if (!firstId.isNullOrBlank()) {
             return all.filter { it.groupFirstId == firstId }

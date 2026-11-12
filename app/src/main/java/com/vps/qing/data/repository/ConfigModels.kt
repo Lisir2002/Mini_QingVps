@@ -82,7 +82,13 @@ data class ProductConfig(
     val productName: String = "",
     val options: List<ConfigOption> = emptyList(),
     val cycles: List<CycleOption> = emptyList(),
-    /** 商品未关联通用产品模块（如 mf_cloud 套餐型），配置面板降级为「站点选购」。 */
+    /**
+     * mf_cloud（魔方云套餐型）商品的深度适配配置；null = 通用商品走 [options]。
+     * 通用 configoption 接口返回 400 时，Repository 会尝试 mf_cloud order_page，
+     * 成功则填充此字段，配置面板渲染区域/线路/CPU/内存/磁盘/带宽/镜像。
+     */
+    val mf: MfCloudConfig? = null,
+    /** 通用与 mf_cloud 都不可用时，配置面板降级为「站点选购」。 */
     val requiresWebOrder: Boolean = false,
     /** 网页选购地址（相对路径）。 */
     val webOrderPath: String = ""

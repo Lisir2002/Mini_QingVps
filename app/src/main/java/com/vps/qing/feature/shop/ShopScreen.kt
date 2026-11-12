@@ -86,14 +86,7 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
                 title = Strings.SHOP_TITLE,
                 subtitle = "挑选适合你的云服务器",
                 actions = {
-                    // 侧栏开关只在采购页出现；购物车 tab 不需要它
-                    if (state.tab == 0) {
-                        SidebarToggleChip(
-                            expanded = state.sidebarExpanded,
-                            onClick = { vm.toggleSidebar() }
-                        )
-                        Spacer(Modifier.width(UiT.spaceSm))
-                    }
+                    // 侧栏开关内嵌在侧边栏底部（v1.2.2），顶栏只保留刷新
                     CartoonIconChip(
                         icon = AppIcons.Refresh,
                         onClick = { vm.refresh() },
@@ -128,7 +121,9 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
             onQty = vm::changeConfigQty,
             onConfirm = vm::confirmAddToCart,
             onDismiss = vm::dismissConfig,
-            onOpenWeb = onOpenWeb
+            onOpenWeb = onOpenWeb,
+            onMfSelect = { vm.updateMfSelection(it) },
+            onSelectImage = { vm.selectMfImage(it) }
         )
     }
 
@@ -160,32 +155,57 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
     }
 }
 
-/** 侧栏开关：带文字的胶囊按钮，展开/收起双向语义清晰。 */
+/** 侧边栏底部内嵌开关：展开态是带文字的胶囊，收起态是居中的圆形图标按钮。 */
 @Composable
-private fun SidebarToggleChip(expanded: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .clip(CartoonKit.PillShape)
-            .background(CartoonColors.BrandSoft)
-            .clickable { onClick() }
-            .padding(horizontal = UiT.spaceMd, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            if (expanded) AppIcons.PanelClose else AppIcons.PanelOpen,
-            contentDescription = if (expanded) Strings.COLLAPSE_SIDEBAR else Strings.EXPAND_SIDEBAR,
-            tint = CartoonColors.Brand,
-            modifier = Modifier.size(16.dp)
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            if (expanded) Strings.COLLAPSE_SIDEBAR else Strings.EXPAND_SIDEBAR,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
-            color = CartoonColors.Brand,
-            maxLines = 1,
-            softWrap = false
-        )
+private fun SidebarToggle(expanded: Boolean, onClick: () -> Unit) {
+    if (expanded) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(CartoonKit.PillShape)
+                .background(CartoonColors.BrandSoft)
+                .clickable { onClick() }
+                .padding(horizontal = UiT.spaceMd, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                AppIcons.PanelClose, null,
+                tint = CartoonColors.Brand,
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                Strings.COLLAPSE_SIDEBAR,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = CartoonColors.Brand,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+    } else {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = UiT.spaceXs),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(CartoonKit.PillShape)
+                    .background(CartoonColors.BrandSoft)
+                    .clickable { onClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    AppIcons.PanelOpen, null,
+                    tint = CartoonColors.Brand,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
     }
 }
 
@@ -252,7 +272,7 @@ private fun PurchasePane(
     )
 
     Row(modifier = modifier.fillMaxSize()) {
-        // 常驻侧边栏
+        // 常驻侧边栏（开关内嵌在底部，v1.2.2）
         GlassSurface(
             modifier = Modifier
                 .width(sidebarWidth)
@@ -265,42 +285,56 @@ private fun PurchasePane(
             Column(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .verticalScroll(rememberScrollState())
-                    .padding(UiT.spaceSm),
-                verticalArrangement = Arrangement.spacedBy(UiT.spaceXs + 2.dp)
+                    .padding(UiT.spaceSm)
             ) {
-                if (state.firstGroups.isEmpty() && !state.groupsLoading) {
-                    Text(
-                        Strings.NO_GROUP,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CartoonColors.InkSub,
-                        modifier = Modifier.padding(UiT.spaceSm)
-                    )
-                }
-                state.firstGroups.forEachIndexed { idx, first ->
-                    SidebarItem(
-                        name = first.name,
-                        icon = AppIcons.forCategory(first.name),
-                        expanded = state.sidebarExpanded,
-                        isPrimary = true,
-                        selected = state.selectedSecondId == null && state.selectedFirstId == first.id,
-                        accentIndex = idx,
-                        onClick = { vm.selectFirst(first.id) }
-                    )
-                    if (state.selectedFirstId == first.id) {
-                        state.currentSeconds.forEachIndexed { sIdx, second ->
-                            SidebarItem(
-                                name = second.name,
-                                icon = AppIcons.forCategory(second.name),
-                                expanded = state.sidebarExpanded,
-                                isPrimary = false,
-                                selected = state.selectedSecondId == second.id,
-                                accentIndex = idx + sIdx + 1,
-                                onClick = { vm.selectSecond(second.id) }
-                            )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(UiT.spaceXs + 2.dp)
+                ) {
+                    if (state.firstGroups.isEmpty() && !state.groupsLoading) {
+                        Text(
+                            Strings.NO_GROUP,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CartoonColors.InkSub,
+                            modifier = Modifier.padding(UiT.spaceSm)
+                        )
+                    }
+                    // 一级分类（产品类型）：手风琴展开对应二级分类（商品分类）
+                    state.firstGroups.forEachIndexed { idx, first ->
+                        val seconds = state.secondGroups[first.id].orEmpty()
+                        val open = state.openFirstId == first.id
+                        SidebarFirstItem(
+                            name = first.name,
+                            icon = AppIcons.forCategory(first.name),
+                            sidebarExpanded = state.sidebarExpanded,
+                            selected = state.selectedFirstId == first.id,
+                            open = open && seconds.isNotEmpty(),
+                            hasChildren = seconds.isNotEmpty() ||
+                                state.secondGroups[first.id] == null,
+                            accentIndex = idx,
+                            onHeaderClick = { vm.selectFirst(first.id) },
+                            onToggle = { vm.toggleFirstExpanded(first.id) }
+                        )
+                        if (open) {
+                            seconds.forEachIndexed { sIdx, second ->
+                                SidebarSecondItem(
+                                    name = second.name,
+                                    icon = AppIcons.forCategory(second.name),
+                                    sidebarExpanded = state.sidebarExpanded,
+                                    selected = state.selectedSecondId == second.id,
+                                    accentIndex = idx + sIdx + 1,
+                                    onClick = { vm.selectSecond(second.id) }
+                                )
+                            }
                         }
                     }
                 }
+                SidebarToggle(
+                    expanded = state.sidebarExpanded,
+                    onClick = { vm.toggleSidebar() }
+                )
             }
         }
 
@@ -328,7 +362,7 @@ private fun PurchasePane(
                     )
                 }
                 state.visibleProducts.isEmpty() -> {
-                    // 分类下没有商品：明确的空态提示，不放重试按钮
+                    // 选中了没有商品的分类（v1.2.2 起二级严格过滤，空分类有明确提示）
                     EmptyHint(
                         icon = AppIcons.EmptyBox,
                         text = Strings.NO_PRODUCT,
@@ -365,74 +399,86 @@ private fun PurchasePane(
 }
 
 /**
- * 侧边栏条目。
- *  - 展开态：图标 + 完整名称；名称超出宽度横向滚动显示（marquee），不省略；
- *  - 收起态：纵向「图标在上、两字缩略在下」；选中时图标底色为实心强调色 + 白色图标。
+ * 一级分类条目（产品类型）：
+ *  - 展开态：图标 + 名称（超宽 marquee）+ chevron（手风琴箭头，可点收起/展开）；
+ *  - 点主体 = 选中该分类并展开；点 chevron = 仅折叠/展开；
+ *  - 收起态：图标 + 缩略字，chevron 融入缩略下方小箭头。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SidebarItem(
+private fun SidebarFirstItem(
     name: String,
     icon: ImageVector,
-    expanded: Boolean,
-    isPrimary: Boolean,
+    sidebarExpanded: Boolean,
     selected: Boolean,
+    open: Boolean,
+    hasChildren: Boolean,
     accentIndex: Int,
-    onClick: () -> Unit
+    onHeaderClick: () -> Unit,
+    onToggle: () -> Unit
 ) {
     val (accent, soft) = CartoonColors.accent(accentIndex)
-    val short = if (expanded) name else abbreviate(name)
+    val chevronRotation by animateFloatAsState(targetValue = if (open) 0f else -90f)
 
-    if (expanded) {
+    if (sidebarExpanded) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(CartoonKit.ItemShape)
                 .background(if (selected) soft else Color.Transparent)
-                .clickable { onClick() }
+                .clickable { onHeaderClick() }
                 .padding(horizontal = UiT.spaceSm + 2.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 Modifier
-                    .size(if (isPrimary) 30.dp else 24.dp)
+                    .size(30.dp)
                     .clip(CartoonKit.PillShape)
-                    .background(if (isPrimary) soft else Color.Transparent),
+                    .background(soft),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     icon, null,
-                    tint = if (selected || isPrimary) accent else CartoonColors.InkSub,
-                    modifier = Modifier.size(if (isPrimary) 18.dp else 16.dp)
+                    tint = accent,
+                    modifier = Modifier.size(18.dp)
                 )
             }
             Spacer(Modifier.width(UiT.spaceSm))
             Text(
                 name,
-                style = if (isPrimary) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelMedium,
-                fontWeight = if (isPrimary || selected) FontWeight.Bold else FontWeight.Normal,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
                 color = if (selected) accent else CartoonColors.Ink,
                 maxLines = 1,
                 softWrap = false,
-                // 超宽滚动式显示（需求：文字超出宽度选择滚动式显示）
                 modifier = Modifier
                     .weight(1f)
                     .basicMarquee(iterations = Int.MAX_VALUE)
             )
+            if (hasChildren) {
+                Icon(
+                    AppIcons.ChevronDown,
+                    contentDescription = if (open) Strings.COLLAPSE_SIDEBAR else Strings.CATEGORY,
+                    tint = if (selected) accent else CartoonColors.InkSub,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clickable { onToggle() }
+                        .graphicsLayer { rotationZ = chevronRotation }
+                )
+            }
         }
     } else {
-        // 收起态：图标在上、缩略字在下，整体居中；选中态实心彩色圆底
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(CartoonKit.ItemShape)
-                .clickable { onClick() }
+                .clickable { onHeaderClick() }
                 .padding(vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
                 Modifier
-                    .size(if (isPrimary) 34.dp else 28.dp)
+                    .size(34.dp)
                     .clip(CartoonKit.ItemShape)
                     .background(if (selected) accent else soft.copy(alpha = 0.45f)),
                 contentAlignment = Alignment.Center
@@ -440,12 +486,12 @@ private fun SidebarItem(
                 Icon(
                     icon, null,
                     tint = if (selected) Color.White else accent,
-                    modifier = Modifier.size(if (isPrimary) 18.dp else 15.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
             Spacer(Modifier.height(UiT.spaceXs))
             Text(
-                short,
+                abbreviate(name),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                 color = if (selected) accent else CartoonColors.InkSub,
@@ -454,6 +500,85 @@ private fun SidebarItem(
                 overflow = TextOverflow.Clip,
                 textAlign = TextAlign.Center
             )
+            if (hasChildren) {
+                Icon(
+                    AppIcons.ChevronDown, null,
+                    tint = CartoonColors.InkSub.copy(alpha = 0.6f),
+                    modifier = Modifier
+                        .size(11.dp)
+                        .graphicsLayer { rotationZ = chevronRotation }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 二级分类条目（商品分类）：展开态带缩进与小圆点，体现手风琴层次；
+ * 收起态以更小号的图标呈现。
+ */
+@Composable
+private fun SidebarSecondItem(
+    name: String,
+    icon: ImageVector,
+    sidebarExpanded: Boolean,
+    selected: Boolean,
+    accentIndex: Int,
+    onClick: () -> Unit
+) {
+    val (accent, soft) = CartoonColors.accent(accentIndex)
+    if (sidebarExpanded) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = UiT.spaceLg)
+                .clip(CartoonKit.ItemShape)
+                .background(if (selected) soft else Color.Transparent)
+                .clickable { onClick() }
+                .padding(horizontal = UiT.spaceSm, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier
+                    .size(5.dp)
+                    .clip(CartoonKit.PillShape)
+                    .background(if (selected) accent else accent.copy(alpha = 0.5f))
+            )
+            Spacer(Modifier.width(UiT.spaceSm + 2.dp))
+            Text(
+                name,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                color = if (selected) accent else CartoonColors.InkSub,
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier
+                    .weight(1f)
+                    .basicMarquee(iterations = Int.MAX_VALUE)
+            )
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(CartoonKit.ItemShape)
+                .clickable { onClick() }
+                .padding(vertical = 5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                Modifier
+                    .size(26.dp)
+                    .clip(CartoonKit.ItemShape)
+                    .background(if (selected) accent else soft.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon, null,
+                    tint = if (selected) Color.White else accent,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
         }
     }
 }
@@ -466,9 +591,9 @@ private fun abbreviate(name: String): String {
 }
 
 /**
- * 商品卡片。
- * [compact] = 侧栏展开：标题/规格文字做缩小动画（graphicsLayer 缩放），
- * 加购按钮只保留图标（图标圆按钮，绝不空白）；侧栏收起时按钮带完整文字且单行不换行。
+ * 商品卡片。侧栏展开时（[compact]=true）卡片内所有文字、图标、按钮
+ * 以同一比例（0.85×）缩放动画适配窄栏——统一缩放而不是挤压换行。
+ * 加购按钮固定为「加入购物车」+ 购物车图标（v1.2.2）。
  */
 @Composable
 private fun ProductCard(
@@ -476,11 +601,17 @@ private fun ProductCard(
     compact: Boolean,
     onCustomize: () -> Unit
 ) {
-    val textScale by animateFloatAsState(targetValue = if (compact) 0.86f else 1f)
+    val scale by animateFloatAsState(targetValue = if (compact) 0.85f else 1f)
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(UiT.cardPad),
+            modifier = Modifier
+                .padding(UiT.cardPad)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                },
             verticalArrangement = Arrangement.spacedBy(UiT.spaceSm)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -494,15 +625,7 @@ private fun ProductCard(
                     Icon(AppIcons.Cloud, null, tint = CartoonColors.Sky, modifier = Modifier.size(21.dp))
                 }
                 Spacer(Modifier.width(UiT.spaceMd))
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .graphicsLayer {
-                            scaleX = textScale
-                            scaleY = textScale
-                            transformOrigin = TransformOrigin(0f, 0.5f)
-                        }
-                ) {
+                Column(Modifier.weight(1f)) {
                     Text(
                         product.name,
                         style = MaterialTheme.typography.titleMedium,
@@ -520,14 +643,7 @@ private fun ProductCard(
             }
 
             if (product.specs.isNotEmpty()) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = textScale
-                        scaleY = textScale
-                        transformOrigin = TransformOrigin(0f, 0f)
-                    }
-                ) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     product.specs.take(4).forEach { spec ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
@@ -569,21 +685,11 @@ private fun ProductCard(
                     color = CartoonColors.InkSub
                 )
                 Spacer(Modifier.weight(1f))
-                if (compact) {
-                    // 侧栏展开：只保留图标按钮，无空白
-                    CartoonRoundButton(
-                        icon = AppIcons.Sliders,
-                        contentDescription = Strings.CUSTOMIZE,
-                        onClick = onCustomize
-                    )
-                } else {
-                    // 侧栏收起：完整文字按钮，单行绝不换行切割
-                    CartoonButton(
-                        text = Strings.CUSTOMIZE,
-                        onClick = onCustomize,
-                        icon = AppIcons.Sliders
-                    )
-                }
+                CartoonButton(
+                    text = Strings.ADD_TO_CART,
+                    onClick = onCustomize,
+                    icon = AppIcons.Cart
+                )
             }
         }
     }

@@ -35,10 +35,11 @@ class CloudCartAndFilterTest {
     }
 
     @Test
-    fun `filter falls back to first group when second has no match`() {
-        // spg=8 在样本里只有商品 3；spg=9 无二级命中时回退一级 9
+    fun `second group filter is strict and yields empty state for empty categories`() {
+        // v1.2.2：选中无商品的二级分类返回空列表，UI 显示「该分类下暂无商品」，
+        // 不再悄悄回退到一级分类全量（修复空分类仍显示商品的问题）
         val result = CatalogParser.byGroup(all, "9", "9999")
-        assertEquals(listOf("4"), result.map { it.id })
+        assertTrue(result.isEmpty())
     }
 
     @Test

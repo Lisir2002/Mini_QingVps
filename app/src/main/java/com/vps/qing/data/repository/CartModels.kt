@@ -1,6 +1,7 @@
 package com.vps.qing.data.repository
 
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.vps.qing.core.network.arrayAt
 import com.vps.qing.core.network.objectAt
 import com.vps.qing.core.network.string
@@ -103,16 +104,23 @@ object CloudCartParser {
         val specs = CatalogParser.specsFromHtml(html)
 
         val co = el.objectAt("config_options")
+        val configOption = co?.objectAt("configoption")
+        val cfg = configLookup(productId)
+
+        // mf_cloud（魔方云套餐型）条目：config_options 是平铺的 {data_center_id, cpu, ...}，
+        // 没有 configoption 映射，用 MfCloudConfig 翻译成可读配置；无缓存时退化显示原始数值。
+        val isMfLine = configOption == null && co?.get("data_center_id") != null
+        if (isMfLine) {
+            return parseMfLine(position, el, co!!, cfg?.mf, cfg?.cycles ?: emptyList(), qty, html)
+        }
+
         val cycleId = co?.string("cycle")
         val raw = mutableMapOf<String, String>()
-
-        val configOption = co?.objectAt("configoption")
         configOption?.entrySet()?.forEach { (optionId, value) ->
             val v = runCatching { value.asString }.getOrNull() ?: value.toString()
             raw[optionId] = v
         }
 
-        val cfg = configLookup(productId)
         // 周期名 + 单价：优先用配置里的 custom_cycles 按 id 匹配
         val cycleMatch = cfg?.cycles?.firstOrNull { it.id == cycleId }
         val cycleName = cycleMatch?.name ?: cycleId?.let { "周期 $it" } ?: ""
@@ -141,4 +149,66 @@ object CloudCartParser {
             synced = true
         )
     }
+
+    /**
+     * mf_cloud 条目翻译（实测结构：config_options = {data_center_id:529, cpu:8, memory:8,
+     * image_id:10243, system_disk:{size:70}, line_id:746, bw:300, duration_id:1432, ...}）。
+     * 用 MfCloudConfig 把数值翻成中文，周期与单价走 duration 缓存（ensureMfCycles 已补齐）。
+     */
+    private fun parseMfLine(
+        position: Int,
+        el: JsonElement,
+        co: JsonObject,
+        mf: MfCloudConfig?,
+        cycles: List<CycleOption>,
+        qty: Int,
+        html: String
+    ): CartItem {
+        val areaId = co.get("data_center_id")?.asIntOrNull()
+        val cpu = co.get("cpu")?.asIntOrNull()
+        val memory = co.get("memory")?.asIntOrNull()
+        val diskSize = co.objectAt("system_disk")?.get("size")?.asIntOrNull()
+        val bw = co.get("bw")?.asIntOrNull()
+        val imageId = co.get("image_id")?.asIntOrNull()
+        val durationId = co.get("duration_id")?.let {
+            runCatching { it.asString }.getOrNull() ?: it.toString()
+        }
+
+        val area = mf?.areas?.firstOrNull { it.areaId == areaId }
+        val labels = buildList {
+            area?.let { add("区域线路：${it.label}") }
+            cpu?.let { add("CPU：${it}核") }
+            memory?.let { add("内存：${it}GB") }
+            diskSize?.let { add("系统盘：${it}GB") }
+            bw?.let { add("带宽：${it}Mbps") }
+            imageId?.let { id -> mf?.imageName(id)?.let { add("操作系统：$it") } }
+        }
+
+        val cycleMatch = cycles.firstOrNull { it.id == durationId }
+        val raw = mapOf(
+            "data_center_id" to areaId?.toString().orEmpty(),
+            "cpu" to cpu?.toString().orEmpty(),
+            "memory" to memory?.toString().orEmpty(),
+            "system_disk" to diskSize?.toString().orEmpty(),
+            "bw" to bw?.toString().orEmpty(),
+            "image_id" to imageId?.toString().orEmpty()
+        ).filterValues { it.isNotEmpty() }
+
+        return CartItem(
+            productId = el.string("product_id").orEmpty(),
+            productName = el.string("name") ?: "商品",
+            specs = CatalogParser.specsFromHtml(html),
+            cycle = cycleMatch?.name ?: durationId?.let { "周期 $it" } ?: "",
+            unitPrice = cycleMatch?.amount ?: 0.0,
+            quantity = qty,
+            position = position,
+            cycleId = durationId,
+            configLabels = labels,
+            configOptionRaw = raw,
+            synced = true
+        )
+    }
+
+    private fun com.google.gson.JsonElement.asIntOrNull(): Int? =
+        runCatching { if (isJsonPrimitive) asString.toIntOrNull() ?: asInt else asInt }.getOrNull()
 }

@@ -3,6 +3,7 @@ package com.vps.qing.data.repository
 import com.google.gson.JsonObject
 import com.vps.qing.core.network.ApiResult
 import com.vps.qing.core.network.arrayAt
+import com.vps.qing.core.network.number
 import com.vps.qing.core.network.safeApiCall
 import com.vps.qing.core.network.string
 import com.vps.qing.data.api.QingVpsApiService
@@ -39,10 +40,14 @@ class CatalogRepository(private val api: QingVpsApiService) {
         safeApiCall({ api.products(fpgId, spgId) }) { CatalogParser.products(it) }
 
     /**
-     * 商品配置定义。站点对 mf_cloud 套餐型商品返回 status=400，
-     * 这里转成 requiresWebOrder=true 的配置，让 UI 降级为「站点选购」。
+     * 商品配置定义（两级降级）：
+     *  1. 通用商品：GET /reidcsmart_common/product/{id}/configoption 成功即用；
+     *  2. mf_cloud 套餐型（如「美国大宽带」）：通用接口返回 400，改拉
+     *     order_page + image + line 详情做深度适配（v1.2.2 起，不再丢给网页）；
+     *  3. 两者都失败才降级 requiresWebOrder=true 引导网页选购。
      */
     suspend fun productConfig(productId: String): ApiResult<ProductConfig> {
+        cachedConfig(productId)?.let { return ApiResult.Success(it) }
         return safeApiCall({ api.productConfig(productId) }) { data ->
             ConfigParser.parse(productId, data)
         }.let { result ->
@@ -51,21 +56,79 @@ class CatalogRepository(private val api: QingVpsApiService) {
                     configCache[productId] = result.data
                     result
                 }
-                // 站点对 mf_cloud 套餐型商品返回 400「商品未关联通用产品模块接口」，
-                // 降级成「站点选购」配置，让 UI 引导到网页订购页。
-                is ApiResult.Failure -> {
-                    val fallback = ProductConfig(
-                        productId = productId,
-                        requiresWebOrder = true,
-                        webOrderPath = "cart/goods.htm?id=$productId"
-                    )
-                    configCache.putIfAbsent(productId, fallback)
-                    ApiResult.Success(fallback)
+                // 通用接口 400：尝试 mf_cloud 深度适配
+                is ApiResult.Failure -> when (val mf = loadMfConfig(productId)) {
+                    is ApiResult.Success -> {
+                        configCache[productId] = mf.data
+                        ApiResult.Success(mf.data)
+                    }
+                    else -> {
+                        val fallback = ProductConfig(
+                            productId = productId,
+                            requiresWebOrder = true,
+                            webOrderPath = "cart/goods.htm?id=$productId"
+                        )
+                        configCache.putIfAbsent(productId, fallback)
+                        ApiResult.Success(fallback)
+                    }
                 }
                 is ApiResult.Error -> cachedConfig(productId)?.let { ApiResult.Success(it) } ?: result
             }
         }
     }
+
+    /** 拉取并组装 mf_cloud 配置：order_page → image → 每条线路的 bw/flow 档位。 */
+    private suspend fun loadMfConfig(productId: String): ApiResult<ProductConfig> {
+        val page = safeApiCall({ api.packageOrderPage(productId) }) { data ->
+            MfParser.parseOrderPage(productId, data)
+        }
+        val base = when (page) {
+            is ApiResult.Success -> page.data
+            else -> return ApiResult.Failure(-1, "mf_cloud order_page unavailable")
+        }
+        // order_page 能解析但没有任何可选维度，视为不支持深度适配
+        if (base.areas.isEmpty()) {
+            return ApiResult.Failure(-1, "no mf_cloud options")
+        }
+        val images = safeApiCall({ api.mfImages(productId) }) { MfParser.parseImages(it) }
+        val withImages = when (images) {
+            is ApiResult.Success -> base.copy(imageGroups = images.data)
+            else -> base
+        }
+        // 逐条线路补 bw / flow 档位（站点前端同样先 order_page 再取线路详情）
+        var cfg = withImages
+        cfg.areas.map { it.lineId }.distinct().forEach { lineId ->
+            val detail = safeApiCall({ api.mfLineDetail(productId, lineId) }) { it }
+            if (detail is ApiResult.Success) {
+                cfg = cfg.copy(areas = MfParser.mergeLineDetail(cfg.areas, lineId, detail.data))
+            }
+        }
+        return ApiResult.Success(ProductConfig(productId = productId, mf = cfg))
+    }
+
+    /** 拉取 mf_cloud 周期（默认配置档位）并缓存进 ProductConfig.cycles，供购物车翻译价格。 */
+    suspend fun ensureMfCycles(productId: String, sel: MfSelection) {
+        val cached = configCache[productId] ?: return
+        if (cached.mf == null || cached.cycles.isNotEmpty()) return
+        when (val r = mfDuration(productId, sel)) {
+            is ApiResult.Success -> configCache[productId] = cached.copy(cycles = r.data)
+            else -> Unit
+        }
+    }
+
+    /** mf_cloud 周期：POST /product/{id}/remf_cloud/duration。 */
+    suspend fun mfDuration(productId: String, sel: MfSelection): ApiResult<List<CycleOption>> =
+        safeApiCall({ api.mfDuration(productId, MfCloudCart.durationBody(sel, productId)) }) { data ->
+            data.takeIf { it?.isJsonArray == true }?.asJsonArray?.mapNotNull { el ->
+                val id = el.string("id") ?: return@mapNotNull null
+                CycleOption(
+                    id = id,
+                    name = el.string("name").orEmpty(),
+                    amount = el.number("price") ?: 0.0,
+                    isDefault = el.number("is_default")?.toInt() == 1
+                )
+            }.orEmpty()
+        }
 
     /** 实时算价（配置面板展示当前配置的价格）。 */
     suspend fun calcPrice(productId: String, body: JsonObject): ApiResult<PriceQuote> =
@@ -86,7 +149,13 @@ class CatalogRepository(private val api: QingVpsApiService) {
                 ?.mapNotNull { it.string("product_id") }
                 ?.distinct()
                 .orEmpty()
-            ids.filter { configCache[it] == null }.forEach { productConfig(it) }
+            ids.forEach { id ->
+                productConfig(id)
+                // mf_cloud 商品补周期缓存（默认档位），让购物车能翻译周期名与单价
+                configCache[id]?.mf?.let { mf ->
+                    MfSelection.default(mf)?.let { ensureMfCycles(id, it) }
+                }
+            }
             CloudCartParser.parse(data) { configCache[it] }
         }
 

@@ -9,6 +9,8 @@ import com.vps.qing.data.repository.CartCalculator
 import com.vps.qing.data.repository.CatalogParser
 import com.vps.qing.data.repository.CatalogRepository
 import com.vps.qing.data.repository.ConfigOption
+import com.vps.qing.data.repository.MfCloudCart
+import com.vps.qing.data.repository.MfSelection
 import com.vps.qing.data.repository.OptionType
 import com.vps.qing.data.repository.PriceQuote
 import com.vps.qing.data.repository.ProductConfig
@@ -27,8 +29,10 @@ data class ConfigSheetState(
     val product: ProductInfo,
     val loading: Boolean = true,
     val config: ProductConfig? = null,
-    /** optionId -> 选中的 subId（选择型）或数量字符串（数量型 / 开关）。 */
+    /** optionId -> 选中的 subId（选择型）或数量字符串（数量型 / 开关）——通用商品。 */
     val selections: Map<String, String> = emptyMap(),
+    /** mf_cloud（大带宽等套餐型）商品的区域/线路/CPU/内存/磁盘/带宽/镜像选择。 */
+    val mf: MfSelection? = null,
     val cycleId: String? = null,
     val qty: Int = 1,
     val quote: PriceQuote? = null,
@@ -48,6 +52,8 @@ data class ShopUiState(
     val secondGroups: Map<String, List<ProductGroup>> = emptyMap(),
     val selectedFirstId: String? = null,
     val selectedSecondId: String? = null,
+    /** 手风琴：当前展开二级分类的一级分类（一次只展开一个，保持层次感）。 */
+    val openFirstId: String? = null,
     val productsLoading: Boolean = false,
     /** 站点全量商品（分类在本地过滤，因为 /product 忽略 fpg_id/spg_id）。 */
     val allProducts: List<ProductInfo> = emptyList(),
@@ -66,7 +72,11 @@ data class ShopUiState(
     val currentSeconds: List<ProductGroup>
         get() = selectedFirstId?.let { secondGroups[it] } ?: emptyList()
 
-    /** 当前分类应展示的商品：按商品自带的分组 id 本地过滤。 */
+    /**
+     * 当前分类应展示的商品：按商品自带的分组 id 本地过滤。
+     * 二级分类严格过滤（选中无商品的二级分类时显示空态，v1.2.2 修复）；
+     * 仅选一级时按一级过滤；什么都没选展示全量。
+     */
     val visibleProducts: List<ProductInfo>
         get() = CatalogParser.byGroup(allProducts, selectedFirstId, selectedSecondId)
 }
@@ -123,8 +133,11 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         }
     }
 
+    /**
+     * 点一级分类：选中该产品类型并手风琴式展开它（收起其它一级分类的二级列表）。
+     */
     fun selectFirst(id: String) {
-        _ui.update { it.copy(selectedFirstId = id, selectedSecondId = null, error = null) }
+        _ui.update { it.copy(selectedFirstId = id, selectedSecondId = null, error = null, openFirstId = id) }
         val cached = _ui.value.secondGroups[id]
         if (cached != null) {
             pickDefaultSecond(id, cached)
@@ -149,6 +162,13 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
                     it.copy(productsLoading = false, error = r.throwable.message ?: "分类加载失败")
                 }
             }
+        }
+    }
+
+    /** 手风琴开关：点一级分类右侧的 chevron 只折叠/展开，不改变选中项。 */
+    fun toggleFirstExpanded(id: String) {
+        _ui.update {
+            it.copy(openFirstId = if (it.openFirstId == id) null else id)
         }
     }
 
@@ -186,23 +206,40 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
             when (val r = catalog.productConfig(product.id)) {
                 is ApiResult.Success -> {
                     val cfg = r.data
-                    val defaults = buildMap {
-                        cfg.options.forEach { opt ->
-                            val v = defaultValue(opt)
-                            if (v != null) put(opt.id, v)
-                        }
-                    }
-                    _ui.update {
-                        it.copy(
-                            configSheet = it.configSheet?.copy(
-                                loading = false,
-                                config = cfg,
-                                selections = defaults,
-                                cycleId = cfg.defaultCycleId
+                    if (cfg.mf != null) {
+                        // mf_cloud（大带宽等套餐型）：默认选第一项，再拉周期
+                        val sel = MfSelection.default(cfg.mf)
+                        _ui.update {
+                            it.copy(
+                                configSheet = it.configSheet?.copy(
+                                    loading = false,
+                                    config = cfg,
+                                    mf = sel,
+                                    cycleId = sel?.durationId
+                                )
                             )
-                        )
+                        }
+                        sel?.let { loadMfDuration(it) }
+                        recalcQuote()
+                    } else {
+                        val defaults = buildMap {
+                            cfg.options.forEach { opt ->
+                                val v = defaultValue(opt)
+                                if (v != null) put(opt.id, v)
+                            }
+                        }
+                        _ui.update {
+                            it.copy(
+                                configSheet = it.configSheet?.copy(
+                                    loading = false,
+                                    config = cfg,
+                                    selections = defaults,
+                                    cycleId = cfg.defaultCycleId
+                                )
+                            )
+                        }
+                        recalcQuote()
                     }
-                    recalcQuote()
                 }
                 is ApiResult.Failure -> _ui.update {
                     it.copy(configSheet = it.configSheet?.copy(loading = false, error = "[${r.code}] ${r.msg}"))
@@ -217,6 +254,38 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
                 }
             }
         }
+    }
+
+    /** mf_cloud 周期列表（跟随当前配置档位，站点 duration 接口）。 */
+    private fun loadMfDuration(sel: MfSelection) {
+        val product = _ui.value.configSheet?.product ?: return
+        viewModelScope.launch {
+            when (val r = catalog.mfDuration(product.id, sel)) {
+                is ApiResult.Success -> _ui.update {
+                    val default = r.data.firstOrNull { it.isDefault } ?: r.data.firstOrNull()
+                    it.copy(configSheet = it.configSheet?.copy(
+                        config = it.configSheet.config?.copy(cycles = r.data),
+                        cycleId = it.configSheet.mf?.durationId ?: default?.id,
+                        mf = it.configSheet.mf?.copy(durationId = it.configSheet.mf.durationId ?: default?.id)
+                    ))
+                }
+                else -> Unit
+            }
+        }
+    }
+
+    /** mf_cloud 配置面板选择更新（UI 传入完整的新选择）。 */
+    fun updateMfSelection(next: MfSelection) {
+        _ui.update {
+            val sheet = it.configSheet ?: return@update it
+            it.copy(configSheet = sheet.copy(mf = next, error = null))
+        }
+        recalcQuote()
+    }
+
+    fun selectMfImage(imageId: Int) {
+        val current = _ui.value.configSheet?.mf ?: return
+        updateMfSelection(current.copy(imageId = imageId))
     }
 
     private fun defaultValue(opt: ConfigOption): String? = when {
@@ -254,9 +323,12 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         _ui.update { it.copy(configSheet = null) }
     }
 
-    /** 组装算价/加购 body（纯数据，复用 CartBodies）。 */
+    /** 组装算价/加购 body（通用商品走 CartBodies，mf_cloud 走 MfCloudCart）。 */
     private fun buildBody(sheet: ConfigSheetState): JsonObject {
         val cfg = sheet.config
+        if (cfg?.mf != null && sheet.mf != null) {
+            return MfCloudCart.calcBody(sheet.mf, sheet.product.id, sheet.qty)
+        }
         val selections = sheet.selections.mapNotNull { (optionId, value) ->
             val opt = cfg?.options?.firstOrNull { it.id == optionId }
             val array = opt?.let { OptionType.needsArray(it.type) } ?: false
@@ -269,6 +341,7 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
     private fun recalcQuote() {
         val sheet = _ui.value.configSheet ?: return
         if (sheet.config == null || sheet.config.requiresWebOrder) return
+        if (sheet.config.mf != null && sheet.mf == null) return
         quoteJob?.cancel()
         quoteJob = viewModelScope.launch {
             _ui.update { it.copy(configSheet = it.configSheet?.copy(quoting = true)) }
@@ -288,11 +361,16 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
     fun confirmAddToCart() {
         val sheet = _ui.value.configSheet ?: return
         val cfg = sheet.config
-        // 套餐型商品（mf_cloud）无法原生自定义，由 UI 引导网页订购，这里不提交
         if (cfg == null || cfg.requiresWebOrder) return
+        // mf_cloud 商品必须有完整选择；通用商品走原逻辑
+        if (cfg.mf != null && sheet.mf == null) return
         viewModelScope.launch {
             _ui.update { it.copy(configSheet = it.configSheet?.copy(adding = true, error = null)) }
-            val body = buildBody(sheet)
+            val body = if (cfg.mf != null && sheet.mf != null) {
+                MfCloudCart.cartBody(sheet.mf, sheet.product.id, sheet.qty)
+            } else {
+                buildBody(sheet)
+            }
             when (val r = catalog.addToCart(body)) {
                 is ApiResult.Success -> {
                     _ui.update { it.copy(configSheet = null, toast = "已加入站点购物车") }
