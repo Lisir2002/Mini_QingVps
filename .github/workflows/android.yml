@@ -1,0 +1,118 @@
+name: QingVPS CI
+
+# 分支推送与 PR：只跑 JVM 单元测试（本地同样只做单元测试）。
+# 打 v* tag：跑单元测试 + 完整 assembleDebug，产出可安装的 APK 并发布到 Release，
+# 这样第一版可以直接从 Release 页面下载实测。
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '17'
+  GRADLE_VERSION: '8.9'
+
+jobs:
+  unit-test:
+    name: JVM 单元测试
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: 配置 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 安装 SDK 组件 (API 35)
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
+
+      - name: 配置 Gradle 缓存
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 编译并运行单元测试
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports-${{ github.run_number }}
+          path: app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: ignore
+
+  build-apk:
+    name: 完整构建 Debug APK
+    needs: unit-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: 配置 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 安装 SDK 组件 (API 35)
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools" > /dev/null
+
+      - name: 配置 Gradle 缓存
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 完整构建 Debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: 整理产物
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/QingVPS-${{ github.ref_name }}-debug.apk"
+          cd dist && sha256sum *.apk > SHA256SUMS.txt
+          ls -lh
+
+      - name: 上传 APK 制品
+        uses: actions/upload-artifact@v4
+        with:
+          name: QingVPS-${{ github.ref_name }}-apk
+          path: dist/
+
+      - name: 发布到 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## QingVPS ${{ github.ref_name }}
+
+            第一版（登录 / 注册 / 个人中心）。此 APK 为 debug 构建，可直接安装测试。
+
+            - 应用名：QingVPS，包名：`com.vps.qing`
+            - 站点：`https://vps.qingyayun.cn`（IDCSmart 10.7.2，`/console/v1`）
+            - 登录密码按站点协议做 AES/CBC/PKCS5Padding 加密后提交
+            - 注册 / 找回密码需先完成图形验证码再获取邮箱验证码
+
+            详见 `SHA256SUMS.txt`。如遇网络错误，站点提示不要使用 VPN 访问。

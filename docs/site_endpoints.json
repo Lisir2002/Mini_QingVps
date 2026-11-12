@@ -1,0 +1,1908 @@
+{
+  "site": "https://vps.qingyayun.cn",
+  "system_version": "10.7.2",
+  "base_url": "https://vps.qingyayun.cn/console/v1",
+  "generated_at": "2026-11-12",
+  "source_note": "接口定义全部提取自站点公开前端 JS（模板 api/*.js）；写操作未实测，仅 GET 端点做过匿名请求验证",
+  "auth": {
+    "type": "JWT Bearer",
+    "header": "Authorization: Bearer <jwt>",
+    "login": "POST /login",
+    "token_storage": "前端存 localStorage；App 应存加密存储",
+    "extra_headers": {
+      "language": "zh-cn"
+    },
+    "webview_bridges": [
+      "?queryParam=<jwt> 自动写入本地存储",
+      "goods_iframe.htm?iframe_token=<jwt> iframe 专用注入"
+    ],
+    "response_envelope": {
+      "status": 200,
+      "msg": "请求成功",
+      "data": {}
+    },
+    "business_401": "未登录或 2 小时无操作过期"
+  },
+  "endpoint_count": 192,
+  "endpoints": [
+    {
+      "method": "DELETE",
+      "path": "/api/{id}",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_security.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/client_care/mail",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/idcsmart_domain/info_template/{id}",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/ssh_key/{id}",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_security.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/aodun_firewall/host_ip",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/aodun_firewall/host_ip/{id}/refresh_status",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/aodun_firewall_agent/host_ip",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/aodun_firewall_agent/host_ip/{id}/refresh_status",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/certification/auth",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_certification.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/certification/custom_fields",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_certification.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/certification/info",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_certification.js",
+        "probe_common.js",
+        "probe_finance.js",
+        "probe_home.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/certification/plugin",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_certification.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/client/host",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_product.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/client_care/mail",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/client_care/mail/list",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/e_contract",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/e_contract/first_part_info",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/e_contract/host/{id}/timeout",
+      "group": "主机与服务管理",
+      "sources": [
+        "_cart_template_pc_wry_api_product.js",
+        "probe_product.js",
+        "wry_product.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/e_contract/order",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/e_contract/{id}/preview",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/home/host",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/host/renew/batch",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/host/{id}",
+      "group": "主机与服务管理",
+      "sources": [
+        "_cart_template_pc_wry_api_product.js",
+        "probe_product.js",
+        "wry_product.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/host/{id}/flow_packet",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/host/{id}/ip",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/host/{id}/on_demand_to_recurring_prepayment",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/host/{id}/product_cashback",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/host/{id}/renew",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/host/{id}/specific_info",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/host/{id}/view",
+      "group": "主机与服务管理",
+      "sources": [
+        "_cart_template_pc_wry_api_product.js",
+        "probe_product.js",
+        "wry_product.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/host_transfer/host/{id}/is_transfer",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/idcsmart_domain/bulk_check",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/idcsmart_domain/check_domain",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/idcsmart_domain/config",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/idcsmart_domain/domain_suffix",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/idcsmart_domain/get_price",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/idcsmart_domain/info_template",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/idcsmart_domain/info_template/support",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/idcsmart_domain/info_template/{id}",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/idcsmart_domain/whois",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/idcsmart_ssl/brand",
+      "group": "主机与服务管理",
+      "sources": [
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/idcsmart_ssl/product",
+      "group": "主机与服务管理",
+      "sources": [
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/index/host",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_home.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ssh_key",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_security.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/sub_account/{id}/auth",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/certification/company",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_certification.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/certification/person",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_certification.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/e_contract/{id}/cancel",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/e_contract/{id}/download",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/e_contract/{id}/mail",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/host/renew/batch",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/host/{id}/flow_packet_order",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/host/{id}/on_demand_to_recurring_prepayment",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/host/{id}/product_cashback",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/host/{id}/renew",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/idcsmart_domain/info_template",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/idcsmart_domain/info_template/{id}/certifications",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/ssh_key",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_security.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/api/{id}/white_list",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_security.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/client_care/mail/read",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/e_contract/first_part_info",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/host/notes/batch",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/host/{id}/renew/auto",
+      "group": "主机与服务管理",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/ssh_key/{id}",
+      "group": "主机与服务管理",
+      "sources": [
+        "probe_security.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api",
+      "group": "内容帮助其他",
+      "sources": [
+        "probe_security.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/auth",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/client_level",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/common",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/country",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_account.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/global_search",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/help/{id}",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/index",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_home.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/menu",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/mp_weixin_notice/client",
+      "group": "内容帮助其他",
+      "sources": [
+        "probe_account.js",
+        "probe_home.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/mp_weixin_notice/qrcode",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_home.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/mp_weixin_notice/qrcode/status",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/news/index",
+      "group": "内容帮助其他",
+      "sources": [
+        "probe_home.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/online_service",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/presale_consult/config",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/recommend/promoter",
+      "group": "内容帮助其他",
+      "sources": [
+        "probe_home.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/referral/promoter/statistic",
+      "group": "内容帮助其他",
+      "sources": [
+        "probe_home.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/ticket",
+      "group": "内容帮助其他",
+      "sources": [
+        "probe_home.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/{module}/{id}/traffic_package",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/{module}/{id}/upgrade_defence/price",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/{module}/{id}/upgrade_defence_config",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api",
+      "group": "内容帮助其他",
+      "sources": [
+        "probe_security.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/mp_weixin_notice/qrcode/bind_client",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/mp_weixin_notice/qrcode/select_client_login",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{module}/batch_operate",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/{module}/{id}/upgrade_defence/order",
+      "group": "内容帮助其他",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/aliyun_agency/account/email",
+      "group": "内容帮助其他",
+      "sources": [
+        "probe_account.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/mp_weixin_notice/accept_push",
+      "group": "内容帮助其他",
+      "sources": [
+        "probe_account.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/client_level/product/{id}/amount",
+      "group": "商品与分组",
+      "sources": [
+        "_cart_template_pc_wry_api_shopping.js",
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "wry_shopping.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/event_promotion/product/{id}/event_promotion",
+      "group": "商品与分组",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/menu/{id}/host",
+      "group": "商品与分组",
+      "sources": [
+        "_cart_template_pc_wry_api_product.js",
+        "probe_product.js",
+        "wry_product.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/product",
+      "group": "商品与分组",
+      "sources": [
+        "_cart_template_pc_wry_api_product.js",
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_goodsList.js",
+        "wry_goodsList.js",
+        "wry_product.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/product/group/first",
+      "group": "商品与分组",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/product/group/second",
+      "group": "商品与分组",
+      "sources": [
+        "_cart_template_pc_wry_api_product.js",
+        "probe_goodsList.js",
+        "wry_goodsList.js",
+        "wry_product.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/product/{id}",
+      "group": "商品与分组",
+      "sources": [
+        "_cart_template_pc_wry_api_product.js",
+        "_cart_template_pc_wry_api_shopping.js",
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "wry_product.js",
+        "wry_shopping.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/product/{id}/config_option",
+      "group": "商品与分组",
+      "sources": [
+        "_cart_template_pc_wry_api_product.js",
+        "probe_product.js",
+        "wry_product.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/product/{id}/self_defined_field/order_page",
+      "group": "商品与分组",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/event_promotion/apply",
+      "group": "商品与分组",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/product/settle",
+      "group": "商品与分组",
+      "sources": [
+        "_cart_template_pc_wry_api_shopping.js",
+        "wry_shopping.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/product/{id}/config_option",
+      "group": "商品与分组",
+      "sources": [
+        "_cart_template_pc_wry_api_shopping.js",
+        "wry_goodsList.js",
+        "wry_shopping.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/account",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_account.js",
+        "probe_common.js",
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/account/credit/freeze",
+      "group": "登录注册账号",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/account/traffic_warning",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/authreset/certificate",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/authreset/certificate/status",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/captcha",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/client_custom_field_value",
+      "group": "登录注册账号",
+      "sources": [
+        "probe_account.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/log",
+      "group": "登录注册账号",
+      "sources": [
+        "probe_account.js",
+        "probe_security.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/login",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/login/exception/certification/status",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/oauth/token",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/oauth/{name}",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/register/custom_field",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/account/credit/remind",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/account/password_reset",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_account.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/authreset/applications",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/authreset/reset/cancel",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/authreset/reset/sure",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/captcha",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/email/code",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_account.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/login",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/login/exception/certification/create",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/logout",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/oauth/client/bind",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/oauth/unbind/{name}",
+      "group": "登录注册账号",
+      "sources": [
+        "probe_account.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/phone/code",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_account.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/register",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/account",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_account.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/account/email",
+      "group": "登录注册账号",
+      "sources": [
+        "probe_account.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/account/email/old",
+      "group": "登录注册账号",
+      "sources": [
+        "probe_account.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/account/operate_password",
+      "group": "登录注册账号",
+      "sources": [
+        "probe_account.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/account/password",
+      "group": "登录注册账号",
+      "sources": [
+        "probe_account.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/account/phone",
+      "group": "登录注册账号",
+      "sources": [
+        "probe_account.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/account/phone/old",
+      "group": "登录注册账号",
+      "sources": [
+        "probe_account.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/account/traffic_warning",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/language",
+      "group": "登录注册账号",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/order",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/order/{id}",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/coin/client/coupon",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/coin/coupon",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/coin/coupon/{id}/use_detail",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/coin/pay",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/coin/recharge",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/coin/rules",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/coin/wait_get",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/credit",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/credit_limit",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_finance.js",
+        "probe_home.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/credit_limit/account",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/credit_limit/account/{id}/order",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/export_excel/order",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/gateway",
+      "group": "订单支付财务",
+      "sources": [
+        "_cart_template_pc_wry_api_shopping.js",
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_finance.js",
+        "wry_shopping.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/order",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/order/{id}",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/pay/{id}/status",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/refund",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/refund/host/{id}/refund",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/refund/pending/amount",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/transaction",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/voucher",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/voucher/mine",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/voucher/pay",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/withdraw",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_withdraw.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/withdraw/rule/credit",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/coin/pay",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/coin/{id}/get",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/credit",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/credit_limit/pay",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/credit_limit/prepayment",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/order/combine",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/order/{id}/submit_application",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/pay",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/promo_code/apply",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/promo_code/apply_batch",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/recharge",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/refund",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/voucher/pay",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/voucher/{id}/get",
+      "group": "订单支付财务",
+      "sources": [
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/withdraw",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "probe_finance.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/order/{id}/gateway",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/order/{id}/voucher",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/refund/{id}/cancel",
+      "group": "订单支付财务",
+      "sources": [
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/cart/batch",
+      "group": "购物车与结算",
+      "sources": [
+        "_cart_template_pc_wry_api_shopping.js",
+        "probe_goodsList.js",
+        "wry_goodsList.js",
+        "wry_shopping.js"
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/cart/{pos}",
+      "group": "购物车与结算",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/cart",
+      "group": "购物车与结算",
+      "sources": [
+        "_cart_template_pc_wry_api_shopping.js",
+        "_clientarea_template_pc_default_api_common.js",
+        "probe_common.js",
+        "wry_shopping.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/cart",
+      "group": "购物车与结算",
+      "sources": [
+        "probe_goodsList.js",
+        "wry_goodsList.js"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/cart/settle",
+      "group": "购物车与结算",
+      "sources": [
+        "_cart_template_pc_wry_api_shopping.js",
+        "probe_goodsList.js",
+        "wry_goodsList.js",
+        "wry_shopping.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/cart/{pos}",
+      "group": "购物车与结算",
+      "sources": [
+        "_cart_template_pc_wry_api_shopping.js",
+        "probe_goodsList.js",
+        "wry_goodsList.js",
+        "wry_shopping.js"
+      ]
+    },
+    {
+      "method": "PUT",
+      "path": "/cart/{pos}/qty",
+      "group": "购物车与结算",
+      "sources": [
+        "_cart_template_pc_wry_api_shopping.js",
+        "wry_shopping.js"
+      ]
+    }
+  ],
+  "verified_anonymous": [
+    {
+      "path": "/common",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "lang_list",
+        "website_name",
+        "captcha_client_login",
+        "currency_code"
+      ]
+    },
+    {
+      "path": "/menu",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "menu"
+      ]
+    },
+    {
+      "path": "/country",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "list",
+        "count"
+      ]
+    },
+    {
+      "path": "/captcha",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "html"
+      ],
+      "note": "返回 HTML 片段，非图片"
+    },
+    {
+      "path": "/gateway",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "list",
+        "count"
+      ],
+      "note": "实测仅 EpayAli / 支付宝"
+    },
+    {
+      "path": "/product?fpg_id=1&spg_id=4",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "list",
+        "count"
+      ],
+      "note": "20 条"
+    },
+    {
+      "path": "/product/group/first",
+      "http": 200,
+      "status": 200
+    },
+    {
+      "path": "/product/group/second?id=1",
+      "http": 200,
+      "status": 200
+    },
+    {
+      "path": "/product/45",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "product"
+      ]
+    },
+    {
+      "path": "/product/45/config_option",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "product_name",
+        "content"
+      ],
+      "note": "content 是 Vue 模板 HTML，不是 JSON 配置"
+    },
+    {
+      "path": "/product/45/self_defined_field/order_page",
+      "http": 200,
+      "status": 200
+    },
+    {
+      "path": "/cart",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "list"
+      ],
+      "note": "匿名返回空车"
+    },
+    {
+      "path": "/help/1",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "help"
+      ]
+    },
+    {
+      "path": "/announcement",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "list",
+        "count"
+      ]
+    },
+    {
+      "path": "/news",
+      "http": 200,
+      "status": 200,
+      "data_keys": [
+        "list",
+        "count"
+      ]
+    },
+    {
+      "path": "/index",
+      "http": 200,
+      "status": 401,
+      "msg": "当前未登录，请先登录后使用"
+    },
+    {
+      "path": "/account",
+      "http": 200,
+      "status": 401
+    },
+    {
+      "path": "/host/1/renew",
+      "http": 200,
+      "status": 401
+    },
+    {
+      "path": "/pay/1/status",
+      "http": 200,
+      "status": 401
+    }
+  ],
+  "known_pitfalls": [
+    "业务错误码在 body.status，HTTP 恒 200",
+    "GET /product/{id}/config_option 返回 Vue 模板 HTML，订购配置页需 WebView + goods_iframe.htm?iframe_token=",
+    "description 字段是整页 HTML（含嵌套 DOCTYPE），需清洗",
+    "部分未启用/方法不匹配的端点会回退成 text/html 首页，必须按 Content-Type 判断",
+    "页面 URL 的 fpg_id/spg_id 与商品分组 ID 不是同一套编号",
+    "私有接口无公开文档，版本 10.7.2，升级可能变更"
+  ]
+}

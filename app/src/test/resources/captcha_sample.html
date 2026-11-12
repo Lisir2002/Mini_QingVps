@@ -1,0 +1,176 @@
+
+            <style>
+                .captcha-content{
+                    width:5.66rem;
+                    background:#fff;
+                    opacity: 1;
+                    position: fixed;
+                    left: 50%;
+                    top: 50%;
+                    margin-top: -1.58rem;
+                    transform:translateX(-3.6rem);
+                    padding:.6rem .8rem;
+                    border-radius 5px;
+                }
+                .captcha-footer{
+                    display: flex;
+                    flex-direction: row;
+                    justify-content:flex-end;
+                    margin-top: .4rem;
+                }
+                #check-btn{
+                    width: 1.12rem;
+                    height: .46rem;
+                    background: #0058FF;
+                    color: #fff;
+                    font-size: .16rem;
+                    border:none;
+                    border-radius: .03rem;
+                    cursor: pointer;
+                }
+                #cancel-btn{
+                    width: 1.12rem;
+                    height: .46rem;
+                    margin-left: .12rem;
+                    background: #E7E7E7;
+                    color: #1E2736;
+                    font-size:.16rem;
+                    border: none;
+                    border-radius: .03rem;
+                    cursor: pointer;
+                }
+                #captcha-input{
+                    width: 4.45rem;
+                    height: .40rem;
+                    margin-right: .1rem;
+                }
+                #captcha-img{
+                    cursor: pointer;
+                    height:.46rem;
+                    width:1.11rem;
+                }
+                .captcha-title{
+                    font-size: .24rem;
+                    line-height: .24rem;
+                }
+                @media screen and (max-width: 750px) {
+
+                    .captcha-footer{
+                        display:flex;
+                        flex-direction:column;
+                    }
+                    #check-btn,#cancel-btn{
+                        width:100%;
+                        height:.8rem;
+                        font-size:.34rem
+                    }
+                    #check-btn{}
+                    #cancel-btn{
+                        margin-left: 0;
+                        margin-top:.2rem;
+                    }
+                    #captcha-img{
+                        cursor: pointer;
+                        height:.8rem;
+                        width:1.93rem;
+                    }
+                    #captcha-input{
+                        width: 100%;
+                        height: .8rem;
+                        margin-right: .1rem;
+                        font-size:.28rem;
+                    }
+                    .captcha-title{
+                        font-size: .36rem;
+                        line-height: .36rem;
+                    }
+                }
+            </style>
+            <div id='captcha-outer' style='
+                background: rgba(123,123,123,0.6);
+                position: fixed;
+                left: 0px;
+                top: 0px;
+                height: 100vh;
+                width:100vw;
+                z-index: 3000;
+                filter: alpha(opacity=60);
+            '>
+                <div class='captcha-content' style=''>
+                    <div style="width: 100%;display: flex;flex-direction: column;">
+                    <div class="captcha-title">图形验证</div>
+                    <div class="captcha-main" style="display: flex;flex-direction: row;margin-top: .31rem;padding-left: 10px;">
+                        <input id='captcha-input' type="text" placeholder="请输入验证码" style="padding-left: 10px;">
+                        <img id="captcha-img" src="data:image/png;base64,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">
+                    </div>
+                        <p id="captcha-error-text" style='color: red;font-size:.16rem'><p/>
+                    </div>
+                    <div class="captcha-footer">
+                        <button calss='captcha-ok' id="check-btn">验证</button>
+                        <button calss='captcha-no' id="cancel-btn">取消</button>
+                        
+                    </div>
+                </div>
+            </div>
+
+        <script src='https://cdn.staticfile.org/jquery/1.10.2/jquery.min.js'></script>
+        <script>
+            var captchaTimer = setTimeout(() => { doRightNow() }, 500)
+            var tokenTag = '5bb25648a831e469ea1e6aa2eacf47c6'
+            function _getCaptcha() {
+                $.ajax({
+                    url: '/captcha/tp_captcha/index/refresh',
+                    success: function (result) {
+                        $('#captcha-img').prop('src', result.base64)
+                        // captchaTag = result.captcha
+                        tokenTag = result.token
+                    }
+                })
+            }
+
+            // 开始时触发的事件 给各个按钮绑定点击事件
+            function doRightNow() {
+                clearInterval(captchaTimer);
+                document.getElementById("check-btn").onclick = function () { _check() };
+                document.getElementById("cancel-btn").onclick = function () { _cancel() }
+                document.getElementById("captcha-img").onclick = function () { _getCaptcha() }
+            }
+
+            // 前台验证码验证
+            function _check() {
+                // 获取输入框的值 与localStorage中进行比对
+                const inputValue = $('#captcha-input').val().replace(/\s/g, '')
+                // 调用验证验证码接口 进行后台验证
+                $.ajax({
+                    url: '/captcha/tp_captcha/index/verify',
+                    method: 'post',
+                    data: {
+                        'captcha': inputValue,
+                        'token': tokenTag
+                    },
+                    success: function (result) {
+                        if (result.status === 200) {
+                            document.getElementById('captcha-error-text').textContent = ''
+                            $('#captcha-input').val('')
+                            captchaCheckSuccsss(true, inputValue, tokenTag)
+                        } else {
+                            document.getElementById('captcha-error-text').textContent = result.msg
+                            captchaCheckSuccsss(false)
+                        }
+                    },
+                    error: function (error) {
+
+                    }
+                })
+            }
+
+            // 取消
+            function _cancel() {
+                document.getElementById('captcha-error-text').textContent = ''
+                $('#captcha-input').val('')
+                captchaCheckCancel()
+            }
+
+        </script>
+
+
