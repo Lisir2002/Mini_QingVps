@@ -624,6 +624,7 @@ fun OrderDetailPage(
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
+                                    }
                                 }
                             }
                         }
