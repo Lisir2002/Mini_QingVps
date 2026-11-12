@@ -18,6 +18,7 @@ import com.vps.qing.data.repository.ProductGroup
 import com.vps.qing.data.repository.ProductInfo
 import com.vps.qing.data.repository.CartItem
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -100,37 +101,80 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         syncCart()
     }
 
-    fun loadGroups() {
+    /**
+     * 拉取分类与全量商品。
+     * v1.2.3 起：
+     *  - silent=true 为静默刷新（保留旧数据展示，成功后原地替换，不打断浏览）；
+     *  - 同时重拉当前一级分类的二级分类缓存 —— 修复站点上新分类后刷新不显示的问题
+     *    （旧版 refresh 只清不清二级缓存，selectFirst 命中内存缓存导致新分类永远看不到）；
+     *  - 站点侧删除分类导致旧选中失效时自动回退到可用的分类。
+     */
+    fun loadGroups(silent: Boolean = false) {
         viewModelScope.launch {
-            _ui.update { it.copy(groupsLoading = true, error = null, productsLoading = true) }
-            // 分组与全量商品并行拉取
-            val groupsResult = catalog.firstGroups()
-            val productsResult = catalog.allProducts()
-            val groups = when (groupsResult) {
-                is ApiResult.Success -> groupsResult.data
-                is ApiResult.Failure -> {
-                    _ui.update { it.copy(error = "[${groupsResult.code}] ${groupsResult.msg}") }
-                    emptyList()
-                }
-                is ApiResult.Error -> {
-                    _ui.update { it.copy(error = groupsResult.throwable.message ?: "分类加载失败") }
-                    emptyList()
+            if (!silent) {
+                _ui.update { it.copy(groupsLoading = true, error = null, productsLoading = true) }
+            }
+            val firstIdBefore = _ui.value.selectedFirstId
+            val groupsCall = async { catalog.firstGroups() }
+            val productsCall = async { catalog.allProducts() }
+            val secondsCall = firstIdBefore?.let { async { catalog.secondGroups(it) } }
+
+            val groups = when (val r = groupsCall.await()) {
+                is ApiResult.Success -> r.data
+                is ApiResult.Failure -> { reportError(silent, "[${r.code}] ${r.msg}"); null }
+                is ApiResult.Error -> { reportError(silent, r.throwable.message ?: "分类加载失败"); null }
+            }
+            val all = when (val r = productsCall.await()) {
+                is ApiResult.Success -> r.data
+                is ApiResult.Failure -> { reportError(silent, "[${r.code}] ${r.msg}"); null }
+                is ApiResult.Error -> { reportError(silent, r.throwable.message ?: "商品加载失败"); null }
+            }
+            val seconds = secondsCall?.let {
+                when (val r = it.await()) {
+                    is ApiResult.Success -> r.data
+                    else -> null
                 }
             }
-            val all = when (productsResult) {
-                is ApiResult.Success -> productsResult.data
-                is ApiResult.Failure -> {
-                    _ui.update { it.copy(error = "[${productsResult.code}] ${productsResult.msg}") }
-                    emptyList()
-                }
-                is ApiResult.Error -> {
-                    _ui.update { it.copy(error = productsResult.throwable.message ?: "商品加载失败") }
-                    emptyList()
+            // 静默且全部失败：保持旧数据，不闪错误
+            if (silent && groups == null && all == null && seconds == null) return@launch
+
+            _ui.update { st ->
+                st.copy(
+                    groupsLoading = false,
+                    productsLoading = false,
+                    firstGroups = groups ?: st.firstGroups,
+                    allProducts = all ?: st.allProducts,
+                    secondGroups = if (firstIdBefore != null && seconds != null) {
+                        st.secondGroups + (firstIdBefore to seconds)
+                    } else st.secondGroups
+                )
+            }
+            if (!silent && groups == null && all == null) return@launch
+
+            // 校正选中项：站点删除/调整分类后旧选中可能失效（用户手动选中的空分类不受影响）
+            val st = _ui.value
+            val selectedFirstValid = st.selectedFirstId?.let { f ->
+                st.firstGroups.any { it.id == f }
+            } ?: false
+            val selectedSecondValid = st.selectedSecondId?.let { s ->
+                (st.selectedFirstId?.let { st.secondGroups[it] } ?: emptyList())
+                    .any { it.id == s }
+            } ?: true
+            when {
+                st.selectedFirstId == null || !selectedFirstValid ->
+                    st.firstGroups.firstOrNull()?.let { selectFirst(it.id) }
+                !selectedSecondValid -> {
+                    val secs = st.secondGroups[st.selectedFirstId].orEmpty()
+                    val fallback = secs.firstOrNull { s -> st.allProducts.any { it.groupSecondId == s.id } }
+                        ?: secs.firstOrNull()
+                    _ui.update { it.copy(selectedSecondId = fallback?.id) }
                 }
             }
-            _ui.update { it.copy(groupsLoading = false, productsLoading = false, firstGroups = groups, allProducts = all) }
-            groups.firstOrNull()?.let { selectFirst(it.id) }
         }
+    }
+
+    private fun reportError(silent: Boolean, msg: String) {
+        if (!silent) _ui.update { it.copy(error = msg) }
     }
 
     /**
@@ -184,14 +228,21 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         _ui.update { it.copy(selectedSecondId = id, error = null) }
     }
 
+    /**
+     * 手动刷新：静默重拉分类/商品/当前二级分类。
+     * 二级分类缓存全部丢弃，保证站点上新分类/商品刷新即可见（v1.2.3）。
+     */
     fun refresh() {
-        loadGroups()
+        _ui.update { it.copy(secondGroups = emptyMap()) }
+        loadGroups(silent = true)
         syncCart()
     }
 
     fun setTab(tab: Int) {
         _ui.update { it.copy(tab = tab) }
         if (tab == 1) syncCart()
+        // 回到选购页时静默同步站点最新分类与商品：App 进程存活期间上新也能自动出现
+        if (tab == 0 && !_ui.value.groupsLoading) loadGroups(silent = true)
     }
 
     fun toggleSidebar() = _ui.update { it.copy(sidebarExpanded = !it.sidebarExpanded) }
