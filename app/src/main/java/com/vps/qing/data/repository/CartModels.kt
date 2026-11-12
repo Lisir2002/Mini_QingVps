@@ -1,13 +1,21 @@
 package com.vps.qing.data.repository
 
+import com.google.gson.JsonElement
+import com.vps.qing.core.network.arrayAt
+import com.vps.qing.core.network.objectAt
+import com.vps.qing.core.network.string
 import java.util.Locale
 
 /**
- * 应用内购物车条目。第一版用本地状态保存（站点 POST /cart 需要登录态且加购协议未实测），
- * 结算统一跳站点 /cart/shoppingCar.htm 的 WebView 兜底页。
+ * 购物车条目。
  *
- * [specs] 是商品 description 里解析出来的真实配置项，加入后原样带进购物车，
- * 因此「添加的服务器及其配置」可以在购物车 Tab 直接看到。
+ * v1.2.0 起购物车以「站点云端购物车」为准：加购走 POST /console/v1/cart（真实入云），
+ * 成功后重新拉 GET /console/v1/cart 覆盖本地列表。条目里的 [configLabels] 是
+ * 把站点返回的 configoption {选项id: subId} 用商品配置定义翻译出来的可读配置，
+ * 因此「添加的服务器及其配置」能在购物车页直接看到。
+ *
+ * [position] 是站点购物车行下标（站点前端 rules：list 的 index 即 position），
+ * 改数量 / 删除都用它。本地快速反馈时 position = -1。
  */
 data class CartItem(
     val productId: String,
@@ -16,14 +24,23 @@ data class CartItem(
     val cycle: String = "",
     val unitPrice: Double = 0.0,
     val quantity: Int = 1,
-    val groupName: String = ""
+    val groupName: String = "",
+    // ---- 自定义配置 / 云端同步 ----
+    val position: Int = -1,
+    val cycleId: String? = null,
+    /** 如 ["流量：50G", "操作系统：CentOS-7.9"]。 */
+    val configLabels: List<String> = emptyList(),
+    /** 原始 configoption 映射（optionId -> 选中值），用于改配置或调试。 */
+    val configOptionRaw: Map<String, String> = emptyMap(),
+    /** 是否来自云端 GET /cart。 */
+    val synced: Boolean = false
 ) {
-    /** 同商品 + 同周期视为同一条目，配置项不参与 key（同一商品配置固定）。 */
-    val key: String get() = "$productId|$cycle"
+    /** 同商品 + 同周期 + 同位置视为同一条目；本地条目 position 恒 -1，保持合并语义。 */
+    val key: String get() = "$productId|$cycle|$position"
     val subtotal: Double get() = unitPrice * quantity
 }
 
-/** 纯 JVM 的购物车运算，便于本地单元测试（ViewModel 只持有 List<CartItem>）。 */
+/** 纯 JVM 的购物车运算（ViewModel 只持有 List<CartItem>）。 */
 object CartCalculator {
     fun add(items: List<CartItem>, item: CartItem): List<CartItem> {
         if (item.quantity <= 0) return items
@@ -50,4 +67,78 @@ object CartCalculator {
     fun total(items: List<CartItem>): Double = items.sumOf { it.subtotal }
 
     fun money(amount: Double): String = String.format(Locale.CHINA, "￥%.2f", amount)
+}
+
+/**
+ * 解析站点云端购物车 GET /console/v1/cart 的 data。
+ *
+ * 实测单行：
+ * {"product_id":45,"name":"APAC | 亚太-体验版","qty":1,
+ *  "description":"<html>…",
+ *  "config_options":{"configoption":{"12568":45697},
+ *                    "cascade_configoption":[],"cycle":3706,...}}
+ *
+ * [configLookup] 用商品 id 查本地缓存的 ProductConfig，把 id 翻成中文名；
+ * 查不到时退化为显示原始 id，保证任何情况下都有内容、不崩。
+ */
+object CloudCartParser {
+
+    fun parse(
+        data: JsonElement?,
+        configLookup: (String) -> ProductConfig? = { null }
+    ): List<CartItem> {
+        val list = data.arrayAt("list") ?: return emptyList()
+        return list.mapIndexedNotNull { index, el -> parseLine(index, el, configLookup) }
+    }
+
+    private fun parseLine(
+        position: Int,
+        el: JsonElement,
+        configLookup: (String) -> ProductConfig?
+    ): CartItem? {
+        val productId = el.string("product_id") ?: return null
+        val name = el.string("name") ?: "商品 $productId"
+        val qty = el.string("qty")?.toIntOrNull() ?: 1
+        val html = el.string("description").orEmpty()
+        val specs = CatalogParser.specsFromHtml(html)
+
+        val co = el.objectAt("config_options")
+        val cycleId = co?.string("cycle")
+        val raw = mutableMapOf<String, String>()
+
+        val configOption = co?.objectAt("configoption")
+        configOption?.entrySet()?.forEach { (optionId, value) ->
+            val v = runCatching { value.asString }.getOrNull() ?: value.toString()
+            raw[optionId] = v
+        }
+
+        val cfg = configLookup(productId)
+        // 周期名 + 单价：优先用配置里的 custom_cycles 按 id 匹配
+        val cycleMatch = cfg?.cycles?.firstOrNull { it.id == cycleId }
+        val cycleName = cycleMatch?.name ?: cycleId?.let { "周期 $it" } ?: ""
+        val unitPrice = cycleMatch?.amount ?: 0.0
+
+        // 把 {optionId: subId} 翻译成「选项名：候选名」
+        val labels = raw.map { (optionId, subId) ->
+            val opt = cfg?.options?.firstOrNull { it.id == optionId }
+            val sub = opt?.subs?.firstOrNull { it.id == subId }
+            val optName = opt?.name ?: "配置$optionId"
+            val subName = sub?.name ?: subId
+            "$optName：$subName"
+        }
+
+        return CartItem(
+            productId = productId,
+            productName = name,
+            specs = specs,
+            cycle = cycleName,
+            unitPrice = unitPrice,
+            quantity = qty,
+            position = position,
+            cycleId = cycleId,
+            configLabels = labels,
+            configOptionRaw = raw,
+            synced = true
+        )
+    }
 }

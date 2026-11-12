@@ -3,10 +3,13 @@ package com.vps.qing.feature.auth
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -14,9 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -29,21 +31,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.vps.qing.core.ui.AppIcons
+import com.vps.qing.core.ui.CartoonButton
+import com.vps.qing.core.ui.theme.CartoonColors
+import com.vps.qing.core.ui.CartoonKit
+import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.data.repository.CaptchaChallenge
 
-/**
- * 提交时弹出的图形验证码对话框（替代原先内嵌在页面里的 CaptchaField）。
- *
- * 交互：点「注册 / 获取验证码 / 提交找回」→ 弹窗 → 输入 → 校验通过 →
- * 由 AuthViewModel 自动执行刚才那个动作，不需要用户再点一次。
- * 图片来自 /console/v1/captcha 的 data.html 内嵌 base64，直接解成 Bitmap 渲染，不套 WebView。
- */
+/** 提交时弹出的图形验证码对话框（磨砂玻璃）。验证通过后自动继续刚才的动作。 */
 @Composable
 fun CaptchaDialog(
     challenge: CaptchaChallenge?,
@@ -64,16 +67,38 @@ fun CaptchaDialog(
     }
 
     Dialog(onDismissRequest = onDismiss) {
-        Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+        GlassSurface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = CartoonKit.SheetShape,
+            alpha = 0.94f,
+            elevation = 24.dp
+        ) {
             Column(
-                modifier = Modifier.padding(20.dp),
+                modifier = Modifier.padding(22.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(Strings.CAPTCHA_DIALOG_TITLE, style = MaterialTheme.typography.titleLarge)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(CartoonColors.BrandSoft),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(AppIcons.Captcha, null, tint = CartoonColors.Brand, modifier = Modifier.size(22.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        Strings.CAPTCHA_DIALOG_TITLE,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = CartoonColors.Ink
+                    )
+                }
                 Text(
                     Strings.CAPTCHA_DIALOG_HINT,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = CartoonColors.InkSub
                 )
 
                 Row(
@@ -88,11 +113,20 @@ fun CaptchaDialog(
                             modifier = Modifier
                                 .width(130.dp)
                                 .height(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .clickable(enabled = !loading) { onRefresh() }
                         )
                     } else {
-                        OutlinedButton(onClick = onRefresh, enabled = !loading) {
-                            Text(Strings.CAPTCHA_LOAD)
+                        Box(
+                            Modifier
+                                .width(130.dp)
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(CartoonColors.BrandSoft)
+                                .clickable(enabled = !loading) { onRefresh() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(Strings.CAPTCHA_LOAD, style = MaterialTheme.typography.labelSmall, color = CartoonColors.Brand)
                         }
                     }
                     OutlinedTextField(
@@ -101,6 +135,7 @@ fun CaptchaDialog(
                         label = { Text(Strings.CAPTCHA_INPUT) },
                         singleLine = true,
                         enabled = !loading,
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Ascii,
@@ -110,11 +145,7 @@ fun CaptchaDialog(
                 }
 
                 if (error != null) {
-                    Text(
-                        error,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
 
                 Row(
@@ -122,20 +153,20 @@ fun CaptchaDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = onDismiss) { Text(Strings.CANCEL) }
+                    TextButton(onClick = onDismiss) { Text(Strings.CANCEL, color = CartoonColors.InkSub) }
                     OutlinedButton(onClick = onRefresh, enabled = !loading) {
-                        Text(Strings.CAPTCHA_CHANGE)
+                        Text(Strings.CAPTCHA_CHANGE, color = CartoonColors.Brand)
                     }
-                    Button(
-                        onClick = { onSubmit(input) },
-                        enabled = !loading && challenge != null && input.isNotBlank(),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        if (loading) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp))
-                        } else {
-                            Text(Strings.CAPTCHA_VERIFY)
-                        }
+                    Spacer(Modifier.weight(1f))
+                    if (loading) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp), color = CartoonColors.Brand)
+                    } else {
+                        CartoonButton(
+                            text = Strings.CAPTCHA_VERIFY,
+                            onClick = { onSubmit(input) },
+                            enabled = challenge != null && input.isNotBlank(),
+                            icon = AppIcons.Check
+                        )
                     }
                 }
             }

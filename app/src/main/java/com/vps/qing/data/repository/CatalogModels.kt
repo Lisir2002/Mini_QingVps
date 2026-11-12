@@ -112,6 +112,26 @@ object CatalogParser {
             )
         } ?: emptyList()
 
+    /**
+     * 本地分类过滤。站点 GET /product 会忽略 fpg_id/spg_id 恒返回全量商品，
+     * 因此不能靠接口参数区分分类，只能按每条商品自带的分组 id 归类（2026-11 实测确认）。
+     * 二级分类优先；未选二级或该二级无商品时按一级分类展示。
+     */
+    fun byGroup(
+        all: List<ProductInfo>,
+        firstId: String?,
+        secondId: String?
+    ): List<ProductInfo> {
+        if (!secondId.isNullOrBlank()) {
+            val matched = all.filter { it.groupSecondId == secondId }
+            if (matched.isNotEmpty()) return matched
+        }
+        if (!firstId.isNullOrBlank()) {
+            return all.filter { it.groupFirstId == firstId }
+        }
+        return all
+    }
+
     fun products(data: JsonElement?): List<ProductInfo> =
         data.listOrNull()?.mapNotNull { el ->
             val id = el.string("id") ?: return@mapNotNull null

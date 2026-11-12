@@ -6,14 +6,9 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +16,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import com.vps.qing.core.ui.AppIcons
+import com.vps.qing.core.ui.CartoonBackground
+import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.Strings
 
 /**
@@ -41,39 +39,34 @@ fun WebViewScreen(url: String, onBack: () -> Unit) {
         if (view?.canGoBack() == true) view.goBack() else onBack()
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        Strings.WEB_FALLBACK_TIP,
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodySmall
-                    )
+    CartoonBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            GlassTopBar(
+                title = Strings.WEB_ENTRY_HINT,
+                subtitle = Strings.WEB_FALLBACK_TIP,
+                navIcon = AppIcons.Back,
+                onNavClick = onBack
+            )
+            AndroidView(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize(),
+                factory = { context ->
+                    WebView(context).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                        webViewClient = WebViewClient()
+                        webView = this
+                    }
                 },
-                navigationIcon = { TextButton(onClick = onBack) { Text(Strings.BACK) } }
+                update = { view ->
+                    if (decoded.isNotBlank() && view.tag != decoded) {
+                        view.tag = decoded
+                        view.loadUrl(decoded)
+                    }
+                }
             )
         }
-    ) { padding ->
-        AndroidView(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize(),
-            factory = { context ->
-                WebView(context).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                    webViewClient = WebViewClient()
-                    webView = this
-                }
-            },
-            update = { view ->
-                if (decoded.isNotBlank() && view.tag != decoded) {
-                    view.tag = decoded
-                    view.loadUrl(decoded)
-                }
-            }
-        )
     }
 }

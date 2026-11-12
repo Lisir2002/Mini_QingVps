@@ -4,19 +4,23 @@ import com.google.gson.JsonObject
 import com.google.gson.annotations.SerializedName
 import com.vps.qing.core.network.ApiEnvelope
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.PUT
+import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.Url
 
 /**
  * 站点接口。基址 `https://vps.qingyayun.cn/console/v1/`（见 AppContainer.BASE_API）。
  *
- * 端点与字段来自站点自身前端 JS（api/common.js、login.js、regist.js、forget.js、
- * cart 模板的 product.js / goodsList.js）与匿名实测，不是猜测。
- * 图形验证码的 refresh/verify 不在 /console/v1 下，用 @Url 走绝对地址。
+ * 端点与字段来自站点自身前端 JS（api/common.js、login.js、regist.js、
+ * cart/template/pc/wry/api/product.js、api/shopping.js、
+ * plugins/reserver/idcsmart_common/.../api/common_product.js、.../js/common_product.js）
+ * 与 2026-11 网页端实测，不是猜测。
  */
 interface QingVpsApiService {
 
@@ -34,34 +38,73 @@ interface QingVpsApiService {
     suspend fun news(): ApiEnvelope
 
     // ---- 商品与分类（选购页）----
-    /** 一级分组：data.list[{id,name,type}]，匿名实测 200。 */
     @GET("product/group/first")
     suspend fun firstGroups(): ApiEnvelope
 
-    /** 二级分组：data.list[{id,name,parent_id,type,description}]，匿名实测 200。 */
     @GET("product/group/second")
     suspend fun secondGroups(@Query("id") id: String): ApiEnvelope
 
-    /** 商品列表：data.list[...]，匿名实测 fpg_id=1&spg_id=4 返回 20 条。 */
+    /**
+     * 全量商品。站点实测会忽略 fpg_id/spg_id 恒返回全量 20 条，
+     * 因此 App 只拉一次全量，分类用 CatalogParser.byGroup 本地过滤。
+     * 保留 fpg_id/spg_id 参数仅为与站点前端一致（不影响结果）。
+     */
+    @GET("product")
+    suspend fun allProducts(
+        @Query("fpg_id") fpgId: String = "0",
+        @Query("spg_id") spgId: String = "0"
+    ): ApiEnvelope
+
+    /** 兼容旧调用：按站点参数请求商品（返回仍是全量，由调用方本地过滤）。 */
     @GET("product")
     suspend fun products(
         @Query("fpg_id") fpgId: String,
         @Query("spg_id") spgId: String
     ): ApiEnvelope
 
-    /** 站点购物车（需登录态，匿名返回 data.list=[]）。第一版仅保留定义，结算走 WebView。 */
+    /** 商品详情（pay_type / product_group_id 等）。 */
+    @GET("product/{id}")
+    suspend fun productDetail(@Path("id") id: String): ApiEnvelope
+
+    /**
+     * 通用商品自定义配置：data.configoptions / data.custom_cycles。
+     * 套餐型商品（mf_cloud）返回 status=400「商品未关联通用产品模块接口」。
+     */
+    @GET("reidcsmart_common/product/{id}/configoption")
+    suspend fun productConfig(@Path("id") id: String): ApiEnvelope
+
+    /** 实时算价：body 与加购一致，data.price / data.preview / data.billing_cycle。 */
+    @POST("product/{id}/config_option")
+    suspend fun calcPrice(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
+
+    /**  mf_cloud 套餐型商品订购页配置（识别用，本版不深挖字段）。 */
+    @GET("product/{id}/remf_cloud/order_page")
+    suspend fun packageOrderPage(@Path("id") id: String): ApiEnvelope
+
+    // ---- 站点云端购物车（匿名 cart_cookie 会话即可，无需登录态）----
+    /** 真实加入站点购物车：实测「添加成功」，GET /cart 立即可见。 */
+    @POST("cart")
+    suspend fun addToCart(@Body body: JsonObject): ApiEnvelope
+
+    /** 站点购物车列表：data.list[]，含 config_options 与 qty。 */
     @GET("cart")
     suspend fun cart(): ApiEnvelope
 
-    // ---- 图形验证码（GET /captcha 返回 data.html 片段）----
+    /** 修改某一行数量（position = list 下标）。 */
+    @PUT("cart/{position}/qty")
+    suspend fun updateCartQty(@Path("position") position: Int, @Body body: JsonObject): ApiEnvelope
+
+    /** 删除某一行。 */
+    @DELETE("cart/{position}")
+    suspend fun deleteCartLine(@Path("position") position: Int): ApiEnvelope
+
+    // ---- 图形验证码 ----
     @GET("captcha")
     suspend fun captcha(): ApiEnvelope
 
-    /** 换一张验证码：GET /captcha/tp_captcha/index/refresh → {base64, token} */
     @GET
     suspend fun refreshCaptcha(@Url url: String): CaptchaRefreshResponse
 
-    /** 校验：POST /captcha/tp_captcha/index/verify，表单字段 captcha / token */
     @FormUrlEncoded
     @POST
     suspend fun verifyCaptcha(

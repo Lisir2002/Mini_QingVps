@@ -30,7 +30,7 @@ class HtmlFallbackException(message: String) : IOException(message)
 
 suspend fun <T> safeApiCall(
     block: suspend () -> ApiEnvelope,
-    map: (JsonElement?) -> T
+    map: suspend (JsonElement?) -> T
 ): ApiResult<T> = try {
     val envelope = block()
     if (envelope.status == 200) ApiResult.Success(map(envelope.data))
