@@ -1,7 +1,10 @@
 package com.vps.qing.feature.shop
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,37 +48,37 @@ import com.vps.qing.core.AppContainer
 import com.vps.qing.core.ui.AppIcons
 import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonButton
-import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.CartoonKit
+import com.vps.qing.core.ui.CartoonRoundButton
 import com.vps.qing.core.ui.EmptyHint
 import com.vps.qing.core.ui.GlassCard
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.QuantityStepper
 import com.vps.qing.core.ui.Strings
+import com.vps.qing.core.ui.UiT
+import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.data.repository.CartCalculator
 import com.vps.qing.data.repository.CartItem
 import com.vps.qing.data.repository.ProductGroup
 import com.vps.qing.data.repository.ProductInfo
 
 /**
- * 选购 Tab（v1.2.0 重构）：
- *  - 顶栏磨砂玻璃，两个菜单（采购页 / 购物车）；
- *  - 采购页左侧是「常驻侧边栏」，可展开（完整分类名）/ 收起（缩略 + 省略号）；
- *  - 商品按选中的分类在本地过滤（站点 /product 恒返回全量）；
- *  - 加购前弹自定义配置，确认后真实写入站点云端购物车；
- *  - 购物车 Tab 展示站点云端购物车条目及自定义配置。
+ * 选购 Tab（v1.2.1 优化）：
+ *  - 顶栏磨砂玻璃；侧栏开关只在「采购页」出现（购物车 tab 隐藏）；
+ *  - 采购页左侧是「常驻侧边栏」，可展开 / 收起；
+ *    展开态分类名超出宽度时横向滚动显示（marquee）；
+ *  - 展开侧栏时商品卡片文字有缩小动画，加购按钮只保留图标（不留空白）；
+ *    收起时按钮文字单行不换行、不被切割；
+ *  - 收起态缩略图标：选中用实心彩色圆底 + 白色图标，更醒目；
+ *  - 分类下无商品时显示「该分类下暂无商品」；
+ *  - 卡片边界清晰、布局紧凑，全部尺寸走 [UiT] 令牌。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
     val state by vm.ui.collectAsState()
-
-    LaunchedEffect(state.toast) {
-        if (state.toast != null) {
-            // toast 由 SnackbarHost 在 MainScreen 层统一呈现，这里只负责消费
-        }
-    }
 
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -81,11 +86,14 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
                 title = Strings.SHOP_TITLE,
                 subtitle = "挑选适合你的云服务器",
                 actions = {
-                    CartoonIconChip(
-                        icon = if (state.sidebarExpanded) AppIcons.PanelClose else AppIcons.PanelOpen,
-                        onClick = { vm.toggleSidebar() }
-                    )
-                    Spacer(Modifier.width(8.dp))
+                    // 侧栏开关只在采购页出现；购物车 tab 不需要它
+                    if (state.tab == 0) {
+                        SidebarToggleChip(
+                            expanded = state.sidebarExpanded,
+                            onClick = { vm.toggleSidebar() }
+                        )
+                        Spacer(Modifier.width(UiT.spaceSm))
+                    }
                     CartoonIconChip(
                         icon = AppIcons.Refresh,
                         onClick = { vm.refresh() },
@@ -95,7 +103,7 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
                 }
             )
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(UiT.spaceSm + 2.dp))
 
             // 顶栏两个菜单：采购页 / 购物车（磨砂玻璃分段控件）
             TopTabRow(state, vm)
@@ -136,19 +144,48 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
         ) {
             GlassSurface(
                 shape = CartoonKit.PillShape,
-                alpha = 0.92f,
-                elevation = 12.dp
+                alpha = UiT.glassOverlay,
+                elevation = UiT.shadowLg
             ) {
                 Row(
-                    Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    Modifier.padding(horizontal = UiT.spaceXl, vertical = UiT.spaceMd),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(AppIcons.Check, null, tint = CartoonColors.Mint, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(UiT.spaceSm))
                     Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
                 }
             }
         }
+    }
+}
+
+/** 侧栏开关：带文字的胶囊按钮，展开/收起双向语义清晰。 */
+@Composable
+private fun SidebarToggleChip(expanded: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(CartoonKit.PillShape)
+            .background(CartoonColors.BrandSoft)
+            .clickable { onClick() }
+            .padding(horizontal = UiT.spaceMd, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            if (expanded) AppIcons.PanelClose else AppIcons.PanelOpen,
+            contentDescription = if (expanded) Strings.COLLAPSE_SIDEBAR else Strings.EXPAND_SIDEBAR,
+            tint = CartoonColors.Brand,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            if (expanded) Strings.COLLAPSE_SIDEBAR else Strings.EXPAND_SIDEBAR,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = CartoonColors.Brand,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 }
 
@@ -157,10 +194,10 @@ private fun TopTabRow(state: ShopUiState, vm: ShopViewModel) {
     GlassSurface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = UiT.pagePad),
         shape = CartoonKit.PillShape,
-        alpha = 0.72f,
-        elevation = 8.dp
+        alpha = UiT.glass + 0.06f,
+        elevation = UiT.shadowMd
     ) {
         Row(
             Modifier
@@ -178,7 +215,7 @@ private fun TopTabRow(state: ShopUiState, vm: ShopViewModel) {
                         .clip(CartoonKit.PillShape)
                         .background(if (selected) CartoonColors.Brand else Color.Transparent)
                         .clickable { vm.setTab(index) }
-                        .padding(vertical = 10.dp),
+                        .padding(vertical = 9.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -192,13 +229,15 @@ private fun TopTabRow(state: ShopUiState, vm: ShopViewModel) {
                         label,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
                         color = if (selected) Color.White else CartoonColors.InkSub
                     )
                 }
             }
         }
     }
-    Spacer(Modifier.height(10.dp))
+    Spacer(Modifier.height(UiT.spaceSm + 2.dp))
 }
 
 /** 采购页：常驻侧边栏 + 右侧商品列表。 */
@@ -209,7 +248,7 @@ private fun PurchasePane(
     modifier: Modifier = Modifier
 ) {
     val sidebarWidth by animateDpAsState(
-        targetValue = if (state.sidebarExpanded) 168.dp else 60.dp
+        targetValue = if (state.sidebarExpanded) UiT.sidebarExpandedWidth else UiT.sidebarCollapsedWidth
     )
 
     Row(modifier = modifier.fillMaxSize()) {
@@ -218,24 +257,24 @@ private fun PurchasePane(
             modifier = Modifier
                 .width(sidebarWidth)
                 .fillMaxHeight()
-                .padding(start = 14.dp, bottom = 12.dp),
-            shape = CartoonKit.CardShape,
-            alpha = 0.7f,
-            elevation = 8.dp
+                .padding(start = UiT.pagePad, bottom = UiT.spaceMd),
+            shape = CartoonKit.GlassShape,
+            alpha = UiT.glassFaint,
+            elevation = UiT.shadowMd
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxHeight()
                     .verticalScroll(rememberScrollState())
-                    .padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(UiT.spaceSm),
+                verticalArrangement = Arrangement.spacedBy(UiT.spaceXs + 2.dp)
             ) {
                 if (state.firstGroups.isEmpty() && !state.groupsLoading) {
                     Text(
                         Strings.NO_GROUP,
                         style = MaterialTheme.typography.labelSmall,
                         color = CartoonColors.InkSub,
-                        modifier = Modifier.padding(8.dp)
+                        modifier = Modifier.padding(UiT.spaceSm)
                     )
                 }
                 state.firstGroups.forEachIndexed { idx, first ->
@@ -244,7 +283,7 @@ private fun PurchasePane(
                         icon = AppIcons.forCategory(first.name),
                         expanded = state.sidebarExpanded,
                         isPrimary = true,
-                        selected = false,
+                        selected = state.selectedSecondId == null && state.selectedFirstId == first.id,
                         accentIndex = idx,
                         onClick = { vm.selectFirst(first.id) }
                     )
@@ -256,7 +295,7 @@ private fun PurchasePane(
                                 expanded = state.sidebarExpanded,
                                 isPrimary = false,
                                 selected = state.selectedSecondId == second.id,
-                                accentIndex = idx + sIdx,
+                                accentIndex = idx + sIdx + 1,
                                 onClick = { vm.selectSecond(second.id) }
                             )
                         }
@@ -278,33 +317,45 @@ private fun PurchasePane(
                         color = CartoonColors.Brand
                     )
                 }
-                state.visibleProducts.isEmpty() -> {
+                state.visibleProducts.isEmpty() && state.error != null -> {
                     EmptyHint(
                         icon = AppIcons.EmptyBox,
-                        text = if (state.error != null) state.error.orEmpty() else Strings.NO_PRODUCT,
+                        text = state.error.orEmpty(),
                         modifier = Modifier.align(Alignment.Center),
                         action = {
                             CartoonButton(text = Strings.RETRY, onClick = { vm.refresh() })
                         }
                     )
                 }
+                state.visibleProducts.isEmpty() -> {
+                    // 分类下没有商品：明确的空态提示，不放重试按钮
+                    EmptyHint(
+                        icon = AppIcons.EmptyBox,
+                        text = Strings.NO_PRODUCT,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
                 else -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 12.dp, end = 14.dp, bottom = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        contentPadding = PaddingValues(
+                            start = UiT.spaceMd, end = UiT.pagePad, bottom = UiT.spaceLg
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(UiT.spaceMd)
                     ) {
                         item {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    state.visibleProducts.size.let { "共 $it 款商品" },
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = CartoonColors.InkSub
-                                )
-                            }
+                            Text(
+                                "共 ${state.visibleProducts.size} 款商品",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = CartoonColors.InkSub
+                            )
                         }
                         items(state.visibleProducts, key = { it.id }) { product ->
-                            ProductCard(product = product, onCustomize = { vm.openConfig(product) })
+                            ProductCard(
+                                product = product,
+                                compact = state.sidebarExpanded,
+                                onCustomize = { vm.openConfig(product) }
+                            )
                         }
                     }
                 }
@@ -314,9 +365,11 @@ private fun PurchasePane(
 }
 
 /**
- * 侧边栏条目。展开显示完整名称 + 图标；收起只显示图标 + 缩略文字，
- * 名称超过阈值时截断并显示省略号（需求：超过一定字符显示缩略符号）。
+ * 侧边栏条目。
+ *  - 展开态：图标 + 完整名称；名称超出宽度横向滚动显示（marquee），不省略；
+ *  - 收起态：纵向「图标在上、两字缩略在下」；选中时图标底色为实心强调色 + 白色图标。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SidebarItem(
     name: String,
@@ -328,56 +381,78 @@ private fun SidebarItem(
     onClick: () -> Unit
 ) {
     val (accent, soft) = CartoonColors.accent(accentIndex)
-    val bg = when {
-        selected -> soft
-        isPrimary -> Color.Transparent
-        else -> Color.Transparent
-    }
     val short = if (expanded) name else abbreviate(name)
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(bg)
-            .clickable { onClick() }
-            .padding(horizontal = if (expanded) 10.dp else 8.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            Modifier
-                .size(if (isPrimary) 30.dp else 22.dp)
-                .clip(RoundedCornerShape(9.dp))
-                .background(if (isPrimary) soft else Color.Transparent),
-            contentAlignment = Alignment.Center
+    if (expanded) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(CartoonKit.ItemShape)
+                .background(if (selected) soft else Color.Transparent)
+                .clickable { onClick() }
+                .padding(horizontal = UiT.spaceSm + 2.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                icon, null,
-                tint = if (selected) accent else if (isPrimary) accent else CartoonColors.InkSub,
-                modifier = Modifier.size(if (isPrimary) 18.dp else 16.dp)
-            )
-        }
-        if (expanded) {
-            Spacer(Modifier.width(10.dp))
+            Box(
+                Modifier
+                    .size(if (isPrimary) 30.dp else 24.dp)
+                    .clip(CartoonKit.PillShape)
+                    .background(if (isPrimary) soft else Color.Transparent),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon, null,
+                    tint = if (selected || isPrimary) accent else CartoonColors.InkSub,
+                    modifier = Modifier.size(if (isPrimary) 18.dp else 16.dp)
+                )
+            }
+            Spacer(Modifier.width(UiT.spaceSm))
             Text(
-                short,
+                name,
                 style = if (isPrimary) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelMedium,
                 fontWeight = if (isPrimary || selected) FontWeight.Bold else FontWeight.Normal,
                 color = if (selected) accent else CartoonColors.Ink,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                softWrap = false,
+                // 超宽滚动式显示（需求：文字超出宽度选择滚动式显示）
+                modifier = Modifier
+                    .weight(1f)
+                    .basicMarquee(iterations = Int.MAX_VALUE)
             )
-        } else {
-            Spacer(Modifier.width(4.dp))
+        }
+    } else {
+        // 收起态：图标在上、缩略字在下，整体居中；选中态实心彩色圆底
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(CartoonKit.ItemShape)
+                .clickable { onClick() }
+                .padding(vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                Modifier
+                    .size(if (isPrimary) 34.dp else 28.dp)
+                    .clip(CartoonKit.ItemShape)
+                    .background(if (selected) accent else soft.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    icon, null,
+                    tint = if (selected) Color.White else accent,
+                    modifier = Modifier.size(if (isPrimary) 18.dp else 15.dp)
+                )
+            }
+            Spacer(Modifier.height(UiT.spaceXs))
             Text(
                 short,
                 style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                 color = if (selected) accent else CartoonColors.InkSub,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f)
+                softWrap = false,
+                overflow = TextOverflow.Clip,
+                textAlign = TextAlign.Center
             )
         }
     }
@@ -390,30 +465,51 @@ private fun abbreviate(name: String): String {
     return if (core.length > 2) core.take(2) + "…" else core
 }
 
+/**
+ * 商品卡片。
+ * [compact] = 侧栏展开：标题/规格文字做缩小动画（graphicsLayer 缩放），
+ * 加购按钮只保留图标（图标圆按钮，绝不空白）；侧栏收起时按钮带完整文字且单行不换行。
+ */
 @Composable
-private fun ProductCard(product: ProductInfo, onCustomize: () -> Unit) {
+private fun ProductCard(
+    product: ProductInfo,
+    compact: Boolean,
+    onCustomize: () -> Unit
+) {
+    val textScale by animateFloatAsState(targetValue = if (compact) 0.86f else 1f)
+
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(UiT.cardPad),
+            verticalArrangement = Arrangement.spacedBy(UiT.spaceSm)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
-                        .size(40.dp)
-                        .clip(CartoonKit.CardShape)
+                        .size(38.dp)
+                        .clip(CartoonKit.ItemShape)
                         .background(CartoonColors.SkySoft),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(AppIcons.Cloud, null, tint = CartoonColors.Sky, modifier = Modifier.size(22.dp))
+                    Icon(AppIcons.Cloud, null, tint = CartoonColors.Sky, modifier = Modifier.size(21.dp))
                 }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
+                Spacer(Modifier.width(UiT.spaceMd))
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .graphicsLayer {
+                            scaleX = textScale
+                            scaleY = textScale
+                            transformOrigin = TransformOrigin(0f, 0.5f)
+                        }
+                ) {
                     Text(
                         product.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
-                        color = CartoonColors.Ink
+                        color = CartoonColors.Ink,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         product.groupSecondName ?: product.groupFirstName ?: Strings.UNKNOWN,
@@ -424,11 +520,23 @@ private fun ProductCard(product: ProductInfo, onCustomize: () -> Unit) {
             }
 
             if (product.specs.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = textScale
+                        scaleY = textScale
+                        transformOrigin = TransformOrigin(0f, 0f)
+                    }
+                ) {
                     product.specs.take(4).forEach { spec ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(5.dp).clip(CartoonKit.PillShape).background(CartoonColors.Mint))
-                            Spacer(Modifier.width(8.dp))
+                            Box(
+                                Modifier
+                                    .size(5.dp)
+                                    .clip(CartoonKit.PillShape)
+                                    .background(CartoonColors.Mint)
+                            )
+                            Spacer(Modifier.width(UiT.spaceSm))
                             Text(
                                 spec,
                                 style = MaterialTheme.typography.bodySmall,
@@ -448,7 +556,7 @@ private fun ProductCard(product: ProductInfo, onCustomize: () -> Unit) {
                 }
             }
 
-            Row(verticalAlignment = Alignment.Bottom) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "￥${product.price}",
                     style = MaterialTheme.typography.headlineSmall,
@@ -458,16 +566,24 @@ private fun ProductCard(product: ProductInfo, onCustomize: () -> Unit) {
                 Text(
                     " / ${product.cycle}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = CartoonColors.InkSub,
-                    modifier = Modifier.padding(bottom = 4.dp)
+                    color = CartoonColors.InkSub
                 )
                 Spacer(Modifier.weight(1f))
-                CartoonButton(
-                    text = Strings.CUSTOMIZE,
-                    onClick = onCustomize,
-                    icon = AppIcons.Sliders,
-                    modifier = Modifier.height(44.dp)
-                )
+                if (compact) {
+                    // 侧栏展开：只保留图标按钮，无空白
+                    CartoonRoundButton(
+                        icon = AppIcons.Sliders,
+                        contentDescription = Strings.CUSTOMIZE,
+                        onClick = onCustomize
+                    )
+                } else {
+                    // 侧栏收起：完整文字按钮，单行绝不换行切割
+                    CartoonButton(
+                        text = Strings.CUSTOMIZE,
+                        onClick = onCustomize,
+                        icon = AppIcons.Sliders
+                    )
+                }
             }
         }
     }
@@ -496,8 +612,8 @@ private fun CartPane(
     Column(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(horizontal = UiT.pagePad, vertical = UiT.spaceXs),
+            verticalArrangement = Arrangement.spacedBy(UiT.spaceMd)
         ) {
             items(state.cart, key = { it.key }) { item ->
                 CloudCartCard(
@@ -522,12 +638,15 @@ private fun CartPane(
         GlassSurface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(UiT.pagePad),
             shape = CartoonKit.CardShape,
-            alpha = 0.85f,
-            elevation = 12.dp
+            alpha = UiT.glassStrong,
+            elevation = UiT.shadowLg
         ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                Modifier.padding(UiT.cardPad),
+                verticalArrangement = Arrangement.spacedBy(UiT.spaceSm + 2.dp)
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("${Strings.TOTAL}：", style = MaterialTheme.typography.titleMedium, color = CartoonColors.Ink)
                     Text(
@@ -551,20 +670,27 @@ private fun CartPane(
 @Composable
 private fun CloudCartCard(item: CartItem, onQty: (Int) -> Unit, onRemove: () -> Unit) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(UiT.cardPad), verticalArrangement = Arrangement.spacedBy(UiT.spaceSm)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
                         .size(36.dp)
-                        .clip(CartoonKit.CardShape)
+                        .clip(CartoonKit.ItemShape)
                         .background(CartoonColors.MintSoft),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(AppIcons.Server, null, tint = CartoonColors.Mint, modifier = Modifier.size(20.dp))
                 }
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(UiT.spaceSm + 2.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(item.productName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
+                    Text(
+                        item.productName,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = CartoonColors.Ink,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                     if (item.cycle.isNotBlank()) {
                         Text(item.cycle, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
                     }
@@ -582,10 +708,10 @@ private fun CloudCartCard(item: CartItem, onQty: (Int) -> Unit, onRemove: () -> 
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(CartoonKit.ItemShape)
                         .background(CartoonColors.White.copy(alpha = 0.6f))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .padding(UiT.spaceSm + 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(UiT.spaceXs)
                 ) {
                     item.configLabels.forEach { label ->
                         Row(verticalAlignment = Alignment.CenterVertically) {

@@ -377,19 +377,100 @@ object AppIcons {
             s { oval(8.5f, 6f, 2f); oval(15f, 12f, 2f); oval(10.5f, 18f, 2f) }
         }
     }
+    val Globe: ImageVector by lazy {
+        vector("Globe") {
+            s {
+                oval(12f, 12f, 9f)
+                oval(12f, 12f, 3.8f, 9f)
+                moveTo(3.2f, 12f); lineTo(20.8f, 12f)
+            }
+        }
+    }
+    val Database: ImageVector by lazy {
+        vector("Database") {
+            s {
+                oval(12f, 5.5f, 7.5f, 2.6f)
+                moveTo(4.5f, 5.5f); lineTo(4.5f, 18.5f)
+                moveTo(19.5f, 5.5f); lineTo(19.5f, 18.5f)
+                moveTo(4.5f, 12f)
+                curveTo(4.5f, 14.6f, 19.5f, 14.6f, 19.5f, 12f)
+                moveTo(4.5f, 18.5f)
+                curveTo(4.5f, 21.1f, 19.5f, 21.1f, 19.5f, 18.5f)
+            }
+        }
+    }
+    val Website: ImageVector by lazy {
+        vector("Website") {
+            s {
+                rrect(3f, 4.5f, 21f, 19.5f, 2.6f)
+                moveTo(3f, 9.5f); lineTo(21f, 9.5f)
+            }
+            f { oval(6.2f, 7f, 0.9f); oval(9.2f, 7f, 0.9f) }
+        }
+    }
+    val Gamepad: ImageVector by lazy {
+        vector("Gamepad") {
+            s {
+                moveTo(7f, 8f); lineTo(17f, 8f)
+                curveTo(19.6f, 8f, 21.5f, 10.2f, 21.2f, 12.8f)
+                lineTo(20.6f, 16.6f)
+                curveTo(20.4f, 18.2f, 18.4f, 18.8f, 17.4f, 17.6f)
+                lineTo(15.4f, 15.4f); lineTo(8.6f, 15.4f); lineTo(6.6f, 17.6f)
+                curveTo(5.6f, 18.8f, 3.6f, 18.2f, 3.4f, 16.6f)
+                lineTo(2.8f, 12.8f)
+                curveTo(2.5f, 10.2f, 4.4f, 8f, 7f, 8f); close()
+            }
+            f { oval(8.2f, 11.6f, 1f); oval(15.8f, 11.6f, 1.2f, 1f) }
+        }
+    }
+    val Building: ImageVector by lazy {
+        vector("Building") {
+            s {
+                rrect(4.5f, 3f, 19.5f, 21f, 2f)
+                moveTo(9f, 7.5f); lineTo(11f, 7.5f); moveTo(13f, 7.5f); lineTo(15f, 7.5f)
+                moveTo(9f, 11.5f); lineTo(11f, 11.5f); moveTo(13f, 11.5f); lineTo(15f, 11.5f)
+                moveTo(9f, 15.5f); lineTo(11f, 15.5f); moveTo(13f, 15.5f); lineTo(15f, 15.5f)
+                moveTo(10.5f, 21f); lineTo(10.5f, 18f); lineTo(13.5f, 18f); lineTo(13.5f, 21f)
+            }
+        }
+    }
 
     /**
      * 根据分类/菜单名的「字段大意」挑一个自绘图标，呼应需求里「按字段大意自绘图标」。
-     * 关键字命中不到时回退到云图标。
+     * 关键字映射越具体越好，兜底用 Category（列表）而不是千篇一律的云图标。
      */
     fun forCategory(name: String): ImageVector {
         val n = name.lowercase()
         return when {
-            "cdn" in n || "加速" in n || "高防" in n -> Cdn
-            "云" in n || "cloud" in n || "服务器" in n || "vps" in n -> Cloud
-            "活动" in n || "特惠" in n || "双11" in n || "惠" in n -> Gift
-            "轻量" in n || "大带宽" in n || "带宽" in n || "加盟" in n -> Server
-            else -> Tag
+            // 活动营销
+            "活动" in n || "特惠" in n || "双11" in n || "双12" in n || "惠" in n ||
+                "礼包" in n || "促销" in n || "优惠" in n -> Gift
+            // 加速 / 高防
+            "cdn" in n || "加速" in n || "高防" in n || "防护" in n -> Cdn
+            // 地域 / 网络
+            "ipv6" in n || "全球" in n || "香港" in n || "美国" in n || "日本" in n ||
+                "韩国" in n || "新加坡" in n || "欧洲" in n || "亚洲" in n || "亚太" in n ||
+                "cn2" in n || "国际" in n || "geo" in n || "region" in n -> Globe
+            // 建站 / 托管
+            "建站" in n || "网站" in n || "虚拟主机" in n || "空间" in n ||
+                "webhost" in n || "主机托管" in n -> Website
+            // 数据库 / 存储
+            "数据库" in n || "sql" in n || "mysql" in n || "redis" in n || "存储" in n ||
+                "硬盘" in n || "nas" in n -> Database
+            // 游戏
+            "游戏" in n || "game" in n || "手游" in n || "开服" in n -> Gamepad
+            // 企业 / 办公
+            "企业" in n || "办公" in n || "邮箱" in n || "office" in n || "协同" in n -> Building
+            // 加盟 / 代理 / 安全
+            "加盟" in n || "代理" in n || "分销" in n || "安全" in n || "防火墙" in n -> Shield
+            // 轻量 / 大带宽 / 独服
+            "轻量" in n || "大带宽" in n || "带宽" in n || "独服" in n ||
+                "物理机" in n || "裸金属" in n -> Server
+            // 通用云
+            "云" in n || "cloud" in n || "服务器" in n || "vps" in n || "vds" in n -> Cloud
+            // 套餐 / 接口
+            "套餐" in n || "接口" in n || "api" in n -> Tag
+            else -> Category
         }
     }
 }

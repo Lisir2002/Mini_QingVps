@@ -34,22 +34,27 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.vps.qing.core.ui.theme.CartoonColors
 
 /**
- * 纯白卡通 + 磨砂玻璃 的公共组件库（QingVPS v1.2.0）。
+ * 纯白卡通 + 磨砂玻璃 的公共组件库（QingVPS v1.2.1）。
  *
- * 磨砂玻璃用「半透明白渐变 + 白色描边 + 柔和彩色阴影」模拟：不依赖 Android 12+
+ * 磨砂玻璃用「半透明白渐变 + 描边 + 柔和彩色阴影」模拟：不依赖 Android 12+
  * 的 RenderEffect.blur，minSdk 26 起所有设备观感一致。底层 [CartoonBackground]
  * 铺几团柔和糖果色光斑，玻璃层透出彩色即形成磨砂质感。
+ *
+ * v1.2.1：所有圆角 / 阴影 / 透明度 / 边框 / 尺寸统一引用 [UiT] 令牌；
+ * 卡片边界改用 [UiT.borderColor] 描边，轮廓更清晰。
  */
 object CartoonKit {
-    val CardShape = RoundedCornerShape(24.dp)
+    val CardShape = RoundedCornerShape(UiT.radiusXl)
     val PillShape = RoundedCornerShape(50)
-    val GlassShape = RoundedCornerShape(26.dp)
-    val SheetShape = RoundedCornerShape(30.dp)
+    val GlassShape = RoundedCornerShape(UiT.radiusXl)
+    val SheetShape = RoundedCornerShape(UiT.radiusSheet)
+    val ItemShape = RoundedCornerShape(UiT.radiusMd)
 }
 
 /** 全局卡通背景：纯白底 + 几团半透明糖果色光斑。所有页面都叠在它上面。 */
@@ -101,11 +106,14 @@ fun CartoonBackground(
     }
 }
 
-/** 磨砂玻璃 Modifier：半透明白渐变 + 白色描边 + 柔和阴影。 */
+/**
+ * 磨砂玻璃 Modifier：半透明白渐变 + 描边 + 柔和阴影。
+ * 边界用 [UiT.borderColor]（灰蓝细线）保证卡片轮廓清晰。
+ */
 fun Modifier.glass(
     shape: Shape = CartoonKit.GlassShape,
-    alpha: Float = 0.66f,
-    elevation: Dp = 10.dp,
+    alpha: Float = UiT.glass,
+    elevation: Dp = UiT.shadowMd,
     border: Boolean = true
 ): Modifier = this
     .shadow(
@@ -125,7 +133,7 @@ fun Modifier.glass(
         )
     )
     .then(
-        if (border) Modifier.border(1.5.dp, CartoonColors.GlassStroke.copy(alpha = 0.9f), shape)
+        if (border) Modifier.border(UiT.strokeWidth, UiT.borderColor, shape)
         else Modifier
     )
 
@@ -134,8 +142,8 @@ fun Modifier.glass(
 fun GlassSurface(
     modifier: Modifier = Modifier,
     shape: Shape = CartoonKit.GlassShape,
-    alpha: Float = 0.66f,
-    elevation: Dp = 10.dp,
+    alpha: Float = UiT.glass,
+    elevation: Dp = UiT.shadowMd,
     content: @Composable BoxScope.() -> Unit
 ) {
     Box(
@@ -160,22 +168,22 @@ fun GlassTopBar(
     GlassSurface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = UiT.pagePad, vertical = 10.dp),
         shape = CartoonKit.GlassShape,
-        alpha = 0.72f,
-        elevation = 12.dp
+        alpha = UiT.glass + 0.06f,
+        elevation = UiT.shadowLg
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = UiT.spaceMd, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (navIcon != null && onNavClick != null) {
                 IconButton(onClick = onNavClick, modifier = Modifier.size(40.dp)) {
                     Icon(navIcon, contentDescription = null, tint = CartoonColors.Brand)
                 }
-                Spacer(Modifier.width(2.dp))
+                Spacer(Modifier.width(UiT.spaceXs))
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -201,19 +209,19 @@ fun GlassTopBar(
 @Composable
 fun GlassCard(
     modifier: Modifier = Modifier,
-    alpha: Float = 0.78f,
+    alpha: Float = UiT.glassStrong,
     content: @Composable BoxScope.() -> Unit
 ) {
     GlassSurface(
         modifier = modifier,
         shape = CartoonKit.CardShape,
         alpha = alpha,
-        elevation = 8.dp,
+        elevation = UiT.shadowMd,
         content = content
     )
 }
 
-/** 卡通主按钮（胶囊、大圆角、柔和阴影）。 */
+/** 卡通主按钮（胶囊、大圆角、柔和阴影）。文字单行不换行，空间不足时缩尾。 */
 @Composable
 fun CartoonButton(
     text: String,
@@ -226,21 +234,54 @@ fun CartoonButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(52.dp),
+        modifier = modifier.height(UiT.button),
         shape = CartoonKit.PillShape,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            horizontal = UiT.spaceLg, vertical = UiT.spaceXs
+        ),
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
             contentColor = Color.White,
             disabledContainerColor = containerColor.copy(alpha = 0.4f),
             disabledContentColor = Color.White
         ),
-        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = UiT.shadowSm)
     ) {
         if (icon != null) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(17.dp))
+            Spacer(Modifier.width(UiT.spaceSm))
         }
-        Text(text, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            text,
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible
+        )
+    }
+}
+
+/** 图标圆按钮：加购等动作在紧凑布局下只留图标也绝不空白。 */
+@Composable
+fun CartoonRoundButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    containerColor: Color = CartoonColors.Brand,
+    iconTint: Color = Color.White,
+    size: Dp = UiT.iconOnlyButton
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CartoonKit.PillShape)
+            .background(containerColor)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = iconTint, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -255,13 +296,13 @@ fun CartoonIconChip(
 ) {
     Box(
         modifier = modifier
-            .size(38.dp)
+            .size(UiT.chip)
             .clip(CartoonKit.PillShape)
             .background(bg)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(UiT.chipIcon))
     }
 }
 
@@ -269,7 +310,7 @@ fun CartoonIconChip(
 @Composable
 fun SectionTitle(text: String, accent: Color = CartoonColors.Brand, modifier: Modifier = Modifier) {
     Row(
-        modifier = modifier.padding(vertical = 4.dp),
+        modifier = modifier.padding(vertical = UiT.spaceXs),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -278,7 +319,7 @@ fun SectionTitle(text: String, accent: Color = CartoonColors.Brand, modifier: Mo
                 .clip(CartoonKit.PillShape)
                 .background(accent)
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(UiT.spaceSm))
         Text(
             text,
             style = MaterialTheme.typography.titleMedium,
@@ -339,10 +380,9 @@ fun QuantityStepper(
             "$value",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.width(40.dp),
+            modifier = Modifier.width(36.dp),
             color = CartoonColors.Ink
         )
-        // 文本默认居中需要显式对齐
         CartoonIconChip(
             icon = AppIcons.Plus,
             onClick = { if (value < max) onDelta(1) },
