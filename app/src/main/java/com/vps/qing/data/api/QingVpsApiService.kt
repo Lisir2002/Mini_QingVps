@@ -56,6 +56,22 @@ interface QingVpsApiService {
         @Query("limit") limit: Int = 100
     ): ApiEnvelope
 
+    // ---- 账号与服务（v1.3.0 原生化，不再跳网页）----
+    // ⚠️ 站点列表接口默认 limit=20，全部显式传大 limit，避免重蹈 /product 分页遗漏的坑。
+    // hosts/orders/transactions 的端点定义在下方「仪表盘」区块（v1.0 已有），limit 已提升到 100。
+
+    @GET("ticket")
+    suspend fun tickets(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 100
+    ): ApiEnvelope
+
+    @GET("sub_account")
+    suspend fun subAccounts(
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 100
+    ): ApiEnvelope
+
     /** 兼容旧调用：按站点参数请求商品（返回仍是全量，由调用方本地过滤）。 */
     @GET("product")
     suspend fun products(
@@ -163,13 +179,13 @@ interface QingVpsApiService {
     suspend fun index(): ApiEnvelope
 
     @GET("order")
-    suspend fun orders(@Query("page") page: Int = 1, @Query("limit") limit: Int = 20): ApiEnvelope
+    suspend fun orders(@Query("page") page: Int = 1, @Query("limit") limit: Int = 100): ApiEnvelope
 
     @GET("host")
-    suspend fun hosts(@Query("page") page: Int = 1, @Query("limit") limit: Int = 20): ApiEnvelope
+    suspend fun hosts(@Query("page") page: Int = 1, @Query("limit") limit: Int = 100): ApiEnvelope
 
     @GET("transaction")
-    suspend fun transactions(@Query("page") page: Int = 1, @Query("limit") limit: Int = 20): ApiEnvelope
+    suspend fun transactions(@Query("page") page: Int = 1, @Query("limit") limit: Int = 100): ApiEnvelope
 
     @GET("log")
     suspend fun logs(@Query("page") page: Int = 1, @Query("limit") limit: Int = 20): ApiEnvelope

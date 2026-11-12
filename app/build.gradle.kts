@@ -12,14 +12,30 @@ android {
         applicationId = "com.vps.qing"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.2.4"
+        versionCode = 8
+        versionName = "1.3.0"
+    }
+
+    signingConfigs {
+        create("fixed") {
+            // 固定签名：所有构建（本地/CI）用同一个 keystore，
+            // 新版本 APK 可直接覆盖安装旧版本，不再出现「签名冲突」。
+            // 仓库为公开的测试应用，密钥随仓库分发（风险可控；正式上架时换成私有 keystore）。
+            storeFile = file("qingvps.keystore")
+            storePassword = "qingvps2026"
+            keyAlias = "qingvps"
+            keyPassword = "qingvps2026"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("fixed")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("fixed")
         }
     }
 

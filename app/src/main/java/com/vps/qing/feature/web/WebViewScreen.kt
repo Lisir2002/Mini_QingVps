@@ -8,6 +8,8 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,7 +42,12 @@ fun WebViewScreen(url: String, onBack: () -> Unit) {
     }
 
     CartoonBackground {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // Android 15(targetSdk 35) 边到边默认开启：顶栏要避开状态栏，WebView 避开导航条
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+        ) {
             GlassTopBar(
                 title = Strings.WEB_ENTRY_HINT,
                 subtitle = Strings.WEB_FALLBACK_TIP,
@@ -50,7 +57,8 @@ fun WebViewScreen(url: String, onBack: () -> Unit) {
             AndroidView(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxSize(),
+                    .fillMaxSize()
+                    .navigationBarsPadding(),
                 factory = { context ->
                     WebView(context).apply {
                         settings.javaScriptEnabled = true

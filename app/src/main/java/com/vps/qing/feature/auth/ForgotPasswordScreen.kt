@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -61,7 +62,8 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
     }
 
     CartoonBackground {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // 边到边（targetSdk 35）：内容避开状态栏
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             GlassTopBar(
                 title = Strings.FORGOT_PASSWORD,
                 navIcon = AppIcons.Back,

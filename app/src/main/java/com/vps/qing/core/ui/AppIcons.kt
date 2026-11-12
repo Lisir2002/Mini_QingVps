@@ -367,6 +367,21 @@ object AppIcons {
             }
         }
     }
+    /** 双人剪影（子账户管理）。 */
+    val Users: ImageVector by lazy {
+        vector("Users") {
+            s {
+                oval(9f, 8.5f, 3.4f)
+                curveTo(3.5f, 19f, 3.5f, 15.2f, 9f, 15.2f)
+                curveTo(14.5f, 15.2f, 14.5f, 19f, 14.5f, 19f)
+            }
+            s {
+                oval(16f, 9.5f, 2.7f)
+                moveTo(15.5f, 15.4f)
+                curveTo(20f, 15.6f, 20.3f, 19f, 20.3f, 19f)
+            }
+        }
+    }
     val Sliders: ImageVector by lazy {
         vector("Sliders") {
             s {

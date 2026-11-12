@@ -51,6 +51,23 @@ class ProfileRepository(
     suspend fun account(): ApiResult<AccountInfo> =
         safeApiCall({ api.account() }) { data -> AccountParser.parse(data) }
 
+    // ---- 账号与服务（v1.3.0 原生化）----
+
+    suspend fun hosts(): ApiResult<List<HostLine>> =
+        safeApiCall({ api.hosts() }) { ServiceParser.hosts(it) }
+
+    suspend fun orders(): ApiResult<List<OrderLine>> =
+        safeApiCall({ api.orders() }) { ServiceParser.orders(it) }
+
+    suspend fun transactions(): ApiResult<List<TxnLine>> =
+        safeApiCall({ api.transactions() }) { ServiceParser.transactions(it) }
+
+    suspend fun tickets(): ApiResult<List<TicketLine>> =
+        safeApiCall({ api.tickets() }) { ServiceParser.tickets(it) }
+
+    suspend fun subAccounts(): ApiResult<List<SubAccountLine>> =
+        safeApiCall({ api.subAccounts() }) { ServiceParser.subAccounts(it) }
+
     suspend fun logout(): ApiResult<Unit> {
         val result = safeApiCall({ api.logout() }) { Unit }
         tokens.clear() // 无论服务端结果如何，本地登录态都要清掉
