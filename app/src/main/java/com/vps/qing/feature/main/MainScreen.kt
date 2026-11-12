@@ -1,5 +1,6 @@
 package com.vps.qing.feature.main
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,13 +14,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,11 +42,14 @@ import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.AppIcons
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonKit
+import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.Strings
+import com.vps.qing.core.ui.UiT
 import com.vps.qing.core.ui.glass
 import com.vps.qing.feature.dashboard.DashboardScreen
 import com.vps.qing.feature.message.MessagesScreen
 import com.vps.qing.feature.profile.ProfileScreen
+import com.vps.qing.feature.shop.ConfigSheet
 import com.vps.qing.feature.shop.ShopScreen
 import com.vps.qing.feature.shop.ShopViewModel
 
@@ -55,9 +62,11 @@ private enum class BottomTab(val title: String, val icon: ImageVector) {
 }
 
 /**
- * 应用主容器：以磨砂玻璃底栏 Tab 为核心。
- * ShopViewModel 挂在 MAIN 这个 NavBackStackEntry 上，选购页与底栏角标共享同一实例，
- * 切 Tab 后购物车内容不丢失。
+ * 应用主容器 v1.4.1：以磨砂玻璃底栏 Tab 为核心。
+ *  - 子页面（个人中心服务子页 / 设置页 / 订单详情 / 商品配置页）打开时隐藏底栏，整页沉浸；
+ *  - 商品配置页提升到主容器层渲染：选购页与「已购产品」/订单明细都能跨 Tab 打开同一页面；
+ *  - ShopViewModel 挂在 MAIN 这个 NavBackStackEntry 上，选购页与底栏角标共享同一实例，
+ *    切 Tab 后购物车内容不丢失。
  */
 @Composable
 fun MainScreen(
@@ -65,19 +74,27 @@ fun MainScreen(
     onLoggedOut: () -> Unit
 ) {
     var selected by rememberSaveable { mutableStateOf(0) }
+    /** 个人中心是否处于子页面（服务子页/设置页/订单详情）——隐藏底栏。 */
+    var profileSubOpen by rememberSaveable { mutableStateOf(false) }
     val shopVm: ShopViewModel = viewModel(
         factory = simpleViewModelFactory { ShopViewModel(AppContainer.catalogRepository) }
     )
     val shopState by shopVm.ui.collectAsState()
 
+    // 商品配置页打开（任意 Tab 发起）时同样隐藏底栏；系统返回键 = 返回来源列表
+    val configOpen = shopState.configSheet != null
+    BackHandler(enabled = configOpen) { shopVm.dismissConfig() }
+
     Scaffold(
         containerColor = Color.Transparent,
         bottomBar = {
-            GlassBottomBar(
-                selected = selected,
-                cartCount = shopState.cartCount,
-                onSelect = { selected = it }
-            )
+            if (!profileSubOpen && !configOpen) {
+                GlassBottomBar(
+                    selected = selected,
+                    cartCount = shopState.cartCount,
+                    onSelect = { selected = it }
+                )
+            }
         }
     ) { padding ->
         Box(
@@ -89,9 +106,79 @@ fun MainScreen(
                 0 -> DashboardScreen(onOpenWeb = onOpenWeb)
                 1 -> ShopScreen(vm = shopVm, onOpenWeb = onOpenWeb)
                 2 -> MessagesScreen(onOpenWeb = onOpenWeb)
-                else -> ProfileScreen(onLoggedOut = onLoggedOut, onOpenWeb = onOpenWeb)
+                else -> ProfileScreen(
+                    onLoggedOut = onLoggedOut,
+                    onOpenWeb = onOpenWeb,
+                    onSubPageChanged = { profileSubOpen = it },
+                    onOpenProduct = { productId, productName ->
+                        openProductConfig(shopVm, shopState.allProducts, productId, productName)
+                    }
+                )
+            }
+
+            // 跨 Tab 商品配置页：选购页/已购产品/订单明细共用同一渲染层
+            shopState.configSheet?.let { sheet ->
+                ConfigSheet(
+                    sheet = sheet,
+                    onSelectOption = shopVm::selectOption,
+                    onSelectCycle = shopVm::selectCycle,
+                    onQty = shopVm::changeConfigQty,
+                    onConfirm = shopVm::confirmAddToCart,
+                    onDismiss = shopVm::dismissConfig,
+                    onOpenWeb = onOpenWeb,
+                    onMfSelect = { shopVm.updateMfSelection(it) },
+                    onSelectImage = { shopVm.selectMfImage(it) }
+                )
+            }
+
+            // 轻提示（加购成功等）：2 秒后自动消费
+            shopState.toast?.let {
+                LaunchedEffect(it) {
+                    kotlinx.coroutines.delay(1800)
+                    shopVm.consumeToast()
+                }
+                Box(
+                    Modifier.fillMaxSize().padding(bottom = if (configOpen) 24.dp else 90.dp),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    GlassSurface(
+                        shape = CartoonKit.PillShape,
+                        alpha = UiT.glassOverlay,
+                        elevation = UiT.shadowLg
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = UiT.spaceXl, vertical = UiT.spaceMd),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(AppIcons.Check, null, tint = CartoonColors.Mint, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = CartoonColors.Ink
+                            )
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+/** 按商品 id（或名称兜底）在站点全量商品里定位并打开配置页；找不到提示已下架。 */
+private fun openProductConfig(
+    vm: ShopViewModel,
+    allProducts: List<com.vps.qing.data.repository.ProductInfo>,
+    productId: String,
+    productName: String
+) {
+    val product = allProducts.firstOrNull { it.id == productId }
+        ?: allProducts.firstOrNull { productName.isNotBlank() && it.name == productName }
+    if (product != null) {
+        vm.openConfig(product)
+    } else {
+        vm.notify("商品「${productName.ifBlank { "#$productId" }}」已下架或不存在")
     }
 }
 
@@ -171,7 +258,7 @@ private fun RowScope.NavItem(
         Spacer(Modifier.height(3.dp))
         Text(
             tab.title,
-            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelSmall,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
             color = if (selected) accent else CartoonColors.InkSub
         )

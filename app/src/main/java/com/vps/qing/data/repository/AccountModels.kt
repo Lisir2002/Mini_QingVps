@@ -44,6 +44,7 @@ object ServiceParser {
             val id = el.string("id") ?: return@mapNotNull null
             HostLine(
                 id = id,
+                productId = el.string("product_id").orEmpty(),
                 name = el.string("name").orEmpty(),
                 productName = el.string("product_name").orEmpty(),
                 status = el.string("status").orEmpty(),
@@ -212,6 +213,8 @@ object ServiceParser {
 
 data class HostLine(
     val id: String,
+    /** 关联商品 id（/host 返回 product_id），用于跳转商品配置页。 */
+    val productId: String,
     val name: String,
     val productName: String,
     val status: String,

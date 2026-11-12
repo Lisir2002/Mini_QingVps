@@ -68,7 +68,11 @@ private val certificationMenu = ServiceMenu(
 @Composable
 fun ProfileScreen(
     onLoggedOut: () -> Unit,
-    onOpenWeb: (String) -> Unit
+    onOpenWeb: (String) -> Unit,
+    /** 子页面开关上报主容器：打开时隐藏底栏（v1.4.1）。 */
+    onSubPageChanged: (Boolean) -> Unit = {},
+    /** 打开商品配置页（productId 优先 / 商品名兜底），由主容器在选购数据里定位商品。 */
+    onOpenProduct: (String, String) -> Unit = { _, _ -> }
 ) {
     val vm: ProfileViewModel = viewModel(
         factory = simpleViewModelFactory { ProfileViewModel(AppContainer.profileRepository) }
@@ -93,6 +97,10 @@ fun ProfileScreen(
     // 子页面打开时：进入懒加载 + 系统返回键逐级回退（订单详情 → 服务页 → 主页）
     LaunchedEffect(servicePage) { servicePage?.let(vm::ensurePanel) }
     LaunchedEffect(orderDetailId) { orderDetailId?.let(vm::ensureOrderDetail) }
+    // 上报主容器：任意子页面打开即隐藏底栏
+    LaunchedEffect(servicePage, showSettingsPage, orderDetailId) {
+        onSubPageChanged(servicePage != null || showSettingsPage || orderDetailId != null)
+    }
     BackHandler(enabled = servicePage != null || showSettingsPage || orderDetailId != null) {
         when {
             orderDetailId != null -> orderDetailId = null
@@ -106,7 +114,8 @@ fun ProfileScreen(
             orderId = orderId,
             state = state.orderDetails[orderId] ?: OrderDetailUi(),
             onBack = { orderDetailId = null },
-            onRefresh = { vm.refreshOrderDetail(orderId) }
+            onRefresh = { vm.refreshOrderDetail(orderId) },
+            onOpenProduct = onOpenProduct
         )
         return
     }
@@ -118,6 +127,7 @@ fun ProfileScreen(
             onBack = { servicePage = null },
             onRefresh = { vm.refreshPanel(panel) },
             onOpenOrder = { orderDetailId = it },
+            onOpenProduct = onOpenProduct,
             onOpenWeb = onOpenWeb
         )
         return

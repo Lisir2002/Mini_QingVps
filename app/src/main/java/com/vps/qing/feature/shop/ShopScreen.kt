@@ -57,7 +57,6 @@ import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.QuantityStepper
 import com.vps.qing.core.ui.Strings
-import androidx.activity.compose.BackHandler
 import com.vps.qing.core.ui.UiT
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.data.repository.CartCalculator
@@ -114,49 +113,8 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
         }
     }
 
-    // 配置详情独立页：系统返回键 = 返回选购列表
-    BackHandler(enabled = state.configSheet != null) { vm.dismissConfig() }
-
-    state.configSheet?.let { sheet ->
-        ConfigSheet(
-            sheet = sheet,
-            onSelectOption = vm::selectOption,
-            onSelectCycle = vm::selectCycle,
-            onQty = vm::changeConfigQty,
-            onConfirm = vm::confirmAddToCart,
-            onDismiss = vm::dismissConfig,
-            onOpenWeb = onOpenWeb,
-            onMfSelect = { vm.updateMfSelection(it) },
-            onSelectImage = { vm.selectMfImage(it) }
-        )
-    }
-
-    state.toast?.let {
-        // 轻提示：用一个临时玻璃气泡，2 秒后自动消费
-        LaunchedEffect(it) {
-            kotlinx.coroutines.delay(1800)
-            vm.consumeToast()
-        }
-        Box(
-            Modifier.fillMaxSize().padding(bottom = 90.dp),
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            GlassSurface(
-                shape = CartoonKit.PillShape,
-                alpha = UiT.glassOverlay,
-                elevation = UiT.shadowLg
-            ) {
-                Row(
-                    Modifier.padding(horizontal = UiT.spaceXl, vertical = UiT.spaceMd),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(AppIcons.Check, null, tint = CartoonColors.Mint, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(UiT.spaceSm))
-                    Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
-                }
-            }
-        }
-    }
+    // 配置详情独立页与轻提示已提升到 MainScreen 渲染层（v1.4.1），
+    // 「已购产品」/订单明细也能跨 Tab 打开同一配置页
 }
 
 /** 侧边栏底部内嵌开关：展开态是带文字的胶囊，收起态是居中的圆形图标按钮。 */

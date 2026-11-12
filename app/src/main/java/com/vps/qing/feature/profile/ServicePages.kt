@@ -76,7 +76,7 @@ data class ServiceMenu(
 object ServicePanels {
     val entries: List<ServiceMenu> = listOf(
         ServiceMenu(
-            "我的主机", "已订购服务器、IP、到期时间", AppIcons.Server,
+            "已购产品", "已购产品列表，点击查看配置", AppIcons.Server,
             0, panel = ServicePanel.HOSTS
         ),
         ServiceMenu(
@@ -113,6 +113,8 @@ fun ServicePageScreen(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenOrder: (String) -> Unit = {},
+    /** 打开商品配置页：productId 优先，productName 兜底匹配（v1.4.1）。 */
+    onOpenProduct: (String, String) -> Unit = { _, _ -> },
     onOpenWeb: (String) -> Unit = {}
 ) {
     val menu = ServicePanels.entries.firstOrNull { it.panel == panel }
@@ -183,13 +185,26 @@ fun ServicePageScreen(
                                 contentPadding = PaddingValues(14.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                items(data.hosts, key = { "host-${it.id}" }) { HostLineRow(it) }
+                                items(data.hosts, key = { "host-${it.id}" }) { host ->
+                                    Box(Modifier.clickable { onOpenProduct(host.productId, host.productName) }) {
+                                        HostLineRow(host)
+                                    }
+                                }
                                 items(data.orders, key = { "order-${it.id}" }) { order ->
                                     Box(Modifier.clickable { onOpenOrder(order.id) }) {
                                         OrderLineRow(order, withChevron = true)
                                     }
                                 }
-                                items(data.txns, key = { "txn-${it.number}-${it.createTime}" }) { TxnLineRow(it) }
+                                items(data.txns, key = { "txn-${it.number}-${it.createTime}" }) { txn ->
+                                    // 交易记录绑定关联订单：有 order_id 即可点击进入订单详情（v1.4.1）
+                                    Box(
+                                        Modifier.clickable(
+                                            enabled = txn.orderId.isNotBlank()
+                                        ) { onOpenOrder(txn.orderId) }
+                                    ) {
+                                        TxnLineRow(txn)
+                                    }
+                                }
                                 items(data.tickets, key = { "ticket-${it.id}" }) { TicketLineRow(it) }
                                 items(data.subAccounts, key = { "sub-${it.id}" }) { SubAccountLineRow(it) }
                                 if (data.security.isNotEmpty()) {
@@ -467,13 +482,14 @@ private fun certRecordStatus(status: String): String = when (status) {
     else -> ""
 }
 
-/** 订单详情子页面（v1.4.0，GET /order/{id}）。 */
+/** 订单详情子页面（v1.4.0，GET /order/{id}）；明细项可跳转商品配置页（v1.4.1）。 */
 @Composable
 fun OrderDetailPage(
     orderId: String,
     state: OrderDetailUi,
     onBack: () -> Unit,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    onOpenProduct: (String, String) -> Unit = { _, _ -> }
 ) {
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -549,9 +565,10 @@ fun OrderDetailPage(
                                     }
                                 }
                             }
-                            // 明细项
+                            // 明细项（点击进入对应商品配置页，v1.4.1）
                             items(d.items, key = { "item-${it.id}" }) { item ->
-                                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                                Box(Modifier.clickable { onOpenProduct("", item.productName) }) {
+                                    GlassCard(modifier = Modifier.fillMaxWidth()) {
                                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Text(
@@ -599,6 +616,13 @@ fun OrderDetailPage(
                                                     }
                                             }
                                         }
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            "点击查看商品配置 →",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = CartoonColors.Brand,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
                                 }
                             }
@@ -683,6 +707,13 @@ internal fun HostLineRow(host: HostLine) {
             if (host.ip.isNotBlank()) KeyValueRow("IP", host.ip)
             if (host.imageName.isNotBlank()) KeyValueRow("系统", host.imageName)
             KeyValueRow("到期", host.dueTime.ifBlank { "--" })
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "点击查看产品配置 →",
+                style = MaterialTheme.typography.labelSmall,
+                color = CartoonColors.Brand,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -739,6 +770,14 @@ internal fun TxnLineRow(txn: TxnLine) {
             }
             KeyValueRow("渠道", txn.gateway.ifBlank { "--" })
             if (txn.number.isNotBlank()) KeyValueRow("流水", txn.number)
+            if (txn.orderId.isNotBlank()) {
+                Text(
+                    "关联订单 #${txn.orderId} · 点击查看详情 →",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CartoonColors.Brand,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }

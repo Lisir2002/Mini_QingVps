@@ -490,4 +490,7 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
     }
 
     fun consumeToast() = _ui.update { it.copy(toast = null) }
+
+    /** 主动弹一次性提示（跨页调用：如商品已下架提示）。 */
+    fun notify(message: String) = _ui.update { it.copy(toast = message) }
 }
