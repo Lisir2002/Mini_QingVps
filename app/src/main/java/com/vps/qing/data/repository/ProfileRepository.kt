@@ -68,6 +68,17 @@ class ProfileRepository(
     suspend fun subAccounts(): ApiResult<List<SubAccountLine>> =
         safeApiCall({ api.subAccounts() }) { ServiceParser.subAccounts(it) }
 
+    // ---- v1.4.0：订单详情 + 实名认证 ----
+
+    suspend fun orderDetail(orderId: String): ApiResult<OrderDetail?> =
+        safeApiCall({ api.orderDetail(orderId) }) { ServiceParser.orderDetail(it) }
+
+    suspend fun certInfo(): ApiResult<CertInfo?> =
+        safeApiCall({ api.certificationInfo() }) { ServiceParser.certInfo(it) }
+
+    suspend fun certPlugins(): ApiResult<List<CertPlugin>> =
+        safeApiCall({ api.certificationPlugins() }) { ServiceParser.certPlugins(it) }
+
     suspend fun logout(): ApiResult<Unit> {
         val result = safeApiCall({ api.logout() }) { Unit }
         tokens.clear() // 无论服务端结果如何，本地登录态都要清掉

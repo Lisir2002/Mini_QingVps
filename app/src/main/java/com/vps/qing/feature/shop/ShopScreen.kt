@@ -57,6 +57,7 @@ import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.QuantityStepper
 import com.vps.qing.core.ui.Strings
+import androidx.activity.compose.BackHandler
 import com.vps.qing.core.ui.UiT
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.data.repository.CartCalculator
@@ -112,6 +113,9 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
             }
         }
     }
+
+    // 配置详情独立页：系统返回键 = 返回选购列表
+    BackHandler(enabled = state.configSheet != null) { vm.dismissConfig() }
 
     state.configSheet?.let { sheet ->
         ConfigSheet(

@@ -5,12 +5,16 @@ import androidx.lifecycle.viewModelScope
 import com.vps.qing.core.network.ApiResult
 import com.vps.qing.core.network.HtmlFallbackException
 import com.vps.qing.data.repository.AccountInfo
+import com.vps.qing.data.repository.CertInfo
+import com.vps.qing.data.repository.CertPlugin
+import com.vps.qing.data.repository.CertRecord
 import com.vps.qing.data.repository.HostLine
 import com.vps.qing.data.repository.OrderLine
 import com.vps.qing.data.repository.ProfileRepository
 import com.vps.qing.data.repository.ServiceParser
 import com.vps.qing.data.repository.SubAccountLine
 import com.vps.qing.data.repository.TicketLine
+import com.vps.qing.data.repository.OrderDetail
 import com.vps.qing.data.repository.TxnLine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +24,7 @@ import kotlinx.coroutines.launch
 import java.io.IOException
 
 /** 账号与服务子页面板块。 */
-enum class ServicePanel { HOSTS, ORDERS, TRANSACTIONS, TICKETS, SUB_ACCOUNTS, SECURITY }
+enum class ServicePanel { HOSTS, ORDERS, TRANSACTIONS, TICKETS, SUB_ACCOUNTS, SECURITY, CERTIFICATION }
 
 data class ServicePanelData(
     val loading: Boolean = false,
@@ -31,7 +35,10 @@ data class ServicePanelData(
     val txns: List<TxnLine> = emptyList(),
     val tickets: List<TicketLine> = emptyList(),
     val subAccounts: List<SubAccountLine> = emptyList(),
-    val security: List<Pair<String, String>> = emptyList()
+    val security: List<Pair<String, String>> = emptyList(),
+    /** 实名认证（v1.4.0 深度适配站点认证接口）。 */
+    val cert: CertInfo? = null,
+    val certPlugins: List<CertPlugin> = emptyList()
 )
 
 data class ProfileUiState(
@@ -40,7 +47,16 @@ data class ProfileUiState(
     val error: String? = null,
     val loggedOut: Boolean = false,
     /** 各服务子页面的数据缓存（进入页面懒加载）。 */
-    val panels: Map<ServicePanel, ServicePanelData> = emptyMap()
+    val panels: Map<ServicePanel, ServicePanelData> = emptyMap(),
+    /** 订单详情页缓存（orderId -> 状态）。 */
+    val orderDetails: Map<String, OrderDetailUi> = emptyMap()
+)
+
+/** 订单详情子页面状态。 */
+data class OrderDetailUi(
+    val loading: Boolean = false,
+    val error: String? = null,
+    val detail: OrderDetail? = null
 )
 
 /**
@@ -85,6 +101,43 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
         fetchPanel(panel)
     }
 
+    /** 订单详情子页面：进入即拉取（已在缓存且成功过则复用）。 */
+    fun ensureOrderDetail(orderId: String) {
+        val existing = _ui.value.orderDetails[orderId]
+        if (existing != null && existing.detail != null) return
+        fetchOrderDetail(orderId)
+    }
+
+    fun refreshOrderDetail(orderId: String) {
+        fetchOrderDetail(orderId)
+    }
+
+    private fun fetchOrderDetail(orderId: String) {
+        viewModelScope.launch {
+            setOrderDetail(orderId) { it.copy(loading = true, error = null) }
+            when (val r = repo.orderDetail(orderId)) {
+                is ApiResult.Success -> setOrderDetail(orderId) {
+                    it.copy(loading = false, error = null, detail = r.data)
+                }
+                is ApiResult.Failure -> setOrderDetail(orderId) {
+                    it.copy(loading = false, error = "[${r.code}] ${r.msg}")
+                }
+                is ApiResult.Error -> setOrderDetail(orderId) {
+                    it.copy(loading = false, error = friendly(r.throwable))
+                }
+            }
+        }
+    }
+
+    private fun setOrderDetail(orderId: String, transform: (OrderDetailUi) -> OrderDetailUi) {
+        _ui.update {
+            val cur = transform(it.orderDetails[orderId] ?: OrderDetailUi())
+            it.copy(orderDetails = it.orderDetails + (orderId to cur))
+        }
+    }
+
+    private fun <T> ApiResult<List<T>>.dataIfSuccess(): List<T> = (this as? ApiResult.Success)?.data ?: emptyList()
+
     private fun fetchPanel(panel: ServicePanel) {
         viewModelScope.launch {
             setPanel(panel) { it.copy(loading = true, error = null) }
@@ -97,6 +150,25 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
                 ServicePanel.SECURITY -> {
                     val rows = _ui.value.account?.let { ServiceParser.security(it) } ?: emptyList()
                     setPanel(panel) { it.copy(loading = false, loaded = true, security = rows, error = null) }
+                }
+                ServicePanel.CERTIFICATION -> {
+                    // 认证信息（核心）+ 认证方式（辅助，失败不影响主体展示）
+                    val infoResult = repo.certInfo()
+                    val pluginResult = repo.certPlugins()
+                    when (infoResult) {
+                        is ApiResult.Success -> setPanel(panel) {
+                            it.copy(
+                                loading = false, loaded = true, error = null,
+                                cert = infoResult.data, certPlugins = pluginResult.dataIfSuccess()
+                            )
+                        }
+                        is ApiResult.Failure -> setPanel(panel) {
+                            it.copy(loading = false, loaded = true, error = "[${infoResult.code}] ${infoResult.msg}")
+                        }
+                        is ApiResult.Error -> setPanel(panel) {
+                            it.copy(loading = false, loaded = true, error = friendly(infoResult.throwable))
+                        }
+                    }
                 }
             }
         }

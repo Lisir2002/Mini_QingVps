@@ -57,8 +57,8 @@ import com.vps.qing.core.ui.Strings
 
 /** 实名认证：站点未暴露 API，保留网页兜底。 */
 private val certificationMenu = ServiceMenu(
-    Strings.CERTIFICATION, "站点未开放接口，网页办理", AppIcons.Shield,
-    CartoonColors.Peach, CartoonColors.PeachSoft, webPath = "plugin/22/certification.htm"
+    Strings.CERTIFICATION, "实名状态与认证办理", AppIcons.Shield, 2,
+    panel = ServicePanel.CERTIFICATION
 )
 
 /**
@@ -82,15 +82,33 @@ fun ProfileScreen(
     var servicePage by rememberSaveable { mutableStateOf<ServicePanel?>(null) }
     /** 应用设置子页面。 */
     var showSettingsPage by rememberSaveable { mutableStateOf(false) }
+    /** 订单详情子页面（orderId）。 */
+    var orderDetailId by rememberSaveable { mutableStateOf<String?>(null) }
+    val accentId by AppContainer.settings.accentId.collectAsState()
 
     LaunchedEffect(state.loggedOut) {
         if (state.loggedOut) onLoggedOut()
     }
 
-    // 子页面打开时：进入懒加载 + 系统返回键回主页
+    // 子页面打开时：进入懒加载 + 系统返回键逐级回退（订单详情 → 服务页 → 主页）
     LaunchedEffect(servicePage) { servicePage?.let(vm::ensurePanel) }
-    BackHandler(enabled = servicePage != null || showSettingsPage) {
-        if (showSettingsPage) showSettingsPage = false else servicePage = null
+    LaunchedEffect(orderDetailId) { orderDetailId?.let(vm::ensureOrderDetail) }
+    BackHandler(enabled = servicePage != null || showSettingsPage || orderDetailId != null) {
+        when {
+            orderDetailId != null -> orderDetailId = null
+            showSettingsPage -> showSettingsPage = false
+            else -> servicePage = null
+        }
+    }
+
+    orderDetailId?.let { orderId ->
+        OrderDetailPage(
+            orderId = orderId,
+            state = state.orderDetails[orderId] ?: OrderDetailUi(),
+            onBack = { orderDetailId = null },
+            onRefresh = { vm.refreshOrderDetail(orderId) }
+        )
+        return
     }
 
     servicePage?.let { panel ->
@@ -98,7 +116,9 @@ fun ProfileScreen(
             panel = panel,
             data = state.panels[panel],
             onBack = { servicePage = null },
-            onRefresh = { vm.refreshPanel(panel) }
+            onRefresh = { vm.refreshPanel(panel) },
+            onOpenOrder = { orderDetailId = it },
+            onOpenWeb = onOpenWeb
         )
         return
     }
@@ -106,7 +126,9 @@ fun ProfileScreen(
     if (showSettingsPage) {
         ThemeSettingsPage(
             currentMode = themeMode,
+            currentAccentId = accentId,
             onSelectMode = { AppContainer.settings.setThemeMode(it) },
+            onSelectAccent = { AppContainer.settings.setAccentId(it) },
             onBack = { showSettingsPage = false }
         )
         return
@@ -180,8 +202,8 @@ fun ProfileScreen(
                         ServicePanels.entries.forEach { menu ->
                             MenuRow(menu) { menu.panel?.let { servicePage = it } }
                         }
-                        // 实名认证：站点无 API，网页兜底
-                        MenuRow(certificationMenu) { onOpenWeb(AppContainer.webUrl(certificationMenu.webPath)) }
+                        // 实名认证：v1.4.0 原生认证页（深度适配 /certification/*）
+                        MenuRow(certificationMenu) { certificationMenu.panel?.let { servicePage = it } }
                     }
                 }
 
@@ -189,10 +211,10 @@ fun ProfileScreen(
                 GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.82f) {
                     Column(Modifier.padding(vertical = 6.dp)) {
                         MenuRow(
-                            ServiceMenu(Strings.SETTINGS, Strings.THEME, AppIcons.Settings, CartoonColors.Lilac, CartoonColors.LilacSoft)
+                            ServiceMenu(Strings.SETTINGS, Strings.THEME, AppIcons.Settings, 4)
                         ) { showSettingsPage = true }
                         MenuRow(
-                            ServiceMenu(Strings.ABOUT, "", AppIcons.Info, CartoonColors.Sky, CartoonColors.SkySoft),
+                            ServiceMenu(Strings.ABOUT, "", AppIcons.Info, 1),
                             subtitle = "版本 ${Strings.APP_VERSION}"
                         ) { showAbout = true }
                     }
@@ -300,6 +322,7 @@ private fun InfoInline(icon: ImageVector, label: String, value: String, modifier
 /** 通用菜单行：图标 + 标题 + 副标题 + 右箭头（进入子页面/网页）。 */
 @Composable
 private fun MenuRow(menu: ServiceMenu, subtitle: String? = null, onClick: () -> Unit) {
+    val (accent, soft) = CartoonColors.accent(menu.accentIdx)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -312,10 +335,10 @@ private fun MenuRow(menu: ServiceMenu, subtitle: String? = null, onClick: () -> 
             Modifier
                 .size(36.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(menu.soft),
+                .background(soft),
             contentAlignment = Alignment.Center
         ) {
-            Icon(menu.icon, null, tint = menu.accent, modifier = Modifier.size(20.dp))
+            Icon(menu.icon, null, tint = accent, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {

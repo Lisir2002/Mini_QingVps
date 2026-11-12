@@ -192,6 +192,20 @@ interface QingVpsApiService {
 
     @GET("client_care/mail/list")
     suspend fun messages(@Query("page") page: Int = 1, @Query("limit") limit: Int = 20): ApiEnvelope
+
+    // ---- v1.4.0：订单详情 + 实名认证 ----
+
+    /** 订单详情：data.order 含 items[] 明细（每项配置、关联主机、金额）。 */
+    @GET("order/{id}")
+    suspend fun orderDetail(@Path("id") id: String): ApiEnvelope
+
+    /** 实名认证信息（开关 + person/company 认证资料，卡号姓名已脱敏）。 */
+    @GET("certification/info")
+    suspend fun certificationInfo(): ApiEnvelope
+
+    /** 实名认证方式列表（如「人脸实名认证」）。 */
+    @GET("certification/plugin")
+    suspend fun certificationPlugins(): ApiEnvelope
 }
 
 /** /captcha/tp_captcha/index/refresh 的响应。 */

@@ -24,4 +24,13 @@ class SettingsStore(context: Context) {
         sp.edit().putInt("theme_mode", mode).apply()
         _themeMode.value = mode
     }
+
+    /** 高级主题色板 id（v1.4.0），默认星云蓝紫。 */
+    private val _accentId = MutableStateFlow(sp.getString("accent_id", null) ?: "nebula")
+    val accentId: StateFlow<String> = _accentId.asStateFlow()
+
+    fun setAccentId(id: String) {
+        sp.edit().putString("accent_id", id).apply()
+        _accentId.value = id
+    }
 }

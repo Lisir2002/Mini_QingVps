@@ -21,9 +21,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         AppContainer.init(applicationContext)
         setContent {
-            // 个人中心的「应用设置」写入 SettingsStore，这里收集后让主题立即生效
+            // 个人中心的「应用设置」写入 SettingsStore，这里收集后让主题（深浅+色板）立即生效
             val themeMode by AppContainer.settings.themeMode.collectAsState()
-            QingVpsTheme(themeMode = themeMode) {
+            val accentId by AppContainer.settings.accentId.collectAsState()
+            QingVpsTheme(themeMode = themeMode, accentId = accentId) {
                 // 业务 401 后整个导航图重建到登录页，避免返回键回到已失效的 Tab 容器
                 var sessionEpoch by remember { mutableIntStateOf(0) }
                 LaunchedEffect(Unit) {

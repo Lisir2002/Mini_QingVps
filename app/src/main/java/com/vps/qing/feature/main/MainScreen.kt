@@ -46,12 +46,12 @@ import com.vps.qing.feature.profile.ProfileScreen
 import com.vps.qing.feature.shop.ShopScreen
 import com.vps.qing.feature.shop.ShopViewModel
 
-/** 底栏四个 Tab，图标全部为自绘 SVG。 */
-private enum class BottomTab(val title: String, val icon: ImageVector, val accent: Color, val soft: Color) {
-    DASHBOARD(Strings.TAB_DASHBOARD, AppIcons.Dashboard, CartoonColors.Brand, CartoonColors.BrandSoft),
-    SHOP(Strings.TAB_SHOP, AppIcons.Shop, CartoonColors.Mint, CartoonColors.MintSoft),
-    MESSAGE(Strings.TAB_MESSAGE, AppIcons.Message, CartoonColors.Peach, CartoonColors.PeachSoft),
-    PROFILE(Strings.TAB_PROFILE, AppIcons.Profile, CartoonColors.Lilac, CartoonColors.LilacSoft)
+/** 底栏四个 Tab，图标全部为自绘 SVG；accent 按索引在组合期取当前主题色（主题切换即刷新）。 */
+private enum class BottomTab(val title: String, val icon: ImageVector) {
+    DASHBOARD(Strings.TAB_DASHBOARD, AppIcons.Dashboard),
+    SHOP(Strings.TAB_SHOP, AppIcons.Shop),
+    MESSAGE(Strings.TAB_MESSAGE, AppIcons.Message),
+    PROFILE(Strings.TAB_PROFILE, AppIcons.Profile)
 }
 
 /**
@@ -142,6 +142,7 @@ private fun RowScope.NavItem(
         verticalArrangement = Arrangement.Center
     ) {
         val showBadge = tab == BottomTab.SHOP && cartCount > 0
+        val (accent, _) = CartoonColors.accent(BottomTab.entries.indexOf(tab))
         BadgedBox(
             badge = {
                 if (showBadge) {
@@ -156,7 +157,7 @@ private fun RowScope.NavItem(
                 Modifier
                     .size(38.dp)
                     .clip(CartoonKit.PillShape)
-                    .background(if (selected) tab.accent else Color.Transparent),
+                    .background(if (selected) accent else Color.Transparent),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -172,7 +173,7 @@ private fun RowScope.NavItem(
             tab.title,
             style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = if (selected) tab.accent else CartoonColors.InkSub
+            color = if (selected) accent else CartoonColors.InkSub
         )
     }
 }

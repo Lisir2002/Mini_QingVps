@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -36,13 +37,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.ui.AppIcons
+import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonButton
+import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.theme.CartoonColors
-import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.QuantityStepper
@@ -56,7 +56,7 @@ import com.vps.qing.data.repository.OptionType
 import com.vps.qing.data.repository.ProductConfig
 
 /**
- * 加购前的自定义配置弹窗（磨砂玻璃）。
+ * 自定义配置独立页（v1.4.0，原为弹窗）。
  * 选择型配置项用玻璃下拉框，数量型用步进器，周期用玻璃胶囊，
  * 实时展示站点算价，确认后真实 POST /cart。
  * 套餐型商品（mf_cloud）无通用配置，降级为「前往网页选购」。
@@ -74,69 +74,25 @@ fun ConfigSheet(
     onMfSelect: (com.vps.qing.data.repository.MfSelection) -> Unit = {},
     onSelectImage: (Int) -> Unit = {}
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        GlassSurface(
+    CartoonBackground {
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .heightIn(max = 620.dp),
-            shape = CartoonKit.SheetShape,
-            alpha = 0.92f,
-            elevation = 24.dp
+                .fillMaxSize()
+                // 独立页铺满 Scaffold 内容区，顶部标题栏带返回
         ) {
+            GlassTopBar(
+                title = sheet.product.name,
+                subtitle = Strings.CONFIG_SUBTITLE,
+                navIcon = AppIcons.Back,
+                onNavClick = onDismiss
+            )
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 标题栏
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier
-                            .size(40.dp)
-                            .clip(CartoonKit.CardShape)
-                            .background(CartoonColors.BrandSoft),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(AppIcons.Sliders, null, tint = CartoonColors.Brand, modifier = Modifier.size(22.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            Strings.CONFIG_TITLE,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = CartoonColors.Ink
-                        )
-                        Text(
-                            Strings.CONFIG_SUBTITLE,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = CartoonColors.InkSub
-                        )
-                    }
-                    CartoonIconChip(
-                        icon = AppIcons.Close,
-                        onClick = onDismiss,
-                        tint = CartoonColors.InkSub,
-                        bg = CartoonColors.White.copy(alpha = 0.7f)
-                    )
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                // 商品名
-                Text(
-                    sheet.product.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = CartoonColors.Ink
-                )
-
-                Spacer(Modifier.height(12.dp))
-
                 when {
                     sheet.loading -> {
                         Box(
@@ -186,10 +142,7 @@ private fun MfConfigBody(
     val bwCandidates = area?.bw?.candidates().orEmpty()
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = 430.dp)
-            .verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // 区域 / 线路
@@ -495,10 +448,7 @@ private fun ConfigBody(
 ) {
     val cfg = sheet.config ?: return
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = 430.dp)
-            .verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // 可自定义配置项
