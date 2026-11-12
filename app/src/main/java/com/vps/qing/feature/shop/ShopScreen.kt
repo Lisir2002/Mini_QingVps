@@ -242,7 +242,7 @@ private fun TopTabRow(state: ShopUiState, vm: ShopViewModel) {
                     Icon(
                         icon, null,
                         tint = if (selected) Color.White else CartoonColors.InkSub,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(UiT.buttonIcon)
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
@@ -591,9 +591,9 @@ private fun abbreviate(name: String): String {
 }
 
 /**
- * 商品卡片。侧栏展开时（[compact]=true）卡片内所有文字、图标、按钮
- * 以同一比例（0.85×）缩放动画适配窄栏——统一缩放而不是挤压换行。
- * 加购按钮固定为「加入购物车」+ 购物车图标（v1.2.2）。
+ * 商品卡片。侧栏展开时（[compact]=true）标题/规格/价格以 0.85× 统一缩放适配窄栏；
+ * 加购按钮固定尺寸不缩放：展开态为圆形购物车图标按钮（图标与顶栏 tab 等大，
+ * 修复「有的图标大有的图标小」），收起态为「加入购物车」文字按钮（v1.2.4）。
  */
 @Composable
 private fun ProductCard(
@@ -672,24 +672,60 @@ private fun ProductCard(
                 }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "￥${product.price}",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = CartoonColors.Coral
-                )
-                Text(
-                    " / ${product.cycle}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = CartoonColors.InkSub
-                )
-                Spacer(Modifier.weight(1f))
-                CartoonButton(
-                    text = Strings.ADD_TO_CART,
-                    onClick = onCustomize,
-                    icon = AppIcons.Cart
-                )
+            // 价格随卡片整体缩放；加购按钮不参与缩放（固定尺寸），
+            // 避免展开侧栏时按钮图标与顶栏购物车图标一大一小（v1.2.4）
+            if (compact) {
+                Column(verticalArrangement = Arrangement.spacedBy(UiT.spaceXs)) {
+                    Row(
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            transformOrigin = TransformOrigin(0f, 0.5f)
+                        }
+                    ) {
+                        Text(
+                            "￥${product.price}",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = CartoonColors.Coral
+                        )
+                        Text(
+                            " / ${product.cycle}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = CartoonColors.InkSub
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        CartoonRoundButton(
+                            icon = AppIcons.Cart,
+                            contentDescription = Strings.ADD_TO_CART,
+                            onClick = onCustomize
+                        )
+                    }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "￥${product.price}",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = CartoonColors.Coral
+                    )
+                    Text(
+                        " / ${product.cycle}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CartoonColors.InkSub
+                    )
+                    Spacer(Modifier.weight(1f))
+                    CartoonButton(
+                        text = Strings.ADD_TO_CART,
+                        onClick = onCustomize,
+                        icon = AppIcons.Cart
+                    )
+                }
             }
         }
     }

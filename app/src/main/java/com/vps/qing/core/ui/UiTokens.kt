@@ -51,7 +51,9 @@ object UiT {
 
     // ---------- 控件尺寸 ----------
     val chip = 36.dp           // 圆形图标按钮
-    val chipIcon = 19.dp
+    val chipIcon = 18.dp
+    /** 按钮/操作位图标统一尺寸：全应用所有按钮图标（含购物车）必须引用同一令牌，避免一大一小。 */
+    val buttonIcon = 18.dp
     val control = 44.dp        // 行内按钮 / 步进器行高
     val button = 46.dp         // 主按钮高度（紧凑版，原 52）
     val iconOnlyButton = 44.dp // 图标按钮直径

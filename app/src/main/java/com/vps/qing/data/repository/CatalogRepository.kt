@@ -1,5 +1,6 @@
 package com.vps.qing.data.repository
 
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.vps.qing.core.network.ApiResult
 import com.vps.qing.core.network.arrayAt
@@ -31,9 +32,36 @@ class CatalogRepository(private val api: QingVpsApiService) {
     suspend fun secondGroups(firstId: String): ApiResult<List<ProductGroup>> =
         safeApiCall({ api.secondGroups(firstId) }) { CatalogParser.secondGroups(it) }
 
-    /** 全量商品（分类在本地过滤）。 */
-    suspend fun allProducts(): ApiResult<List<ProductInfo>> =
-        safeApiCall({ api.allProducts() }) { CatalogParser.products(it) }
+    /** 商品分页大小：站点 /product 默认 limit=20 会漏商品，必须显式传大值并按 count 兜底。 */
+    private val productPageSize = 100
+    private val productMaxPages = 10
+
+    /**
+     * 全量商品（分类在本地过滤）。
+     * v1.2.4 修复根本性 bug：/product 是分页接口（默认 limit=20），站点已有 40+ 商品，
+     * 不带 limit 只能拿到前 20 个 —— 上新商品和旧款全部"抓不到"。
+     * 现在显式 limit=100 一次取回，并按 data.count 校验、必要时继续翻页。
+     */
+    suspend fun allProducts(): ApiResult<List<ProductInfo>> {
+        val collected = mutableListOf<JsonElement>()
+        var page = 1
+        while (true) {
+            val r = safeApiCall({ api.allProducts(page, productPageSize) }) { it }
+            val arr = when (r) {
+                is ApiResult.Success -> r.data.arrayAt("list")
+                is ApiResult.Failure -> return ApiResult.Failure(r.code, r.msg, r.data)
+                is ApiResult.Error -> return ApiResult.Error(r.throwable)
+            } ?: break
+            if (arr.size() == 0 && page > 1) break
+            collected.addAll(arr)
+            val total = r.data.number("count")?.toInt() ?: collected.size
+            if (collected.size >= total || page >= productMaxPages) break
+            page++
+        }
+        if (collected.isEmpty()) return ApiResult.Success(emptyList())
+        val wrapper = JsonObject().apply { add("list", com.google.gson.JsonArray().apply { collected.forEach { add(it) } }) }
+        return ApiResult.Success(CatalogParser.products(wrapper))
+    }
 
     /** 兼容旧签名：仍请求站点，但返回的是全量，由调用方决定如何过滤。 */
     suspend fun products(fpgId: String, spgId: String): ApiResult<List<ProductInfo>> =

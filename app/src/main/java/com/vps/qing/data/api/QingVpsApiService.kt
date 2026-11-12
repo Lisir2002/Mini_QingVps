@@ -45,14 +45,15 @@ interface QingVpsApiService {
     suspend fun secondGroups(@Query("id") id: String): ApiEnvelope
 
     /**
-     * 全量商品。站点实测会忽略 fpg_id/spg_id 恒返回全量 20 条，
-     * 因此 App 只拉一次全量，分类用 CatalogParser.byGroup 本地过滤。
-     * 保留 fpg_id/spg_id 参数仅为与站点前端一致（不影响结果）。
+     * 商品列表（分页）。⚠️ 站点 /product 是分页接口，默认 limit=20 —— 不带 limit
+     * 只能拿到前 20 个商品，上新/旧款商品会"抓不到"（v1.2.4 修复）。
+     * 传大 limit 一次取回；仓库层仍按 count 兜底翻页。站点忽略 fpg_id/spg_id，
+     * 分类在本地过滤（CatalogParser.byGroup）。
      */
     @GET("product")
     suspend fun allProducts(
-        @Query("fpg_id") fpgId: String = "0",
-        @Query("spg_id") spgId: String = "0"
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 100
     ): ApiEnvelope
 
     /** 兼容旧调用：按站点参数请求商品（返回仍是全量，由调用方本地过滤）。 */

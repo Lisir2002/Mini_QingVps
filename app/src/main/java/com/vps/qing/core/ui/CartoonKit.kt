@@ -248,7 +248,7 @@ fun CartoonButton(
         elevation = ButtonDefaults.buttonElevation(defaultElevation = UiT.shadowSm)
     ) {
         if (icon != null) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(17.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(UiT.buttonIcon))
             Spacer(Modifier.width(UiT.spaceSm))
         }
         Text(
@@ -281,7 +281,7 @@ fun CartoonRoundButton(
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = iconTint, modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = contentDescription, tint = iconTint, modifier = Modifier.size(UiT.buttonIcon))
     }
 }
 
