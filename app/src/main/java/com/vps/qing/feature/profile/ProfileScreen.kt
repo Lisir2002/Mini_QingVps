@@ -70,7 +70,10 @@ fun ProfileScreen(
     onLoggedOut: () -> Unit,
     onOpenWeb: (String) -> Unit,
     /** 子页面开关上报主容器：打开时隐藏底栏（v1.4.1）。 */
-    onSubPageChanged: (Boolean) -> Unit = {}
+    onSubPageChanged: (Boolean) -> Unit = {},
+    /** 首页发起的原生导航请求（v1.4.6）：面板 token 或 "product:{id}"，消费后回调置空。 */
+    navRequest: String? = null,
+    onNavConsumed: () -> Unit = {}
 ) {
     val vm: ProfileViewModel = viewModel(
         factory = simpleViewModelFactory { ProfileViewModel(AppContainer.profileRepository) }
@@ -125,6 +128,25 @@ fun ProfileScreen(
 
     // 子页面打开时：进入懒加载 + 系统返回键逐级回退（详情页 → 服务页 / 设置页 → 主页）
     LaunchedEffect(servicePage) { servicePage?.let(vm::ensurePanel) }
+
+    // v1.4.6：消费首页发起的导航请求（服务面板直达 / 产品详情直达）
+    LaunchedEffect(navRequest) {
+        if (navRequest != null) {
+            val panel = when (navRequest) {
+                "hosts" -> ServicePanel.HOSTS
+                "orders" -> ServicePanel.ORDERS
+                "finance" -> ServicePanel.TRANSACTIONS
+                "tickets" -> ServicePanel.TICKETS
+                "subaccounts" -> ServicePanel.SUB_ACCOUNTS
+                "security" -> ServicePanel.SECURITY
+                "cert" -> ServicePanel.CERTIFICATION
+                else -> null
+            }
+            if (panel != null) servicePage = panel
+            else if (navRequest.startsWith("product:")) pushDetail(navRequest)
+            onNavConsumed()
+        }
+    }
     LaunchedEffect(currentDetail) {
         when {
             currentDetail == null -> Unit

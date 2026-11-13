@@ -7,9 +7,9 @@ import com.vps.qing.core.network.ApiResult
 import com.vps.qing.data.repository.AccountInfo
 import com.vps.qing.data.repository.CatalogRepository
 import com.vps.qing.data.repository.HostSummary
-import com.vps.qing.data.repository.MenuEntry
 import com.vps.qing.data.repository.NewsItem
 import com.vps.qing.data.repository.ProfileRepository
+import com.vps.qing.core.ui.Strings
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,16 +24,16 @@ data class DashboardUiState(
     val account: AccountInfo? = null,
     val hosts: List<HostSummary> = emptyList(),
     val news: List<NewsItem> = emptyList(),
-    val menu: List<MenuEntry> = emptyList(),
     val notice: String? = null
 )
 
 /**
- * 仪表盘数据。公告 / 菜单可匿名拉取；已购主机 / 账号需登录态，
+ * 仪表盘数据。公告可匿名拉取；已购主机 / 账号需登录态，
  * 匿名时站点返回 body.status=401，这里降级成空列表 + 提示，不弹错误。
  *
- * v1.4.4：四路接口改为并发（站点 TTFB 约 1.6s，串行会让首屏等到约 4 倍延迟），
- * 未登录时跳过两个注定 401 的私有请求；刷新时保留已有数据不白屏。
+ * v1.4.4：接口并发（站点 TTFB 约 1.6s），未登录时跳过注定 401 的私有请求。
+ * v1.4.6：移除从未展示的 menu 请求（此前每次进入首页白耗一条 1.6s 往返），
+ * 公告/主机数据交由分层缓存，非 force 刷新时命中 L1 几乎零延迟。
  */
 class DashboardViewModel(
     private val catalog: CatalogRepository,
@@ -62,9 +62,8 @@ class DashboardViewModel(
             val loggedIn = AppContainer.isLoggedIn()
 
             supervisorScope {
-                // 四个 Deferred 同时启动，共用 HTTP/2 连接多路复用
+                // 三个 Deferred 同时启动，共用 HTTP/2 连接多路复用
                 val newsCall = async { catalog.news().orEmpty() }
-                val menuCall = async { catalog.menu().orEmpty() }
                 val hostsCall = async {
                     if (loggedIn) catalog.hosts().orEmpty() else emptyList()
                 }
@@ -73,7 +72,6 @@ class DashboardViewModel(
                 }
 
                 val newsList = newsCall.await()
-                val menuList = menuCall.await()
                 val hostsList = hostsCall.await()
                 val accountInfo = accountCall.await()
 
@@ -84,8 +82,7 @@ class DashboardViewModel(
                         account = accountInfo,
                         hosts = hostsList,
                         news = newsList,
-                        menu = menuList,
-                        notice = if (loggedIn) null else "登录后查看你的服务与账单"
+                        notice = if (loggedIn) null else Strings.LOGIN_PROMPT
                     )
                 }
             }

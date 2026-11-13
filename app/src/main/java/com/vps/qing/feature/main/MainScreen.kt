@@ -71,11 +71,24 @@ private enum class BottomTab(val title: String, val icon: ImageVector) {
 @Composable
 fun MainScreen(
     onOpenWeb: (String) -> Unit,
-    onLoggedOut: () -> Unit
+    onLoggedOut: () -> Unit,
+    /** 首页「去登录」引导：回登录页并清栈（v1.4.6）。 */
+    onNeedLogin: () -> Unit = {}
 ) {
     var selected by rememberSaveable { mutableStateOf(0) }
     /** 个人中心是否处于子页面（服务子页/设置页/订单详情）——隐藏底栏。 */
     var profileSubOpen by rememberSaveable { mutableStateOf(false) }
+    /**
+     * 首页发起的原生导航请求（v1.4.6）：
+     *  - "hosts"/"orders"/"finance"/"tickets"/"cert"/"security"/"subaccounts" → 对应服务面板；
+     *  - "product:{hostId}" → 已购产品详情。
+     * 由 ProfileScreen 消费后回调置空；发起时切到「我的」Tab。
+     */
+    var profileNavRequest by rememberSaveable { mutableStateOf<String?>(null) }
+    val openProfileNav: (String) -> Unit = { token ->
+        profileNavRequest = token
+        selected = 3
+    }
     val shopVm: ShopViewModel = viewModel(
         factory = simpleViewModelFactory { ShopViewModel(AppContainer.catalogRepository) }
     )
@@ -103,13 +116,20 @@ fun MainScreen(
                 .padding(padding)
         ) {
             when (selected) {
-                0 -> DashboardScreen(onOpenWeb = onOpenWeb)
+                0 -> DashboardScreen(
+                    onOpenWeb = onOpenWeb,
+                    onOpenPanel = openProfileNav,
+                    onNeedLogin = onNeedLogin,
+                    onGoShop = { selected = 1 }
+                )
                 1 -> ShopScreen(vm = shopVm, onOpenWeb = onOpenWeb)
                 2 -> MessagesScreen(onOpenWeb = onOpenWeb)
                 else -> ProfileScreen(
                     onLoggedOut = onLoggedOut,
                     onOpenWeb = onOpenWeb,
-                    onSubPageChanged = { profileSubOpen = it }
+                    onSubPageChanged = { profileSubOpen = it },
+                    navRequest = profileNavRequest,
+                    onNavConsumed = { profileNavRequest = null }
                 )
             }
 

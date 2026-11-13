@@ -16,10 +16,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,8 +35,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.AppIcons
-import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.theme.CartoonColors
+import com.vps.qing.core.ui.CartoonButton
+import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassCard
@@ -45,23 +47,41 @@ import com.vps.qing.core.ui.Strings
 import com.vps.qing.data.repository.HostSummary
 import com.vps.qing.data.repository.NewsItem
 
-private data class QuickEntry(val title: String, val path: String, val icon: ImageVector, val accent: Color, val soft: Color)
+/**
+ * 快捷入口（v1.4.6 原生化）：点击直达 App 内原生页面，不再跳 WebView；
+ * navToken 由主容器路由到「我的」Tab 的对应服务面板。
+ */
+private data class QuickEntry(val title: String, val navToken: String, val icon: ImageVector, val accent: Color, val soft: Color)
 
 private val QUICK_ENTRIES = listOf(
-    QuickEntry(Strings.MY_ORDERS, "clientarea/order.htm", AppIcons.Order, CartoonColors.Brand, CartoonColors.BrandSoft),
-    QuickEntry(Strings.MY_HOSTS, "clientarea/host.htm", AppIcons.Server, CartoonColors.Mint, CartoonColors.MintSoft),
-    QuickEntry(Strings.FINANCE, "clientarea/finance.htm", AppIcons.Wallet, CartoonColors.Lemon, CartoonColors.LemonSoft),
-    QuickEntry(Strings.TICKETS, "plugin/27/ticket.htm", AppIcons.Ticket, CartoonColors.Sky, CartoonColors.SkySoft),
-    QuickEntry(Strings.CERTIFICATION, "plugin/22/certification.htm", AppIcons.Shield, CartoonColors.Peach, CartoonColors.PeachSoft),
-    QuickEntry(Strings.SECURITY, "clientarea/security.htm", AppIcons.Lock, CartoonColors.Lilac, CartoonColors.LilacSoft)
+    QuickEntry(Strings.MY_ORDERS, "orders", AppIcons.Order, CartoonColors.Brand, CartoonColors.BrandSoft),
+    QuickEntry(Strings.MY_HOSTS, "hosts", AppIcons.Server, CartoonColors.Mint, CartoonColors.MintSoft),
+    QuickEntry(Strings.FINANCE, "finance", AppIcons.Wallet, CartoonColors.Lemon, CartoonColors.LemonSoft),
+    QuickEntry(Strings.TICKETS, "tickets", AppIcons.Ticket, CartoonColors.Sky, CartoonColors.SkySoft),
+    QuickEntry(Strings.CERTIFICATION, "cert", AppIcons.Shield, CartoonColors.Peach, CartoonColors.PeachSoft),
+    QuickEntry(Strings.SECURITY, "security", AppIcons.Lock, CartoonColors.Lilac, CartoonColors.LilacSoft)
 )
 
 /**
- * 首页仪表盘（纯白卡通重构）：欢迎卡 + 概览数字 + 已购服务 + 公告 + 快捷入口。
- * 公告 / 菜单匿名可用；主机与账号需登录态，未登录时降级为提示。
+ * 首页仪表盘：欢迎卡 + 概览数字 + 已购服务 + 公告 + 快捷入口。
+ *
+ * v1.4.6 可用性重构：
+ *  - 快捷入口原生化直达（订单/主机/财务/工单/实名/安全），不再经 WebView；
+ *  - 已购服务卡点击进产品详情，公告卡点击进公告详情页；
+ *  - 统计卡可点（服务数→主机面板，余额→财务面板）；
+ *  - 未登录给「去登录」引导，无服务给「去选购」引导；
+ *  - 「查看全部 / 更多」入口；下拉刷新替代顶栏单一刷新按钮；
+ *  - 移除从未展示的 menu 请求，首屏少一条 1.6s 往返。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardScreen(onOpenWeb: (String) -> Unit) {
+fun DashboardScreen(
+    onOpenWeb: (String) -> Unit,
+    /** 原生面板/详情直达：token 语义见 MainScreen.profileNavRequest。 */
+    onOpenPanel: (String) -> Unit = {},
+    onNeedLogin: () -> Unit = {},
+    onGoShop: () -> Unit = {}
+) {
     val vm: DashboardViewModel = viewModel(
         factory = simpleViewModelFactory {
             DashboardViewModel(AppContainer.catalogRepository, AppContainer.profileRepository)
@@ -84,90 +104,153 @@ fun DashboardScreen(onOpenWeb: (String) -> Unit) {
                 }
             )
 
-            if (state.loading) LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                color = CartoonColors.Brand
-            )
-
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+            PullToRefreshBox(
+                isRefreshing = state.loading,
+                onRefresh = { vm.load(force = true) },
+                modifier = Modifier.fillMaxSize()
             ) {
-                item { WelcomeCard(state) }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    item { WelcomeCard(state) }
 
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        StatCard(
-                            Strings.SERVICE_COUNT,
-                            if (state.loggedIn) state.hosts.size.toString() else Strings.UNKNOWN,
-                            AppIcons.Server, CartoonColors.Mint, CartoonColors.MintSoft,
-                            Modifier.weight(1f)
-                        )
-                        StatCard(
-                            Strings.NEWS_COUNT, state.news.size.toString(),
-                            AppIcons.Bell, CartoonColors.Sky, CartoonColors.SkySoft,
-                            Modifier.weight(1f)
-                        )
-                        StatCard(
-                            Strings.BALANCE, state.account?.balance ?: Strings.UNKNOWN,
-                            AppIcons.Wallet, CartoonColors.Lemon, CartoonColors.LemonSoft,
-                            Modifier.weight(1f)
-                        )
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            StatCard(
+                                Strings.SERVICE_COUNT,
+                                if (state.loggedIn) state.hosts.size.toString() else Strings.UNKNOWN,
+                                AppIcons.Server, CartoonColors.Mint, CartoonColors.MintSoft,
+                                Modifier.weight(1f),
+                                onClick = if (state.loggedIn && state.hosts.isNotEmpty()) {
+                                    { onOpenPanel("hosts") }
+                                } else null
+                            )
+                            StatCard(
+                                Strings.NEWS_COUNT, state.news.size.toString(),
+                                AppIcons.Bell, CartoonColors.Sky, CartoonColors.SkySoft,
+                                Modifier.weight(1f)
+                            )
+                            StatCard(
+                                Strings.BALANCE, state.account?.balance ?: Strings.UNKNOWN,
+                                AppIcons.Wallet, CartoonColors.Lemon, CartoonColors.LemonSoft,
+                                Modifier.weight(1f),
+                                onClick = if (state.loggedIn) {
+                                    { onOpenPanel("finance") }
+                                } else null
+                            )
+                        }
                     }
-                }
 
-                item { SectionTitle(Strings.MY_SERVICES, CartoonColors.Mint) }
-                if (state.hosts.isEmpty()) {
-                    item { HintCard(if (state.loggedIn) Strings.NO_SERVICE else Strings.NOT_LOGGED_TIP) }
-                } else {
-                    items(state.hosts.take(5)) { host -> HostCard(host) }
-                }
-
-                item { SectionTitle(Strings.ANNOUNCEMENTS, CartoonColors.Peach) }
-                if (state.news.isEmpty()) {
-                    item { HintCard(Strings.NO_NEWS) }
-                } else {
-                    items(state.news) { news -> NewsCard(news) }
-                }
-
-                item { SectionTitle(Strings.QUICK_ENTRIES, CartoonColors.Brand) }
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        QUICK_ENTRIES.chunked(2).forEach { row ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                row.forEach { entry ->
-                                    QuickEntryCard(
-                                        entry = entry,
-                                        modifier = Modifier.weight(1f),
-                                        onClick = { onOpenWeb(AppContainer.webUrl(entry.path)) }
-                                    )
-                                }
-                                if (row.size == 1) Box(modifier = Modifier.weight(1f))
+                    item {
+                        SectionHeader(Strings.MY_SERVICES, CartoonColors.Mint) {
+                            if (state.loggedIn && state.hosts.isNotEmpty()) {
+                                TrailingAction(Strings.VIEW_ALL) { onOpenPanel("hosts") }
                             }
                         }
                     }
-                }
+                    if (state.hosts.isEmpty()) {
+                        item {
+                            if (state.loggedIn) {
+                                ActionHintCard(Strings.NO_SERVICE, Strings.GO_SHOP_BROWSE, onGoShop)
+                            } else {
+                                ActionHintCard(Strings.LOGIN_PROMPT, Strings.GO_LOGIN_NOW, onNeedLogin)
+                            }
+                        }
+                    } else {
+                        items(state.hosts.take(5)) { host -> HostCard(host) { onOpenPanel(it) } }
+                    }
 
-                item {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(AppIcons.Info, null, tint = CartoonColors.InkSub, modifier = Modifier.size(14.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            Strings.WEB_FALLBACK_TIP,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = CartoonColors.InkSub
-                        )
+                    item {
+                        SectionHeader(Strings.ANNOUNCEMENTS, CartoonColors.Peach) {
+                            if (state.news.isNotEmpty()) {
+                                TrailingAction(Strings.MORE) {
+                                    onOpenWeb(AppContainer.webUrl("plugin/30/announcement.htm"))
+                                }
+                            }
+                        }
+                    }
+                    if (state.news.isEmpty()) {
+                        item { HintCard(Strings.NO_NEWS) }
+                    } else {
+                        items(state.news) { news -> NewsCard(news) { onOpenWeb(it) } }
+                    }
+
+                    item { SectionHeader(Strings.QUICK_ENTRIES, CartoonColors.Brand) {} }
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            QUICK_ENTRIES.chunked(2).forEach { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    row.forEach { entry ->
+                                        QuickEntryCard(
+                                            entry = entry,
+                                            modifier = Modifier.weight(1f),
+                                            onClick = { onOpenPanel(entry.navToken) }
+                                        )
+                                    }
+                                    if (row.size == 1) Box(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(AppIcons.Info, null, tint = CartoonColors.InkSub, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                Strings.WEB_FALLBACK_TIP,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CartoonColors.InkSub
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+/** 区块标题 + 可选尾部动作（查看全部 / 更多）。 */
+@Composable
+private fun SectionHeader(
+    text: String,
+    accent: Color,
+    trailing: @Composable () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SectionTitle(text, accent, Modifier.weight(1f))
+        trailing()
+    }
+}
+
+@Composable
+private fun TrailingAction(text: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(CartoonKit.PillShape)
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = CartoonColors.InkSub
+        )
+        Spacer(Modifier.width(2.dp))
+        Icon(AppIcons.Forward, null, tint = CartoonColors.InkSub, modifier = Modifier.size(13.dp))
     }
 }
 
@@ -208,9 +291,16 @@ private fun WelcomeCard(state: DashboardUiState) {
 private fun StatCard(
     title: String, value: String,
     icon: ImageVector, accent: Color, soft: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
 ) {
-    GlassCard(modifier = modifier, alpha = 0.82f) {
+    val clickable = onClick != null
+    GlassCard(
+        modifier = modifier.then(
+            if (clickable) Modifier.clip(CartoonKit.CardShape).clickable { onClick?.invoke() } else Modifier
+        ),
+        alpha = 0.82f
+    ) {
         Column(Modifier.padding(14.dp)) {
             Box(
                 Modifier
@@ -246,9 +336,37 @@ private fun HintCard(text: String) {
     }
 }
 
+/** 带动作按钮的引导卡：未登录「去登录」、无服务「去选购」。 */
 @Composable
-private fun HostCard(host: HostSummary) {
-    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.8f) {
+private fun ActionHintCard(text: String, actionText: String, onAction: () -> Unit) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.7f) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                color = CartoonColors.InkSub
+            )
+            CartoonButton(
+                text = actionText,
+                onClick = onAction,
+                icon = AppIcons.Forward,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+/** 已购服务卡：点击直达产品详情（有 id 时），否则进主机面板。 */
+@Composable
+private fun HostCard(host: HostSummary, onOpenPanel: (String) -> Unit) {
+    val navToken = host.id?.takeIf { it.isNotBlank() }?.let { "product:$it" } ?: "hosts"
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(CartoonKit.CardShape)
+            .clickable { onOpenPanel(navToken) },
+        alpha = 0.8f
+    ) {
         Row(
             Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -279,13 +397,27 @@ private fun HostCard(host: HostSummary) {
                     }
                 }
             }
+            Icon(AppIcons.Forward, null, tint = CartoonColors.InkSub, modifier = Modifier.size(16.dp))
         }
     }
 }
 
+/** 公告卡：点击打开站点公告详情页（有 id 时）。 */
 @Composable
-private fun NewsCard(news: NewsItem) {
-    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.8f) {
+private fun NewsCard(news: NewsItem, onOpenWeb: (String) -> Unit) {
+    val hasDetail = news.id.isNotBlank()
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (hasDetail) {
+                    Modifier.clip(CartoonKit.CardShape).clickable {
+                        onOpenWeb(AppContainer.webUrl("announcement.htm?id=${news.id}"))
+                    }
+                } else Modifier
+            ),
+        alpha = 0.8f
+    ) {
         Row(
             Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -305,6 +437,9 @@ private fun NewsCard(news: NewsItem) {
                 if (news.type.isNotBlank()) {
                     Text(news.type, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
                 }
+            }
+            if (hasDetail) {
+                Icon(AppIcons.Forward, null, tint = CartoonColors.InkSub, modifier = Modifier.size(16.dp))
             }
         }
     }

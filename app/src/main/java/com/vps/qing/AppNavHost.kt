@@ -68,13 +68,16 @@ fun AppNavHost(
         }
 
         composable(Routes.MAIN) {
+            val toLogin: () -> Unit = {
+                navController.navigate(Routes.LOGIN) {
+                    popUpTo(Routes.MAIN) { inclusive = true }
+                }
+            }
             MainScreen(
                 onOpenWeb = { url -> navController.navigate(Routes.web(url)) },
-                onLoggedOut = {
-                    navController.navigate(Routes.LOGIN) {
-                        popUpTo(Routes.MAIN) { inclusive = true }
-                    }
-                }
+                onLoggedOut = toLogin,
+                // 首页「去登录」引导（v1.4.6）
+                onNeedLogin = toLogin
             )
         }
 
