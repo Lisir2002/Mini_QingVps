@@ -7,6 +7,8 @@ import com.vps.qing.core.network.objectAt
 import com.vps.qing.core.network.safeApiCall
 import com.vps.qing.core.network.string
 import com.vps.qing.data.api.QingVpsApiService
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 /**
  * GET /account 需要登录态，暂无法匿名实测完整响应。字段名参考站点 account.js / topMenu.js
@@ -78,6 +80,37 @@ class ProfileRepository(
 
     suspend fun certPlugins(): ApiResult<List<CertPlugin>> =
         safeApiCall({ api.certificationPlugins() }) { ServiceParser.certPlugins(it) }
+
+    // ---- v1.4.2：已购产品详情（只读）----
+
+    /**
+     * 并行请求主机详情、mf_cloud 实例配置、主机附加信息，合并为已订购配置详情页数据。
+     * /host/{id} 是主体：失败即整体失败；/remf_cloud/{id} 与 /specific_info 失败只做降级
+     * （非 mf_cloud 模块商品本来就会 400），不影响支付信息展示。
+     */
+    suspend fun productDetail(hostId: String): ApiResult<PurchasedDetail?> = coroutineScope {
+        val hostCall = async { safeApiCall({ api.hostDetail(hostId) }) { it } }
+        val cloudCall = async { safeApiCall({ api.cloudDetail(hostId) }) { it } }
+        val specificCall = async { safeApiCall({ api.hostSpecificInfo(hostId) }) { it } }
+
+        when (val host = hostCall.await()) {
+            is ApiResult.Success -> {
+                val cloud = (cloudCall.await() as? ApiResult.Success<*>)?.data as? JsonElement
+                val specific = (specificCall.await() as? ApiResult.Success<*>)?.data as? JsonElement
+                ApiResult.Success(ServiceParser.purchasedDetail(host.data, cloud, specific))
+            }
+            is ApiResult.Failure -> {
+                cloudCall.await()
+                specificCall.await()
+                ApiResult.Failure(host.code, host.msg, host.data)
+            }
+            is ApiResult.Error -> {
+                cloudCall.await()
+                specificCall.await()
+                ApiResult.Error(host.throwable)
+            }
+        }
+    }
 
     suspend fun logout(): ApiResult<Unit> {
         val result = safeApiCall({ api.logout() }) { Unit }

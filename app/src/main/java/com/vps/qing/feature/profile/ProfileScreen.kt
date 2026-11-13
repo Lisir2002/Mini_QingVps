@@ -70,9 +70,7 @@ fun ProfileScreen(
     onLoggedOut: () -> Unit,
     onOpenWeb: (String) -> Unit,
     /** 子页面开关上报主容器：打开时隐藏底栏（v1.4.1）。 */
-    onSubPageChanged: (Boolean) -> Unit = {},
-    /** 打开商品配置页（productId 优先 / 商品名兜底），由主容器在选购数据里定位商品。 */
-    onOpenProduct: (String, String) -> Unit = { _, _ -> }
+    onSubPageChanged: (Boolean) -> Unit = {}
 ) {
     val vm: ProfileViewModel = viewModel(
         factory = simpleViewModelFactory { ProfileViewModel(AppContainer.profileRepository) }
@@ -86,38 +84,86 @@ fun ProfileScreen(
     var servicePage by rememberSaveable { mutableStateOf<ServicePanel?>(null) }
     /** 应用设置子页面。 */
     var showSettingsPage by rememberSaveable { mutableStateOf(false) }
-    /** 订单详情子页面（orderId）。 */
-    var orderDetailId by rememberSaveable { mutableStateOf<String?>(null) }
+    /**
+     * 详情页返回栈（v1.4.2）：逗号分隔的 "product:{hostId}" / "order:{orderId}"。
+     * 用栈而非两个互斥 id，是为了让「已购产品详情 ↔ 订单详情」可以互相跳转并逐级返回，
+     * 不会出现点了关联订单却被上层页面盖住、或返回时丢失上一页的问题。
+     */
+    var detailStack by rememberSaveable { mutableStateOf("") }
     val accentId by AppContainer.settings.accentId.collectAsState()
+
+    val currentDetail = detailStack.substringAfterLast(',').takeIf { it.isNotBlank() }
+    val pushDetail: (String) -> Unit = { token ->
+        detailStack = if (detailStack.isBlank()) token else "$detailStack,$token"
+    }
+    val popDetail: () -> Unit = {
+        detailStack = detailStack.substringBeforeLast(',', "")
+    }
+    val openOrderDetail: (String) -> Unit = { pushDetail("order:$it") }
+    /** 打开已购产品详情：hostId 优先，缺失时按商品名在已购列表里兜底匹配。 */
+    val openHostDetail: (String, String) -> Unit = { hostId, productName ->
+        val target = hostId.takeIf { it.isNotBlank() }
+            ?: state.panels[ServicePanel.HOSTS]?.hosts
+                ?.firstOrNull { productName.isNotBlank() && it.productName == productName }?.id
+        if (target != null) pushDetail("product:$target")
+        else if (hostId.isBlank()) vm.ensurePanel(ServicePanel.HOSTS)
+    }
 
     LaunchedEffect(state.loggedOut) {
         if (state.loggedOut) onLoggedOut()
     }
 
-    // 子页面打开时：进入懒加载 + 系统返回键逐级回退（订单详情 → 服务页 → 主页）
+    // 子页面打开时：进入懒加载 + 系统返回键逐级回退（详情页 → 服务页 / 设置页 → 主页）
     LaunchedEffect(servicePage) { servicePage?.let(vm::ensurePanel) }
-    LaunchedEffect(orderDetailId) { orderDetailId?.let(vm::ensureOrderDetail) }
-    // 上报主容器：任意子页面打开即隐藏底栏
-    LaunchedEffect(servicePage, showSettingsPage, orderDetailId) {
-        onSubPageChanged(servicePage != null || showSettingsPage || orderDetailId != null)
-    }
-    BackHandler(enabled = servicePage != null || showSettingsPage || orderDetailId != null) {
+    LaunchedEffect(currentDetail) {
         when {
-            orderDetailId != null -> orderDetailId = null
+            currentDetail == null -> Unit
+            currentDetail.startsWith("product:") ->
+                vm.ensureProductDetail(currentDetail.removePrefix("product:"))
+            currentDetail.startsWith("order:") ->
+                vm.ensureOrderDetail(currentDetail.removePrefix("order:"))
+        }
+    }
+    // 上报主容器：任意子页面打开即隐藏底栏
+    LaunchedEffect(servicePage, showSettingsPage, detailStack) {
+        onSubPageChanged(servicePage != null || showSettingsPage || detailStack.isNotBlank())
+    }
+    BackHandler(
+        enabled = servicePage != null || showSettingsPage || detailStack.isNotBlank()
+    ) {
+        when {
+            detailStack.isNotBlank() -> popDetail()
             showSettingsPage -> showSettingsPage = false
             else -> servicePage = null
         }
     }
 
-    orderDetailId?.let { orderId ->
-        OrderDetailPage(
-            orderId = orderId,
-            state = state.orderDetails[orderId] ?: OrderDetailUi(),
-            onBack = { orderDetailId = null },
-            onRefresh = { vm.refreshOrderDetail(orderId) },
-            onOpenProduct = onOpenProduct
-        )
-        return
+    // 栈顶详情页优先渲染（订单详情与已购产品详情可互相跳转）
+    currentDetail?.let { token ->
+        when {
+            token.startsWith("product:") -> {
+                val hostId = token.removePrefix("product:")
+                PurchasedProductPage(
+                    hostId = hostId,
+                    state = state.productDetails[hostId] ?: ProductDetailUi(),
+                    onBack = popDetail,
+                    onRefresh = { vm.refreshProductDetail(hostId) },
+                    onOpenOrder = openOrderDetail
+                )
+                return
+            }
+            token.startsWith("order:") -> {
+                val orderId = token.removePrefix("order:")
+                OrderDetailPage(
+                    orderId = orderId,
+                    state = state.orderDetails[orderId] ?: OrderDetailUi(),
+                    onBack = popDetail,
+                    onRefresh = { vm.refreshOrderDetail(orderId) },
+                    onOpenProduct = openHostDetail
+                )
+                return
+            }
+        }
     }
 
     servicePage?.let { panel ->
@@ -126,8 +172,8 @@ fun ProfileScreen(
             data = state.panels[panel],
             onBack = { servicePage = null },
             onRefresh = { vm.refreshPanel(panel) },
-            onOpenOrder = { orderDetailId = it },
-            onOpenProduct = onOpenProduct,
+            onOpenOrder = openOrderDetail,
+            onOpenProduct = { openHostDetail(it, "") },
             onOpenWeb = onOpenWeb
         )
         return

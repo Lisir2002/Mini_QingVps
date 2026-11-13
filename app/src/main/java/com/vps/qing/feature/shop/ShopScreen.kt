@@ -113,8 +113,7 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
         }
     }
 
-    // 配置详情独立页与轻提示已提升到 MainScreen 渲染层（v1.4.1），
-    // 「已购产品」/订单明细也能跨 Tab 打开同一配置页
+    // 商品配置页与轻提示已提升到 MainScreen 渲染层（v1.4.1），打开时由主容器隐藏底栏
 }
 
 /** 侧边栏底部内嵌开关：展开态是带文字的胶囊，收起态是居中的圆形图标按钮。 */

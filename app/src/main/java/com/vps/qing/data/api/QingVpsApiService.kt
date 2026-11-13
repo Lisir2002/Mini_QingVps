@@ -206,6 +206,24 @@ interface QingVpsApiService {
     /** 实名认证方式列表（如「人脸实名认证」）。 */
     @GET("certification/plugin")
     suspend fun certificationPlugins(): ApiEnvelope
+
+    // ---- v1.4.2：已购产品详情（只读，展示已订购的配置与支付信息）----
+
+    /** 主机详情：data.host 含支付信息、addition（用户名/密码/端口/地区）。 */
+    @GET("host/{id}")
+    suspend fun hostDetail(@Path("id") id: String): ApiEnvelope
+
+    /** 主机附加信息：IP、IP 数量、国家/地区。 */
+    @GET("host/{id}/specific_info")
+    suspend fun hostSpecificInfo(@Path("id") id: String): ApiEnvelope
+
+    /**
+     * mf_cloud 实例详情：data 含 cpu/memory/bw/system_disk/image/power_status 等，
+     * 即网页产品管理页「配置信息」卡片的数据源（cloud.js cloudDetail）。
+     * 非 mf_cloud 模块商品返回 400，仓库层会容忍并降级为只展示支付信息。
+     */
+    @GET("remf_cloud/{id}")
+    suspend fun cloudDetail(@Path("id") id: String): ApiEnvelope
 }
 
 /** /captcha/tp_captcha/index/refresh 的响应。 */

@@ -15,6 +15,7 @@ import com.vps.qing.data.repository.ServiceParser
 import com.vps.qing.data.repository.SubAccountLine
 import com.vps.qing.data.repository.TicketLine
 import com.vps.qing.data.repository.OrderDetail
+import com.vps.qing.data.repository.PurchasedDetail
 import com.vps.qing.data.repository.TxnLine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,7 +50,9 @@ data class ProfileUiState(
     /** 各服务子页面的数据缓存（进入页面懒加载）。 */
     val panels: Map<ServicePanel, ServicePanelData> = emptyMap(),
     /** 订单详情页缓存（orderId -> 状态）。 */
-    val orderDetails: Map<String, OrderDetailUi> = emptyMap()
+    val orderDetails: Map<String, OrderDetailUi> = emptyMap(),
+    /** 已购产品详情页缓存（hostId -> 状态，v1.4.2）。 */
+    val productDetails: Map<String, ProductDetailUi> = emptyMap()
 )
 
 /** 订单详情子页面状态。 */
@@ -57,6 +60,13 @@ data class OrderDetailUi(
     val loading: Boolean = false,
     val error: String? = null,
     val detail: OrderDetail? = null
+)
+
+/** 已购产品详情子页面状态（v1.4.2）。 */
+data class ProductDetailUi(
+    val loading: Boolean = false,
+    val error: String? = null,
+    val detail: PurchasedDetail? = null
 )
 
 /**
@@ -110,6 +120,43 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
 
     fun refreshOrderDetail(orderId: String) {
         fetchOrderDetail(orderId)
+    }
+
+    // ---- v1.4.2：已购产品详情（已订购配置 + 支付信息，只读）----
+
+    /** 进入详情页：未成功加载过则拉取，已加载直接复用缓存。 */
+    fun ensureProductDetail(hostId: String) {
+        val existing = _ui.value.productDetails[hostId]
+        if (existing != null && existing.detail != null) return
+        fetchProductDetail(hostId)
+    }
+
+    fun refreshProductDetail(hostId: String) {
+        fetchProductDetail(hostId)
+    }
+
+    private fun fetchProductDetail(hostId: String) {
+        viewModelScope.launch {
+            setProductDetail(hostId) { it.copy(loading = true, error = null) }
+            when (val r = repo.productDetail(hostId)) {
+                is ApiResult.Success -> setProductDetail(hostId) {
+                    it.copy(loading = false, error = null, detail = r.data)
+                }
+                is ApiResult.Failure -> setProductDetail(hostId) {
+                    it.copy(loading = false, error = "[${r.code}] ${r.msg}")
+                }
+                is ApiResult.Error -> setProductDetail(hostId) {
+                    it.copy(loading = false, error = friendly(r.throwable))
+                }
+            }
+        }
+    }
+
+    private fun setProductDetail(hostId: String, transform: (ProductDetailUi) -> ProductDetailUi) {
+        _ui.update {
+            val cur = transform(it.productDetails[hostId] ?: ProductDetailUi())
+            it.copy(productDetails = it.productDetails + (hostId to cur))
+        }
     }
 
     private fun fetchOrderDetail(orderId: String) {

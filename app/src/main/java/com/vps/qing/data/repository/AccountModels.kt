@@ -3,6 +3,8 @@ package com.vps.qing.data.repository
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.vps.qing.core.network.string
+import com.vps.qing.core.network.objectAt
+import com.vps.qing.core.network.number
 
 /**
  * 个人中心「账号与服务」原生数据模型（v1.3.0，不再跳网页）。
@@ -209,6 +211,80 @@ object ServiceParser {
                 types = types
             )
         }
+
+    // ---- v1.4.2：已购产品详情（已订购的配置信息 + 支付信息，只读）----
+
+    /** 带时分的时间戳格式化（详情页「开通时间 / 下次续费时间」）。 */
+    private fun dateTime(v: String?): String {
+        val ts = v?.toLongOrNull() ?: return v.orEmpty()
+        if (ts <= 0) return "--"
+        return java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.CHINA)
+            .format(java.util.Date(ts * 1000))
+    }
+
+    /** 数字字段 → 整数字符串（8.0 → 8），缺失返回空串。 */
+    private fun JsonElement?.intText(vararg keys: String): String =
+        this.number(*keys)?.toInt()?.toString().orEmpty()
+
+    /**
+     * 合并三份实测数据：
+     *  - hostData: GET /host/{id} → data.host（支付信息、addition 登录信息）
+     *  - cloudData: GET /remf_cloud/{id} → data（CPU/内存/带宽/磁盘/镜像/电源状态）
+     *  - specificData: GET /host/{id}/specific_info → data（IP、IP 数量、地区）
+     * cloudData 允许为 null（非 mf_cloud 模块商品），此时只展示支付信息。
+     */
+    fun purchasedDetail(
+        hostData: JsonElement?,
+        cloudData: JsonElement?,
+        specificData: JsonElement?
+    ): PurchasedDetail? {
+        val h = hostData.objectAt("host") ?: hostData.objectAt() ?: return null
+        // 主体数据无效（如站点返回空对象）时不构造详情页
+        if (h.string("id").isNullOrBlank()) return null
+        val add = h.objectAt("addition")
+        val c = cloudData.objectAt()
+        val s = specificData.objectAt()
+        val image = c.objectAt("image")
+        return PurchasedDetail(
+            id = h.string("id").orEmpty(),
+            name = h.string("name").orEmpty(),
+            productId = h.string("product_id").orEmpty(),
+            productName = h.string("product_name").orEmpty(),
+            orderId = h.string("order_id").orEmpty(),
+            status = h.string("status").orEmpty(),
+            powerStatus = c.string("power_status").orEmpty(),
+            firstPaymentAmount = h.string("first_payment_amount").orEmpty(),
+            renewAmount = h.string("renew_amount").orEmpty(),
+            billingCycleName = h.string("billing_cycle_name").orEmpty(),
+            payType = h.string("pay_type").orEmpty(),
+            autoRenew = h.string("auto_renew") == "1" || h.string("auto_renew") == "true",
+            activeTime = dateTime(h.string("active_time")),
+            dueTime = dateTime(h.string("due_time")),
+            baseInfo = h.string("base_info").orEmpty(),
+            ip = s.string("dedicate_ip").orEmpty()
+                .ifBlank { c.string("ip").orEmpty() },
+            ipNum = s.intText("ip_num").ifBlank { c.intText("ip_num") },
+            ipv6Num = c.intText("ipv6_num"),
+            username = add.string("username").orEmpty().ifBlank { c.string("username").orEmpty() },
+            password = add.string("password").orEmpty().ifBlank { c.string("password").orEmpty() },
+            port = add.string("port").orEmpty().ifBlank { "22" },
+            imageName = image.string("name").orEmpty()
+                .ifBlank { add.string("image_name").orEmpty() },
+            country = s.string("country").orEmpty().ifBlank { add.string("city").orEmpty() },
+            city = s.string("city").orEmpty().ifBlank { add.string("city").orEmpty() },
+            area = s.string("area").orEmpty().ifBlank { add.string("area").orEmpty() },
+            lineName = c.objectAt("line").string("name").orEmpty(),
+            securityGroup = c.objectAt("security_group").string("name").orEmpty(),
+            cpu = c.intText("cpu"),
+            memory = c.intText("memory"),
+            systemDisk = c.objectAt("system_disk").intText("size"),
+            dataDiskCount = c.objectAt("data_disk").intText("count"),
+            dataDiskSize = c.objectAt("data_disk").intText("total_size"),
+            bw = c.intText("bw"),
+            gpu = c.string("gpu").orEmpty(),
+            hasCloudConfig = c != null
+        )
+    }
 }
 
 data class HostLine(
@@ -326,6 +402,49 @@ data class CertPlugin(
     val id: String,
     val title: String,
     val types: List<String>
+)
+
+/**
+ * 已购产品详情（v1.4.2）：展示「已经订购的配置信息 + 支付信息」，不是购买页。
+ * 来自 GET /host/{id}、GET /remf_cloud/{id}、GET /host/{id}/specific_info 三接口合并。
+ */
+data class PurchasedDetail(
+    val id: String,
+    val name: String,
+    val productId: String,
+    val productName: String,
+    val orderId: String,
+    val status: String,
+    val powerStatus: String,
+    val firstPaymentAmount: String,
+    val renewAmount: String,
+    val billingCycleName: String,
+    val payType: String,
+    val autoRenew: Boolean,
+    val activeTime: String,
+    val dueTime: String,
+    val baseInfo: String,
+    val ip: String,
+    val ipNum: String,
+    val ipv6Num: String,
+    val username: String,
+    val password: String,
+    val port: String,
+    val imageName: String,
+    val country: String,
+    val city: String,
+    val area: String,
+    val lineName: String,
+    val securityGroup: String,
+    val cpu: String,
+    val memory: String,
+    val systemDisk: String,
+    val dataDiskCount: String,
+    val dataDiskSize: String,
+    val bw: String,
+    val gpu: String,
+    /** remf_cloud 实例配置是否可用（非套餐型商品为 false，只展示支付信息）。 */
+    val hasCloudConfig: Boolean
 )
 
 /** 测试辅助：构造空包装对象。 */

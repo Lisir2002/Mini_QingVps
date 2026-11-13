@@ -64,7 +64,7 @@ private enum class BottomTab(val title: String, val icon: ImageVector) {
 /**
  * 应用主容器 v1.4.1：以磨砂玻璃底栏 Tab 为核心。
  *  - 子页面（个人中心服务子页 / 设置页 / 订单详情 / 商品配置页）打开时隐藏底栏，整页沉浸；
- *  - 商品配置页提升到主容器层渲染：选购页与「已购产品」/订单明细都能跨 Tab 打开同一页面；
+ *  - 商品配置页（选购页自定义配置）在主容器层渲染，打开时隐藏底栏；
  *  - ShopViewModel 挂在 MAIN 这个 NavBackStackEntry 上，选购页与底栏角标共享同一实例，
  *    切 Tab 后购物车内容不丢失。
  */
@@ -109,14 +109,11 @@ fun MainScreen(
                 else -> ProfileScreen(
                     onLoggedOut = onLoggedOut,
                     onOpenWeb = onOpenWeb,
-                    onSubPageChanged = { profileSubOpen = it },
-                    onOpenProduct = { productId, productName ->
-                        openProductConfig(shopVm, shopState.allProducts, productId, productName)
-                    }
+                    onSubPageChanged = { profileSubOpen = it }
                 )
             }
 
-            // 跨 Tab 商品配置页：选购页/已购产品/订单明细共用同一渲染层
+            // 商品配置页（选购页自定义配置）在主容器层渲染，打开时隐藏底栏
             shopState.configSheet?.let { sheet ->
                 ConfigSheet(
                     sheet = sheet,
@@ -163,22 +160,6 @@ fun MainScreen(
                 }
             }
         }
-    }
-}
-
-/** 按商品 id（或名称兜底）在站点全量商品里定位并打开配置页；找不到提示已下架。 */
-private fun openProductConfig(
-    vm: ShopViewModel,
-    allProducts: List<com.vps.qing.data.repository.ProductInfo>,
-    productId: String,
-    productName: String
-) {
-    val product = allProducts.firstOrNull { it.id == productId }
-        ?: allProducts.firstOrNull { productName.isNotBlank() && it.name == productName }
-    if (product != null) {
-        vm.openConfig(product)
-    } else {
-        vm.notify("商品「${productName.ifBlank { "#$productId" }}」已下架或不存在")
     }
 }
 

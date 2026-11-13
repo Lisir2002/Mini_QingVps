@@ -76,7 +76,7 @@ data class ServiceMenu(
 object ServicePanels {
     val entries: List<ServiceMenu> = listOf(
         ServiceMenu(
-            "已购产品", "已购产品列表，点击查看配置", AppIcons.Server,
+            "已购产品", "已购产品列表，点击查看已购配置", AppIcons.Server,
             0, panel = ServicePanel.HOSTS
         ),
         ServiceMenu(
@@ -113,8 +113,8 @@ fun ServicePageScreen(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenOrder: (String) -> Unit = {},
-    /** 打开商品配置页：productId 优先，productName 兜底匹配（v1.4.1）。 */
-    onOpenProduct: (String, String) -> Unit = { _, _ -> },
+    /** 打开「已购产品详情」页（传入 hostId，v1.4.2：已订购配置而非购买页）。 */
+    onOpenProduct: (String) -> Unit = {},
     onOpenWeb: (String) -> Unit = {}
 ) {
     val menu = ServicePanels.entries.firstOrNull { it.panel == panel }
@@ -186,7 +186,7 @@ fun ServicePageScreen(
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 items(data.hosts, key = { "host-${it.id}" }) { host ->
-                                    Box(Modifier.clickable { onOpenProduct(host.productId, host.productName) }) {
+                                    Box(Modifier.clickable { onOpenProduct(host.id) }) {
                                         HostLineRow(host)
                                     }
                                 }
@@ -482,7 +482,7 @@ private fun certRecordStatus(status: String): String = when (status) {
     else -> ""
 }
 
-/** 订单详情子页面（v1.4.0，GET /order/{id}）；明细项可跳转商品配置页（v1.4.1）。 */
+/** 订单详情子页面（GET /order/{id}）；明细项跳转对应「已购产品详情」页（v1.4.2）。 */
 @Composable
 fun OrderDetailPage(
     orderId: String,
@@ -565,9 +565,9 @@ fun OrderDetailPage(
                                     }
                                 }
                             }
-                            // 明细项（点击进入对应商品配置页，v1.4.1）
+                            // 明细项（点击进入该订单对应的已购产品详情，v1.4.2）
                             items(d.items, key = { "item-${it.id}" }) { item ->
-                                Box(Modifier.clickable { onOpenProduct("", item.productName) }) {
+                                Box(Modifier.clickable { onOpenProduct(item.hostId, item.productName) }) {
                                     GlassCard(modifier = Modifier.fillMaxWidth()) {
                                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -618,7 +618,7 @@ fun OrderDetailPage(
                                         }
                                         Spacer(Modifier.height(2.dp))
                                         Text(
-                                            "点击查看商品配置 →",
+                                            "点击查看已购产品详情 →",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = CartoonColors.Brand,
                                             fontWeight = FontWeight.Bold
@@ -710,7 +710,7 @@ internal fun HostLineRow(host: HostLine) {
             KeyValueRow("到期", host.dueTime.ifBlank { "--" })
             Spacer(Modifier.height(2.dp))
             Text(
-                "点击查看产品配置 →",
+                "点击查看已购详情 →",
                 style = MaterialTheme.typography.labelSmall,
                 color = CartoonColors.Brand,
                 fontWeight = FontWeight.Bold
