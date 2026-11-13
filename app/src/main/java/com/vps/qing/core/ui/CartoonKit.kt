@@ -171,8 +171,8 @@ fun GlassTopBar(
             .fillMaxWidth()
             .padding(horizontal = UiT.pagePad, vertical = 10.dp),
         shape = CartoonKit.GlassShape,
-        alpha = UiT.glass + 0.06f,
-        elevation = UiT.shadowLg
+        alpha = UiT.glassBar,
+        elevation = UiT.shadowMd
     ) {
         Row(
             modifier = Modifier
@@ -230,7 +230,9 @@ fun CartoonButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     icon: ImageVector? = null,
-    containerColor: Color = CartoonColors.Brand
+    containerColor: Color = CartoonColors.Brand,
+    /** 文本右侧的自定义内容（如加载指示器）；传入时与文本之间自动留间距。 */
+    trailingContent: (@Composable RowScope.() -> Unit)? = null
 ) {
     Button(
         onClick = onClick,
@@ -260,6 +262,10 @@ fun CartoonButton(
             softWrap = false,
             overflow = TextOverflow.Visible
         )
+        if (trailingContent != null) {
+            Spacer(Modifier.width(UiT.spaceSm))
+            trailingContent()
+        }
     }
 }
 

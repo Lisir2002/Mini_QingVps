@@ -73,7 +73,9 @@ fun ProfileScreen(
     onSubPageChanged: (Boolean) -> Unit = {},
     /** 首页发起的原生导航请求（v1.4.6）：面板 token 或 "product:{id}"，消费后回调置空。 */
     navRequest: String? = null,
-    onNavConsumed: () -> Unit = {}
+    onNavConsumed: () -> Unit = {},
+    /** 待支付订单「继续支付」：拉起原生结算支付面板（v1.4.9）。 */
+    onContinuePay: (String, String, List<String>) -> Unit = { _, _, _ -> }
 ) {
     val vm: ProfileViewModel = viewModel(
         factory = simpleViewModelFactory { ProfileViewModel(AppContainer.profileRepository) }
@@ -198,7 +200,8 @@ fun ProfileScreen(
                     state = state.orderDetails[orderId] ?: OrderDetailUi(),
                     onBack = popDetail,
                     onRefresh = { vm.refreshOrderDetail(orderId) },
-                    onOpenProduct = openHostDetail
+                    onOpenProduct = openHostDetail,
+                    onContinuePay = onContinuePay
                 )
                 return
             }

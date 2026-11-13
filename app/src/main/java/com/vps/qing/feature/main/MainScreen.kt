@@ -148,7 +148,8 @@ fun MainScreen(
                     onOpenWeb = onOpenWeb,
                     onSubPageChanged = { profileSubOpen = it },
                     navRequest = profileNavRequest,
-                    onNavConsumed = { profileNavRequest = null }
+                    onNavConsumed = { profileNavRequest = null },
+                    onContinuePay = { orderId, amount, names -> shopVm.startPayOrder(orderId, amount, names) }
                 )
             }
 
@@ -221,7 +222,7 @@ private fun GlassBottomBar(selected: Int, cartCount: Int, onSelect: (Int) -> Uni
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 12.dp)
-            .glass(shape = CartoonKit.PillShape, alpha = 0.74f, elevation = 16.dp)
+            .glass(shape = CartoonKit.PillShape, alpha = UiT.glassBar, elevation = UiT.shadowLg)
     ) {
         Row(
             Modifier

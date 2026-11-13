@@ -3,7 +3,7 @@ package com.vps.qing.core.ui
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.4.8"
+    const val APP_VERSION = "1.4.9"
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"

@@ -1,5 +1,6 @@
 package com.vps.qing.feature.shop
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,27 +21,32 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vps.qing.core.ui.AppIcons
+import com.vps.qing.core.ui.QrBitmap
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonButton
-import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassCard
 import com.vps.qing.core.ui.GlassTopBar
-import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.UiT
 import com.vps.qing.data.repository.GatewayOption
 
 /**
- * 原生结算支付面板（v1.4.8）：金额确认 → 支付方式选择 → 拉起支付页 + 轮询 → 成功态。
- * 全流程 App 内完成，不再跳站点购物车页。
+ * 原生结算支付面板（v1.4.9 重构）：
+ *  - 所有阶段都「绑定显示」当前订单详情（订单号 / 金额 / 台数 / 商品），选方式与等待支付两页一致；
+ *  - 等待支付页不再自动跳网页，而是把支付深链生成二维码直接展示在「打开支付宝」按钮上方，
+ *    用户扫码或点按钮都能拉起支付；
+ *  - 所有按钮均带回应式反馈：发起支付/查询中进入禁用+加载态，点击即给视觉回应。
  */
 @Composable
 fun CheckoutSheet(
@@ -70,42 +75,15 @@ fun CheckoutSheet(
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // ---- 应付金额 ----
-                GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.85f) {
-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "应付金额",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = CartoonColors.InkSub
-                        )
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                "¥",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = CartoonColors.Coral
-                            )
-                            Text(
-                                checkout.amount ?: "--",
-                                style = MaterialTheme.typography.displaySmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = CartoonColors.Coral
-                            )
-                        }
-                        if (checkout.hostIds.isNotEmpty()) {
-                            Text(
-                                "支付开通后将获得 ${checkout.hostIds.size} 台服务",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = CartoonColors.InkSub
-                            )
-                        }
-                    }
+                // ---- 订单详情（绑定显示：两阶段一致） ----
+                if (checkout.stage != "SUCCESS") {
+                    OrderSummaryCard(checkout = checkout)
                 }
 
                 when (checkout.stage) {
                     // ---- 成功态 ----
                     "SUCCESS" -> {
-                        GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.85f) {
+                        GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
                             Column(
                                 Modifier.fillMaxWidth().padding(vertical = 28.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -139,58 +117,17 @@ fun CheckoutSheet(
 
                     // ---- 等待支付（轮询中） ----
                     "PAYING" -> {
-                        GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.85f) {
-                            Column(
-                                Modifier.fillMaxWidth().padding(vertical = 20.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Text(
-                                    "已拉起支付页面，请在浏览器完成付款",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = CartoonColors.Ink
-                                )
-                                Text(
-                                    "支付完成后 App 会自动确认（最长等待 10 分钟）",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = CartoonColors.InkSub
-                                )
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = CartoonColors.Brand,
-                                        modifier = Modifier.size(16.dp),
-                                        strokeWidth = 2.dp
-                                    )
-                                    Text(
-                                        "正在确认支付结果…",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = CartoonColors.InkSub
-                                    )
-                                }
-                                CartoonButton(
-                                    text = "打开支付页面",
-                                    onClick = { checkout.payUrl?.let(onOpenPayUrl) },
-                                    icon = AppIcons.Forward,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                CartoonButton(
-                                    text = "我已完成支付",
-                                    onClick = onCheckPayNow,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    containerColor = CartoonColors.Mint
-                                )
-                            }
-                        }
+                        PayingCard(
+                            checkout = checkout,
+                            onOpenPayUrl = onOpenPayUrl,
+                            onCheckPayNow = onCheckPayNow
+                        )
                     }
 
                     // ---- 选支付方式 ----
                     else -> {
                         if (checkout.gatewaysLoading) {
-                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.85f) {
+                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
                                 Box(
                                     Modifier.fillMaxWidth().padding(vertical = 32.dp),
                                     contentAlignment = Alignment.Center
@@ -199,7 +136,7 @@ fun CheckoutSheet(
                                 }
                             }
                         } else if (checkout.gateways.isEmpty()) {
-                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.85f) {
+                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
                                 Text(
                                     "站点未提供在线支付方式，请前往网页完成支付",
                                     style = MaterialTheme.typography.bodySmall,
@@ -218,7 +155,7 @@ fun CheckoutSheet(
                             checkout.gateways.forEach { gateway ->
                                 GatewayRow(
                                     gateway = gateway,
-                                    enabled = !checkout.paying,
+                                    enabled = !checkout.paying && !checkout.checking,
                                     onClick = { onPayWith(gateway) }
                                 )
                             }
@@ -227,7 +164,8 @@ fun CheckoutSheet(
                             Text(
                                 it,
                                 color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
                         if (checkout.paying) {
@@ -251,6 +189,139 @@ fun CheckoutSheet(
                     }
                 }
             }
+        }
+    }
+}
+
+/** 订单详情卡：金额 + 订单号 + 台数 + 商品名，选方式与等待支付两页共用（绑定显示）。 */
+@Composable
+private fun OrderSummaryCard(checkout: CheckoutState) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                "应付金额",
+                style = MaterialTheme.typography.labelSmall,
+                color = CartoonColors.InkSub
+            )
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    "¥",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = CartoonColors.Coral
+                )
+                Text(
+                    checkout.amount ?: "--",
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = CartoonColors.Coral
+                )
+            }
+            if (checkout.orderId != null) {
+                Text(
+                    "订单号 #${checkout.orderId}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CartoonColors.InkSub
+                )
+            }
+            if (checkout.hostIds.isNotEmpty()) {
+                Text(
+                    "支付开通后将获得 ${checkout.hostIds.size} 台服务",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CartoonColors.InkSub
+                )
+            }
+            if (checkout.productNames.isNotEmpty()) {
+                Text(
+                    checkout.productNames.joinToString("、"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CartoonColors.InkSub,
+                    textAlign = TextAlign.Start
+                )
+            }
+        }
+    }
+}
+
+/** 等待支付卡：二维码（支付深链）+「打开支付宝」+「我已完成支付」。 */
+@Composable
+private fun PayingCard(
+    checkout: CheckoutState,
+    onOpenPayUrl: (String) -> Unit,
+    onCheckPayNow: () -> Unit
+) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+        Column(
+            Modifier.fillMaxWidth().padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                "请使用支付宝扫码完成付款",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = CartoonColors.Ink
+            )
+
+            // 二维码：把支付深链编码成本地二维码，直接展示在按钮上方
+            val qr: ImageBitmap? = remember(checkout.payUrl) { QrBitmap.encode(checkout.payUrl) }
+            Box(
+                Modifier
+                    .size(200.dp)
+                    .clip(CartoonKit.CardShape)
+                    .background(androidx.compose.ui.graphics.Color.White)
+                    .padding(12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (qr != null) {
+                    Image(
+                        bitmap = qr,
+                        contentDescription = "支付二维码",
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        "二维码生成失败，请点击下方按钮打开支付宝",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CartoonColors.InkSub,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            Text(
+                "支付完成后 App 会自动确认（最长等待 10 分钟）",
+                style = MaterialTheme.typography.labelSmall,
+                color = CartoonColors.InkSub,
+                textAlign = TextAlign.Center
+            )
+
+            // 打开支付宝（二维码正下方，不被切割）
+            CartoonButton(
+                text = "打开支付宝",
+                onClick = { checkout.payUrl?.let(onOpenPayUrl) },
+                icon = AppIcons.Wallet,
+                enabled = checkout.payUrl != null && !checkout.checking,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // 我已完成支付：查询中禁用 + 加载态，给出回应式反馈
+            CartoonButton(
+                text = if (checkout.checking) "正在确认支付结果…" else "我已完成支付",
+                onClick = onCheckPayNow,
+                enabled = !checkout.checking,
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = CartoonColors.Mint,
+                trailingContent = if (checkout.checking) {
+                    {
+                        CircularProgressIndicator(
+                            color = androidx.compose.ui.graphics.Color.White,
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                } else null
+            )
         }
     }
 }

@@ -28,10 +28,11 @@ object UiT {
     val shadowLg = 12.dp     // 顶栏 / 悬浮容器
     val shadowXl = 18.dp     // 弹窗
 
-    // ---------- 玻璃透明度 ----------
-    const val glassFaint = 0.52f     // 侧边栏等大面积玻璃
-    const val glass = 0.66f          // 常规玻璃容器
-    const val glassStrong = 0.78f    // 卡片（内容区更实，便于阅读）
+    // ---------- 玻璃透明度（v1.4.9 深度透明化：组件半透明以透出糖果背景）----------
+    const val glassFaint = 0.42f     // 侧边栏等大面积玻璃
+    const val glass = 0.54f          // 常规玻璃容器
+    const val glassStrong = 0.64f    // 卡片（内容区更实，便于阅读）
+    const val glassBar = 0.46f       // 顶栏/底栏：透明画布，透出背景糖果光斑
     const val glassOverlay = 0.92f   // toast / 遮罩层
 
     // ---------- 边框 ----------

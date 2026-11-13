@@ -784,7 +784,9 @@ fun OrderDetailPage(
     state: OrderDetailUi,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
-    onOpenProduct: (String, String) -> Unit = { _, _ -> }
+    onOpenProduct: (String, String) -> Unit = { _, _ -> },
+    /** 待支付订单的「继续支付」入口（v1.4.9）：拉起原生结算支付面板。 */
+    onContinuePay: (String, String, List<String>) -> Unit = { _, _, _ -> }
 ) {
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -858,6 +860,20 @@ fun OrderDetailPage(
                                         if (d.amountUnpaid.isNotBlank() && d.amountUnpaid != "0.00") KeyValueRow("待付金额", "￥${d.amountUnpaid}")
                                         if (d.notes.isNotBlank()) KeyValueRow("备注", d.notes)
                                     }
+                                }
+                            }
+                            // 待支付/待审核订单：原生「继续支付」入口（v1.4.9）
+                            if (d.status.equals("Unpaid", true) || d.status.equals("Pending", true)) {
+                                item {
+                                    CartoonButton(
+                                        text = "继续支付",
+                                        onClick = {
+                                            onContinuePay(d.id, d.amount, d.items.map { it.productName })
+                                        },
+                                        icon = AppIcons.Wallet,
+                                        containerColor = CartoonColors.Coral,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
                                 }
                             }
                             // 明细项（点击进入该订单对应的已购产品详情，v1.4.2）

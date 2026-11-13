@@ -65,11 +65,15 @@ data class CheckoutState(
     val orderId: String? = null,
     val amount: String? = null,
     val hostIds: List<String> = emptyList(),
+    /** 订单关联商品名（绑定显示用，来自购物车或订单明细）。 */
+    val productNames: List<String> = emptyList(),
     /** 已选中但未支付的行下标（结算来源）。 */
     val positions: List<Int> = emptyList(),
     val gateways: List<GatewayOption> = emptyList(),
     val gatewaysLoading: Boolean = false,
     val paying: Boolean = false,
+    /** 「我已完成支付」查询中：按钮进入禁用+加载态，给出回应式反馈。 */
+    val checking: Boolean = false,
     val payUrl: String? = null,
     val paid: Boolean = false,
     val error: String? = null
@@ -599,6 +603,8 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
     /**
      * 发起结算：结算购物车里所有云端行（position>=0），
      * 成功后拉支付方式列表进入选方式阶段。
+     * 结算动作会让服务端删除对应购物车行，故成功即失效购物车缓存并重新同步，
+     * 避免「已去支付但购物车内仍显示已删商品」的数据时效性问题（v1.4.9）。
      */
     fun startCheckout() {
         val positions = _ui.value.cart.filter { it.position >= 0 }.map { it.position }
@@ -606,12 +612,18 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
             _ui.update { it.copy(toast = "购物车没有可结算的商品") }
             return
         }
+        val names = _ui.value.cart.filter { it.position >= 0 }.map { it.productName }
         viewModelScope.launch {
             _ui.update {
-                it.copy(checkout = CheckoutState(positions = positions, gatewaysLoading = true))
+                it.copy(checkout = CheckoutState(
+                    positions = positions, productNames = names, gatewaysLoading = true
+                ))
             }
             when (val r = catalog.settleCart(positions)) {
                 is ApiResult.Success -> {
+                    // 服务端已删除购物车行：失效缓存并回源同步，保证 UI 与云端一致
+                    AppContainer.invalidateCache("cart")
+                    syncCart()
                     val gws = (catalog.gateways() as? ApiResult.Success)?.data.orEmpty()
                     _ui.update {
                         it.copy(checkout = it.checkout?.copy(
@@ -629,6 +641,27 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
                 is ApiResult.Error -> _ui.update {
                     it.copy(checkout = null, toast = r.throwable.message ?: "结算失败")
                 }
+            }
+        }
+    }
+
+    /**
+     * 针对「已存在但未支付」的订单继续支付（v1.4.9，订单详情页「继续支付」入口）。
+     * 不复用购物车结算，而是直接进入选支付方式阶段（orderId/amount 已知），
+     * 后续 payWith 直接 POST /pay（id=订单号, gateway），原生完成支付闭环。
+     */
+    fun startPayOrder(orderId: String, amount: String, productNames: List<String> = emptyList()) {
+        if (orderId.isBlank()) return
+        viewModelScope.launch {
+            _ui.update {
+                it.copy(checkout = CheckoutState(
+                    orderId = orderId, amount = amount, productNames = productNames,
+                    gatewaysLoading = true
+                ))
+            }
+            val gws = (catalog.gateways() as? ApiResult.Success)?.data.orEmpty()
+            _ui.update {
+                it.copy(checkout = it.checkout?.copy(gateways = gws, gatewaysLoading = false))
             }
         }
     }
@@ -669,12 +702,15 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         }
     }
 
-    /** 「我已完成支付」：立即查一次状态。 */
+    /** 「我已完成支付」：立即查一次状态，按钮进入加载/禁用态给出回应式反馈。 */
     fun checkPayNow() {
         val checkout = _ui.value.checkout ?: return
         val orderId = checkout.orderId ?: return
+        if (checkout.checking) return
         viewModelScope.launch {
+            _ui.update { it.copy(checkout = it.checkout?.copy(checking = true)) }
             checkOnce(orderId)
+            _ui.update { it.copy(checkout = it.checkout?.copy(checking = false)) }
         }
     }
 
