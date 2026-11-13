@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -376,11 +377,13 @@ fun QuantityStepper(
             tint = CartoonColors.Brand,
             bg = CartoonColors.BrandSoft
         )
+        // v1.4.7：数字固定宽度并水平居中，个位/两位数都不偏移
         Text(
             "$value",
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.width(36.dp),
+            fontWeight = FontWeight.ExtraBold,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.widthIn(min = 44.dp),
             color = CartoonColors.Ink
         )
         CartoonIconChip(

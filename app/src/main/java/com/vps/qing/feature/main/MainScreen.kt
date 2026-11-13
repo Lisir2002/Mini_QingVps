@@ -47,6 +47,7 @@ import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.UiT
 import com.vps.qing.core.ui.glass
 import com.vps.qing.feature.dashboard.DashboardScreen
+import com.vps.qing.feature.message.AnnouncementPage
 import com.vps.qing.feature.message.MessagesScreen
 import com.vps.qing.feature.profile.ProfileScreen
 import com.vps.qing.feature.shop.ConfigSheet
@@ -89,6 +90,9 @@ fun MainScreen(
         profileNavRequest = token
         selected = 3
     }
+    /** 网站公告独立页面（v1.4.7）：首页「更多」与消息页入口共用。 */
+    var showAnnouncements by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = showAnnouncements) { showAnnouncements = false }
     val shopVm: ShopViewModel = viewModel(
         factory = simpleViewModelFactory { ShopViewModel(AppContainer.catalogRepository) }
     )
@@ -101,7 +105,7 @@ fun MainScreen(
     Scaffold(
         containerColor = Color.Transparent,
         bottomBar = {
-            if (!profileSubOpen && !configOpen) {
+            if (!profileSubOpen && !configOpen && !showAnnouncements) {
                 GlassBottomBar(
                     selected = selected,
                     cartCount = shopState.cartCount,
@@ -115,15 +119,25 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            when (selected) {
+            // 网站公告独立页面：整页覆盖并隐藏底栏（v1.4.7）
+            if (showAnnouncements) {
+                AnnouncementPage(
+                    onBack = { showAnnouncements = false },
+                    onOpenWeb = onOpenWeb
+                )
+            } else when (selected) {
                 0 -> DashboardScreen(
                     onOpenWeb = onOpenWeb,
                     onOpenPanel = openProfileNav,
                     onNeedLogin = onNeedLogin,
-                    onGoShop = { selected = 1 }
+                    onGoShop = { selected = 1 },
+                    onOpenAnnouncements = { showAnnouncements = true }
                 )
                 1 -> ShopScreen(vm = shopVm, onOpenWeb = onOpenWeb)
-                2 -> MessagesScreen(onOpenWeb = onOpenWeb)
+                2 -> MessagesScreen(
+                    onOpenWeb = onOpenWeb,
+                    onOpenAnnouncements = { showAnnouncements = true }
+                )
                 else -> ProfileScreen(
                     onLoggedOut = onLoggedOut,
                     onOpenWeb = onOpenWeb,

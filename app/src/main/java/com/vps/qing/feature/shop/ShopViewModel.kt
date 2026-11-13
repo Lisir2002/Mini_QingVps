@@ -421,9 +421,10 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
     private fun buildBody(sheet: ConfigSheetState, cycleId: String?, qty: Int): JsonObject {
         val cfg = sheet.config
         if (cfg?.mf != null && sheet.mf != null) {
-            return MfCloudCart.calcBody(
-                sheet.mf.copy(durationId = cycleId), sheet.product.id, qty
-            )
+            // v1.4.7 修复：加购必须用 cartBody（product_id + activeName/login_way 等），
+            // 之前误用算价用的 calcBody（字段是 id + promo_code），站点读不到
+            // product_id 直接报 [400]「请选择商品」。
+            return MfCloudCart.cartBody(sheet.mf, sheet.product.id, qty)
         }
         val selections = cfg?.options.orEmpty().mapNotNull { opt ->
             val value = sheet.selections[opt.id] ?: defaultValue(opt) ?: return@mapNotNull null

@@ -3,7 +3,7 @@ package com.vps.qing.core.ui
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.4.6"
+    const val APP_VERSION = "1.4.7"
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"
@@ -112,6 +112,7 @@ object Strings {
     const val COMING_SOON = "功能开发中，敬请期待"
     const val MESSAGE_TIP = "站内通知、工单回复与公告将在这里汇总"
     const val OPEN_WEB_MESSAGES = "查看站点站内信"
+    const val OPEN_ANNOUNCEMENTS = "查看网站公告"
 
     // ---- 个人中心 / 设置 ----
     const val ACCOUNT = "账号信息"

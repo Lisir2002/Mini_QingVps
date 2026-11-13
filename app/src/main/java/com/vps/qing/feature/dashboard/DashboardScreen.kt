@@ -80,7 +80,9 @@ fun DashboardScreen(
     /** 原生面板/详情直达：token 语义见 MainScreen.profileNavRequest。 */
     onOpenPanel: (String) -> Unit = {},
     onNeedLogin: () -> Unit = {},
-    onGoShop: () -> Unit = {}
+    onGoShop: () -> Unit = {},
+    /** 公告独立页面（v1.4.7）。 */
+    onOpenAnnouncements: () -> Unit = {}
 ) {
     val vm: DashboardViewModel = viewModel(
         factory = simpleViewModelFactory {
@@ -168,9 +170,7 @@ fun DashboardScreen(
                     item {
                         SectionHeader(Strings.ANNOUNCEMENTS, CartoonColors.Peach) {
                             if (state.news.isNotEmpty()) {
-                                TrailingAction(Strings.MORE) {
-                                    onOpenWeb(AppContainer.webUrl("plugin/30/announcement.htm"))
-                                }
+                                TrailingAction(Strings.MORE) { onOpenAnnouncements() }
                             }
                         }
                     }
