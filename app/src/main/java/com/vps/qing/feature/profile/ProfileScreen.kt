@@ -297,7 +297,8 @@ fun ProfileScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp)
+                    .padding(top = 12.dp, bottom = 132.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 // 账号卡

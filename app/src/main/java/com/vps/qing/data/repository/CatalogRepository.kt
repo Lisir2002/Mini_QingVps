@@ -252,6 +252,10 @@ class CatalogRepository(private val api: QingVpsApiService) {
     suspend fun news(): ApiResult<List<NewsItem>> =
         safeApiCall({ api.news() }) { CatalogParser.news(it) }
 
+    /** 公告详情（匿名可用，v1.4.10）：原生公告内容页数据源。 */
+    suspend fun newsDetail(id: String): ApiResult<NewsDetail?> =
+        safeApiCall({ api.newsDetail(id) }) { CatalogParser.newsDetail(it) }
+
     suspend fun menu(): ApiResult<List<MenuEntry>> =
         safeApiCall({ api.menu() }) { CatalogParser.menu(it) }
 

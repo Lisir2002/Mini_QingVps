@@ -1,5 +1,6 @@
 package com.vps.qing.feature.message
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,8 +21,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +48,7 @@ import com.vps.qing.core.ui.GlassCard
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.data.repository.CatalogRepository
+import com.vps.qing.data.repository.NewsDetail
 import com.vps.qing.data.repository.NewsItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,18 +95,29 @@ class AnnouncementsViewModel(
 }
 
 /**
- * 网站公告独立页面（v1.4.7）：原生列表替代原先的 WebView 列表。
- * 点击公告卡打开站点公告详情页（announcement.htm?id=，登录态已同步）。
+ * 网站公告独立页面（v1.4.7 列表 / v1.4.10 内容页原生化）。
+ * 点击公告卡不再打开 announcement.htm 网页，改为渲染原生详情 overlay。
+ *
+ * @param openDetailId 外部（如首页公告卡）请求直接打开的公告 id；消费后回调置空。
  */
 @Composable
 fun AnnouncementPage(
     onBack: () -> Unit,
-    onOpenWeb: (String) -> Unit
+    onOpenWeb: (String) -> Unit,
+    openDetailId: String? = null,
+    onDetailConsumed: () -> Unit = {}
 ) {
     val vm: AnnouncementsViewModel = viewModel(
         factory = simpleViewModelFactory { AnnouncementsViewModel(AppContainer.catalogRepository) }
     )
     val state by vm.ui.collectAsState()
+
+    // 原生详情 overlay（v1.4.10）：列表之上整页覆盖
+    var detailId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(openDetailId) {
+        openDetailId?.let { detailId = it; onDetailConsumed() }
+    }
+    BackHandler(enabled = detailId != null) { detailId = null }
 
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -108,7 +125,7 @@ fun AnnouncementPage(
                 title = Strings.ANNOUNCEMENTS,
                 subtitle = "共 ${state.news.size} 条",
                 navIcon = AppIcons.Back,
-                onNavClick = onBack,
+                onNavClick = if (detailId != null) ({ detailId = null }) else onBack,
                 actions = {
                     if (!state.loading && !state.refreshing) {
                     CartoonIconChip(
@@ -147,7 +164,170 @@ fun AnnouncementPage(
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(state.news) { news -> AnnouncementCard(news) { onOpenWeb(it) } }
+                    items(state.news) { news -> AnnouncementCard(news) { detailId = news.id } }
+                }
+            }
+        }
+    }
+
+    // 公告内容详情（原生，v1.4.10）：覆盖在列表页之上
+    detailId?.let { id ->
+        AnnouncementDetailPage(newsId = id, onBack = { detailId = null })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 公告内容详情（v1.4.10 原生化，替代 announcement.htm 网页）
+// ---------------------------------------------------------------------------
+
+data class AnnouncementDetailUiState(
+    val loading: Boolean = true,
+    val detail: NewsDetail? = null,
+    val error: String? = null
+)
+
+/** 公告详情数据源：GET /news/{id}（匿名可用，走统一缓存层，写前缀 news/）。 */
+class AnnouncementDetailViewModel(
+    private val catalog: CatalogRepository,
+    private val newsId: String
+) : ViewModel() {
+
+    private val _ui = MutableStateFlow(AnnouncementDetailUiState())
+    val ui: StateFlow<AnnouncementDetailUiState> = _ui.asStateFlow()
+
+    init {
+        load()
+    }
+
+    fun load(force: Boolean = false) {
+        viewModelScope.launch {
+            if (force) AppContainer.invalidateCache("news/")
+            _ui.update { it.copy(loading = true, error = null) }
+            when (val r = catalog.newsDetail(newsId)) {
+                is com.vps.qing.core.network.ApiResult.Success -> _ui.update {
+                    it.copy(loading = false, detail = r.data, error = null)
+                }
+                is com.vps.qing.core.network.ApiResult.Failure -> _ui.update {
+                    it.copy(loading = false, error = "[${r.code}] ${r.msg}")
+                }
+                is com.vps.qing.core.network.ApiResult.Error -> _ui.update {
+                    it.copy(loading = false, error = r.throwable.message ?: "公告加载失败")
+                }
+            }
+        }
+    }
+}
+
+/** 公告内容详情页：标题卡（类型/时间）+ 正文段落直排；返回/刷新/加载/错误态齐全。 */
+@Composable
+fun AnnouncementDetailPage(
+    newsId: String,
+    onBack: () -> Unit
+) {
+    val vm: AnnouncementDetailViewModel = viewModel(
+        key = "announcement-$newsId",
+        factory = simpleViewModelFactory {
+            AnnouncementDetailViewModel(AppContainer.catalogRepository, newsId)
+        }
+    )
+    val state by vm.ui.collectAsState()
+    val detail = state.detail
+
+    CartoonBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            GlassTopBar(
+                title = "公告详情",
+                navIcon = AppIcons.Back,
+                onNavClick = onBack,
+                actions = {
+                    if (!state.loading) {
+                        CartoonIconChip(
+                            icon = AppIcons.Refresh,
+                            onClick = { vm.load(force = true) },
+                            tint = CartoonColors.Mint,
+                            bg = CartoonColors.MintSoft
+                        )
+                    }
+                }
+            )
+            when {
+                state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = CartoonColors.Brand)
+                }
+                detail == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    EmptyHint(
+                        icon = AppIcons.EmptyBox,
+                        text = state.error ?: "公告加载失败",
+                        action = {
+                            CartoonButton(
+                                text = Strings.RETRY,
+                                onClick = { vm.load(force = true) },
+                                icon = AppIcons.Refresh
+                            )
+                        }
+                    )
+                }
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // 标题卡：类型徽标 + 标题 + 时间
+                    item {
+                        GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (detail.type.isNotBlank()) {
+                                    Text(
+                                        detail.type,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = CartoonColors.Peach
+                                    )
+                                }
+                                Text(
+                                    detail.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = CartoonColors.Ink
+                                )
+                                if (detail.createTime > 0) {
+                                    Text(
+                                        formatAnnouncementTime(detail.createTime),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = CartoonColors.InkSub
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    // 正文段落
+                    if (detail.paragraphs.isEmpty()) {
+                        item {
+                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+                                Text(
+                                    "（正文为空）",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = CartoonColors.InkSub,
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        items(detail.paragraphs.size) { idx ->
+                            val paragraph = detail.paragraphs[idx]
+                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+                                Text(
+                                    paragraph,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = CartoonColors.Ink,
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

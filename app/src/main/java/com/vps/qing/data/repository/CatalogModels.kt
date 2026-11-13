@@ -81,6 +81,18 @@ data class NewsItem(
     val createTime: Long = 0L
 )
 
+/**
+ * 公告详情（v1.4.10）：GET /news/{id} → data.news。
+ * 正文是一整页 HTML，解析为段落列表供原生详情页直排渲染。
+ */
+data class NewsDetail(
+    val id: String,
+    val title: String,
+    val type: String = "",
+    val createTime: Long = 0L,
+    val paragraphs: List<String> = emptyList()
+)
+
 /** 已订购主机：需登录态，字段未实测，按多候选键宽松解析，缺失显示 --。 */
 data class HostSummary(
     val id: String? = null,
@@ -105,6 +117,10 @@ object CatalogParser {
     private val DOC_TAG = Regex("""<!DOCTYPE[^>]*>""", RegexOption.IGNORE_CASE)
     private val SCRIPT_BLOCK = Regex("""<(script|style)[\s\S]*?</\1>""", RegexOption.IGNORE_CASE)
     private val STRUCT_TAG = Regex("""</?(html|head|body)[^>]*>""", RegexOption.IGNORE_CASE)
+    /** 块级标签（v1.4.10 公告正文分段用）。 */
+    private val BLOCK_CLOSE = Regex("""</(p|div|h[1-6]|li|tr|section|article)\s*>""", RegexOption.IGNORE_CASE)
+    private val BLOCK_OPEN = Regex("""<(p|div|h[1-6]|li|tr|section|article)[^>]*/?>""", RegexOption.IGNORE_CASE)
+    private val NUMERIC_ENTITY = Regex("""&#(\d+);""")
     private val ENTITIES = listOf(
         "&nbsp;" to " ", "&amp;" to "&", "&lt;" to "<", "&gt;" to ">",
         "&quot;" to "\"", "&#39;" to "'", "&ldquo;" to "\"", "&rdquo;" to "\"",
@@ -234,6 +250,42 @@ object CatalogParser {
                 createTime = el.string("create_time")?.toLongOrNull() ?: 0L
             )
         } ?: emptyList()
+
+    /** 公告详情 GET /news/{id} → data.news（v1.4.10）。 */
+    fun newsDetail(data: JsonElement?): NewsDetail? {
+        val el = data?.objectAt("news") ?: data?.takeIf { it.isJsonObject } ?: return null
+        val id = el.string("id") ?: return null
+        return NewsDetail(
+            id = id,
+            title = el.string("title") ?: "公告详情",
+            type = el.string("type").orEmpty(),
+            createTime = el.string("create_time")?.toLongOrNull() ?: 0L,
+            paragraphs = paragraphsFromHtml(el.string("content").orEmpty())
+        )
+    }
+
+    /**
+     * 公告正文 HTML → 段落列表（v1.4.10）。与 [specsFromHtml] 共用清洗设施，
+     * 但面向全文阅读：块级标签（p/div/h1-6/li/tr/section/article/br）统一转段落换行，
+     * 不限行宽、不截断、不去重，保留公告原有段落顺序。
+     */
+    fun paragraphsFromHtml(html: String): List<String> {
+        if (html.isBlank()) return emptyList()
+        var text = DOC_TAG.replace(html, "")
+        text = SCRIPT_BLOCK.replace(text, "")
+        text = STRUCT_TAG.replace(text, "")
+        text = BLOCK_CLOSE.replace(text, "\n")
+        text = BR_TAG.replace(text, "\n")
+        text = BLOCK_OPEN.replace(text, "\n")
+        text = ANY_TAG.replace(text, "")
+        text = ENTITIES.fold(text) { acc, (entity, value) -> acc.replace(entity, value, true) }
+        text = NUMERIC_ENTITY.replace(text) { m ->
+            m.groupValues[1].toIntOrNull()?.toChar()?.toString() ?: ""
+        }
+        return text.split("\n")
+            .map { it.trim().replace(Regex("""\s{2,}"""), " ") }
+            .filter { it.isNotBlank() }
+    }
 
     fun hosts(data: JsonElement?): List<HostSummary> =
         data.listOrNull()?.map { el ->

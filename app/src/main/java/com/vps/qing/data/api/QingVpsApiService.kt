@@ -37,6 +37,10 @@ interface QingVpsApiService {
     @GET("news/index")
     suspend fun news(): ApiEnvelope
 
+    /** 公告详情（匿名可用，v1.4.10）：GET /news/{id} → data.news{title,type,content(html),create_time}。 */
+    @GET("news/{id}")
+    suspend fun newsDetail(@Path("id") id: String): ApiEnvelope
+
     // ---- 商品与分类（选购页）----
     @GET("product/group/first")
     suspend fun firstGroups(): ApiEnvelope

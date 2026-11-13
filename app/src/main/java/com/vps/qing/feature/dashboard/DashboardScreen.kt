@@ -24,11 +24,16 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -82,7 +87,9 @@ fun DashboardScreen(
     onNeedLogin: () -> Unit = {},
     onGoShop: () -> Unit = {},
     /** 公告独立页面（v1.4.7）。 */
-    onOpenAnnouncements: () -> Unit = {}
+    onOpenAnnouncements: () -> Unit = {},
+    /** 公告原生内容页直达（v1.4.10）：传入公告 id，主容器打开公告页并定位到详情。 */
+    onOpenAnnouncement: (String) -> Unit = {}
 ) {
     val vm: DashboardViewModel = viewModel(
         factory = simpleViewModelFactory {
@@ -92,19 +99,13 @@ fun DashboardScreen(
     val state by vm.ui.collectAsState()
 
     CartoonBackground {
-        Column(modifier = Modifier.fillMaxSize()) {
-            GlassTopBar(
-                title = Strings.DASHBOARD_TITLE,
-                subtitle = Strings.WELCOME_SUB,
-                actions = {
-                    CartoonIconChip(
-                        icon = AppIcons.Refresh,
-                        onClick = { vm.load(force = true) },
-                        tint = CartoonColors.Mint,
-                        bg = CartoonColors.MintSoft
-                    )
-                }
-            )
+        // v1.4.10 透明画布：列表整幅铺满（顶部从顶栏玻璃卡下穿过，底部沉入底栏玻璃之下），
+        // 顶栏悬浮在列表之上，磨砂玻璃实时透出滚动内容。
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 顶栏实际高度（含状态栏让位与内边距），供列表顶部让位
+            var headerPx by remember { mutableStateOf(0) }
+            val density = LocalDensity.current
+            val headerSpace = with(density) { headerPx.toDp() } + 4.dp
 
             PullToRefreshBox(
                 isRefreshing = state.loading,
@@ -113,7 +114,10 @@ fun DashboardScreen(
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                    contentPadding = PaddingValues(
+                        start = 14.dp, end = 14.dp,
+                        top = headerSpace, bottom = 132.dp
+                    ),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     item { WelcomeCard(state) }
@@ -177,7 +181,7 @@ fun DashboardScreen(
                     if (state.news.isEmpty()) {
                         item { HintCard(Strings.NO_NEWS) }
                     } else {
-                        items(state.news) { news -> NewsCard(news) { onOpenWeb(it) } }
+                        items(state.news) { news -> NewsCard(news) { onOpenAnnouncement(news.id) } }
                     }
 
                     item { SectionHeader(Strings.QUICK_ENTRIES, CartoonColors.Brand) {} }
@@ -213,6 +217,26 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
+
+            // 顶栏悬浮在列表之上（v1.4.10）：磨砂玻璃实时透出下方滚动内容
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { headerPx = it.size.height }
+            ) {
+                GlassTopBar(
+                    title = Strings.DASHBOARD_TITLE,
+                    subtitle = Strings.WELCOME_SUB,
+                    actions = {
+                        CartoonIconChip(
+                            icon = AppIcons.Refresh,
+                            onClick = { vm.load(force = true) },
+                            tint = CartoonColors.Mint,
+                            bg = CartoonColors.MintSoft
+                        )
+                    }
+                )
             }
         }
     }
@@ -404,7 +428,7 @@ private fun HostCard(host: HostSummary, onOpenPanel: (String) -> Unit) {
 
 /** 公告卡：点击打开站点公告详情页（有 id 时）。 */
 @Composable
-private fun NewsCard(news: NewsItem, onOpenWeb: (String) -> Unit) {
+private fun NewsCard(news: NewsItem, onOpenId: (String) -> Unit) {
     val hasDetail = news.id.isNotBlank()
     GlassCard(
         modifier = Modifier
@@ -412,7 +436,7 @@ private fun NewsCard(news: NewsItem, onOpenWeb: (String) -> Unit) {
             .then(
                 if (hasDetail) {
                     Modifier.clip(CartoonKit.CardShape).clickable {
-                        onOpenWeb(AppContainer.webUrl("announcement.htm?id=${news.id}"))
+                        onOpenId(news.id)
                     }
                 } else Modifier
             ),

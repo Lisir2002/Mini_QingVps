@@ -455,7 +455,7 @@ private fun PurchasePane(
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(
-                                start = UiT.spaceMd, end = UiT.pagePad, bottom = UiT.spaceLg
+                                start = UiT.spaceMd, end = UiT.pagePad, bottom = 132.dp
                             ),
                             verticalArrangement = Arrangement.spacedBy(UiT.spaceMd)
                         ) {
@@ -877,7 +877,10 @@ private fun CartPane(
     Column(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = UiT.pagePad, vertical = UiT.spaceXs),
+            contentPadding = PaddingValues(
+                start = UiT.pagePad, end = UiT.pagePad,
+                top = UiT.spaceXs, bottom = 132.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(UiT.spaceMd)
         ) {
             items(state.cart, key = { it.key }) { item ->

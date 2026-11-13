@@ -41,6 +41,7 @@ import com.vps.qing.core.AppContainer
 import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.AppIcons
 import com.vps.qing.core.ui.theme.CartoonColors
+import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.Strings
@@ -93,6 +94,8 @@ fun MainScreen(
     }
     /** 网站公告独立页面（v1.4.7）：首页「更多」与消息页入口共用。 */
     var showAnnouncements by rememberSaveable { mutableStateOf(false) }
+    /** 公告原生内容页直达（v1.4.10）：首页公告卡带来的公告 id，消费后置空。 */
+    var announcementFocus by rememberSaveable { mutableStateOf<String?>(null) }
     BackHandler(enabled = showAnnouncements) { showAnnouncements = false }
     val shopVm: ShopViewModel = viewModel(
         factory = simpleViewModelFactory { ShopViewModel(AppContainer.catalogRepository) }
@@ -107,37 +110,52 @@ fun MainScreen(
     val checkoutOpen = shopState.checkout != null
     BackHandler(enabled = checkoutOpen) { shopVm.closeCheckout() }
 
-    Scaffold(
-        containerColor = Color.Transparent,
-        bottomBar = {
-            if (!profileSubOpen && !configOpen && !showAnnouncements && !checkoutOpen) {
-                GlassBottomBar(
-                    selected = selected,
-                    cartCount = shopState.cartCount,
-                    onSelect = { selected = it }
-                )
+    // 底栏是否可见；可见时内容下沉到玻璃底栏之后（v1.4.10 透明画布），隐藏时保持原让位行为
+    val bottomBarVisible = !profileSubOpen && !configOpen && !showAnnouncements && !checkoutOpen
+
+    // v1.4.10 透明画布：糖果背景铺满整个屏幕（含状态栏带、底栏之后、导航栏区域），
+    // 顶栏/底栏玻璃之下不再露出窗口不透明白底，滚动内容可从玻璃栏下穿过。
+    CartoonBackground {
+        Scaffold(
+            containerColor = Color.Transparent,
+            bottomBar = {
+                if (bottomBarVisible) {
+                    GlassBottomBar(
+                        selected = selected,
+                        cartCount = shopState.cartCount,
+                        onSelect = { selected = it }
+                    )
+                }
             }
-        }
-    ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            // 网站公告独立页面：整页覆盖并隐藏底栏（v1.4.7）
-            if (showAnnouncements) {
-                AnnouncementPage(
-                    onBack = { showAnnouncements = false },
-                    onOpenWeb = onOpenWeb
-                )
-            } else when (selected) {
-                0 -> DashboardScreen(
-                    onOpenWeb = onOpenWeb,
-                    onOpenPanel = openProfileNav,
-                    onNeedLogin = onNeedLogin,
-                    onGoShop = { selected = 1 },
-                    onOpenAnnouncements = { showAnnouncements = true }
-                )
+        ) { padding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        top = padding.calculateTopPadding(),
+                        bottom = if (bottomBarVisible) 0.dp else padding.calculateBottomPadding()
+                    )
+            ) {
+                // 网站公告独立页面：整页覆盖并隐藏底栏（v1.4.7）
+                if (showAnnouncements) {
+                    AnnouncementPage(
+                        onBack = { showAnnouncements = false },
+                        onOpenWeb = onOpenWeb,
+                        openDetailId = announcementFocus,
+                        onDetailConsumed = { announcementFocus = null }
+                    )
+                } else when (selected) {
+                    0 -> DashboardScreen(
+                        onOpenWeb = onOpenWeb,
+                        onOpenPanel = openProfileNav,
+                        onNeedLogin = onNeedLogin,
+                        onGoShop = { selected = 1 },
+                        onOpenAnnouncements = { showAnnouncements = true },
+                        onOpenAnnouncement = { id ->
+                            announcementFocus = id
+                            showAnnouncements = true
+                        }
+                    )
                 1 -> ShopScreen(vm = shopVm, onOpenWeb = onOpenWeb)
                 2 -> MessagesScreen(
                     onOpenWeb = onOpenWeb,
@@ -211,6 +229,7 @@ fun MainScreen(
                 }
             }
         }
+    }
     }
 }
 
