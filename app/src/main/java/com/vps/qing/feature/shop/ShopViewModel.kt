@@ -3,6 +3,7 @@ package com.vps.qing.feature.shop
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonObject
+import com.vps.qing.core.AppContainer
 import com.vps.qing.core.network.ApiResult
 import com.vps.qing.data.repository.CartBodies
 import com.vps.qing.data.repository.CartCalculator
@@ -284,6 +285,9 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
 
     /** 手动刷新：强制静默重拉分类/商品/全部二级分类 + 购物车。 */
     fun refresh() {
+        // v1.4.4：下拉刷新要真正回源，先清掉统一缓存层的 L1/L2，
+        // 否则 TTL 未过期时会直接返回缓存，用户感觉「刷新没反应」。
+        AppContainer.invalidateCache()
         loadGroups(silent = true, force = true)
         syncCart()
     }

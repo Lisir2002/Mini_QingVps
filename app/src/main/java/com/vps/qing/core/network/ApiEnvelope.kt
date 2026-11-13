@@ -33,8 +33,16 @@ suspend fun <T> safeApiCall(
     map: suspend (JsonElement?) -> T
 ): ApiResult<T> = try {
     val envelope = block()
-    if (envelope.status == 200) ApiResult.Success(map(envelope.data))
-    else ApiResult.Failure(envelope.status, envelope.msg, envelope.data)
+    when {
+        envelope.status == 200 -> ApiResult.Success(map(envelope.data))
+        // v1.4.4：业务 401 在这里统一识别（此处已持有解析后的 envelope），
+        // 不再需要 AuthInterceptor 对每个响应 peekBody + Gson 反序列化。
+        envelope.status == 401 -> {
+            UnauthorizedBus.fire()
+            ApiResult.Failure(envelope.status, envelope.msg, envelope.data)
+        }
+        else -> ApiResult.Failure(envelope.status, envelope.msg, envelope.data)
+    }
 } catch (e: HttpException) {
     ApiResult.Failure(e.code(), e.message())
 } catch (e: Exception) {

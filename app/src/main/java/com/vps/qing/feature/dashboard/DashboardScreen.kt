@@ -77,7 +77,7 @@ fun DashboardScreen(onOpenWeb: (String) -> Unit) {
                 actions = {
                     CartoonIconChip(
                         icon = AppIcons.Refresh,
-                        onClick = { vm.load() },
+                        onClick = { vm.load(force = true) },
                         tint = CartoonColors.Mint,
                         bg = CartoonColors.MintSoft
                     )

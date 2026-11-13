@@ -1,6 +1,5 @@
 package com.vps.qing.core.network
 
-import com.google.gson.Gson
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -14,7 +13,17 @@ import okhttp3.Response
 object UnauthorizedBus {
     private val _events = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val events: SharedFlow<Unit> = _events.asSharedFlow()
+
+    /**
+     * 由 AppContainer 注册清理本地 token；放在这里避免 core/network 反向依赖 DI 容器。
+     * v1.4.4：业务 401 改由 [com.vps.qing.core.network.safeApiCall] 统一识别，
+     * 拦截器不再对每个响应做 peekBody + Gson 反序列化。
+     */
+    @Volatile
+    var onUnauthorized: (() -> Unit)? = null
+
     fun fire() {
+        onUnauthorized?.invoke()
         _events.tryEmit(Unit)
     }
 }
@@ -38,29 +47,16 @@ fun interface TokenProvider {
     fun current(): String?
 }
 
-/** 注入 Bearer / 语言头，并从 body 里识别业务 401。 */
+/** 注入 Bearer / 语言头。业务 401 由 safeApiCall 识别，这里保持零解析开销。 */
 class AuthInterceptor(
-    private val tokenProvider: TokenProvider,
-    private val onUnauthorized: () -> Unit
+    private val tokenProvider: TokenProvider
 ) : Interceptor {
-    private val gson = Gson()
-
     override fun intercept(chain: Interceptor.Chain): Response {
         val builder = chain.request().newBuilder()
             .header("Accept", "application/json")
             .header("language", "zh-cn")
         tokenProvider.current()?.let { builder.header("Authorization", "Bearer $it") }
-
-        val response = chain.proceed(builder.build())
-        // peekBody 不消费响应流， Retrofit 仍能正常反序列化
-        val mediaType = response.body?.contentType()
-        val isJson = mediaType?.toString()?.substringBefore(";")?.trim()?.endsWith("/json", true) ?: true
-        if (response.isSuccessful && isJson) {
-            val peek = runCatching { response.peekBody(64L * 1024).string() }.getOrNull()
-            val envelope = peek?.let { runCatching { gson.fromJson(it, ApiEnvelope::class.java) }.getOrNull() }
-            if (envelope?.status == 401) onUnauthorized()
-        }
-        return response
+        return chain.proceed(builder.build())
     }
 }
 

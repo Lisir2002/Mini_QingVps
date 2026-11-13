@@ -3,6 +3,7 @@ package com.vps.qing.feature.profile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonObject
+import com.vps.qing.core.AppContainer
 import com.vps.qing.core.network.ApiResult
 import com.vps.qing.core.network.HtmlFallbackException
 import com.vps.qing.data.repository.AccountInfo
@@ -168,6 +169,16 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
 
     /** 子页面手动刷新：强制重新拉站点数据。 */
     fun refreshPanel(panel: ServicePanel) {
+        // v1.4.4：按面板清对应缓存前缀，保证手动刷新回源，同时不误伤其他页面缓存
+        val prefix = when (panel) {
+            ServicePanel.HOSTS -> "host"
+            ServicePanel.ORDERS -> "order"
+            ServicePanel.TRANSACTIONS -> "transaction"
+            ServicePanel.TICKETS -> "ticket"
+            ServicePanel.SUB_ACCOUNTS -> "sub_account"
+            else -> "account"
+        }
+        AppContainer.invalidateCache(prefix)
         fetchPanel(panel)
         if (panel == ServicePanel.SUB_ACCOUNTS) ensureSubFormMeta(force = true)
     }

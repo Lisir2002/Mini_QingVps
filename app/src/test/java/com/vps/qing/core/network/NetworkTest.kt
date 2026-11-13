@@ -40,7 +40,7 @@ class NetworkTest {
                 .setHeader("Content-Type", "application/json")
                 .setBody("""{"status":200,"msg":"ok","data":{}}""")
         )
-        val c = client(AuthInterceptor(TokenProvider { "jwt-abcdefghijklmnop" }) { })
+        val c = client(AuthInterceptor(TokenProvider { "jwt-abcdefghijklmnop" }))
         c.newCall(Request.Builder().url(server.url("/console/v1/common")).build()).execute().use {
             assertEquals(200, it.code)
         }
@@ -56,23 +56,26 @@ class NetworkTest {
             MockResponse().setHeader("Content-Type", "application/json")
                 .setBody("""{"status":200,"data":{}}""")
         )
-        val c = client(AuthInterceptor(TokenProvider { null }) { })
+        val c = client(AuthInterceptor(TokenProvider { null }))
         c.newCall(Request.Builder().url(server.url("/common")).build()).execute().close()
         assertNull(server.takeRequest().getHeader("Authorization"))
     }
 
     @Test
-    fun `business 401 in body triggers unauthorized callback even though http is 200`() {
+    fun `business 401 is detected by safeApiCall and fires unauthorized bus`() = runTest {
         var fired = 0
-        server.enqueue(
-            MockResponse().setHeader("Content-Type", "application/json")
-                .setBody("""{"status":401,"msg":"当前未登录，请先登录后使用"}""")
-        )
-        val c = client(AuthInterceptor(TokenProvider { "expired" }) { fired++ })
-        c.newCall(Request.Builder().url(server.url("/account")).build()).execute().use {
-            assertEquals(200, it.code) // 站点 HTTP 恒 200
+        val previous = UnauthorizedBus.onUnauthorized
+        UnauthorizedBus.onUnauthorized = { fired++ }
+        try {
+            val result = safeApiCall(
+                { ApiEnvelope(401, "当前未登录，请先登录后使用", null) }
+            ) { Unit }
+            assertTrue(result is ApiResult.Failure)
+            assertEquals(401, (result as ApiResult.Failure).code)
+            assertEquals(1, fired)
+        } finally {
+            UnauthorizedBus.onUnauthorized = previous
         }
-        assertEquals(1, fired)
     }
 
     @Test
