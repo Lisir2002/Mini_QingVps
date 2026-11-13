@@ -156,8 +156,9 @@ class CatalogRepository(private val api: QingVpsApiService) {
     }
 
     /** mf_cloud 周期：POST /product/{id}/remf_cloud/duration。 */
-    suspend fun mfDuration(productId: String, sel: MfSelection): ApiResult<List<CycleOption>> =
-        safeApiCall({ api.mfDuration(productId, MfCloudCart.durationBody(sel, productId)) }) { data ->
+    suspend fun mfDuration(productId: String, sel: MfSelection): ApiResult<List<CycleOption>> {
+        val networkType = configCache[productId]?.mf?.networkType ?: "normal"
+        return safeApiCall({ api.mfDuration(productId, MfCloudCart.durationBody(sel, productId, networkType)) }) { data ->
             data.takeIf { it?.isJsonArray == true }?.asJsonArray?.mapNotNull { el ->
                 val id = el.string("id") ?: return@mapNotNull null
                 CycleOption(
@@ -168,6 +169,7 @@ class CatalogRepository(private val api: QingVpsApiService) {
                 )
             }.orEmpty()
         }
+    }
 
     /** 实时算价（配置面板展示当前配置的价格）。 */
     suspend fun calcPrice(productId: String, body: JsonObject): ApiResult<PriceQuote> =
@@ -197,6 +199,28 @@ class CatalogRepository(private val api: QingVpsApiService) {
     /** 真实加入站点购物车。 */
     suspend fun addToCart(body: JsonObject): ApiResult<Unit> =
         safeApiCall({ api.addToCart(body) }) { Unit }
+
+    // ---- 原生结算支付（v1.4.8）----
+
+    /** 支付方式列表。 */
+    suspend fun gateways(): ApiResult<List<GatewayOption>> =
+        safeApiCall({ api.gateways() }) { CheckoutParser.gateways(it) }
+
+    /** 结算购物车：返回订单 id 与金额。 */
+    suspend fun settleCart(positions: List<Int>): ApiResult<SettleResult> =
+        safeApiCall({ api.settleCart(CheckoutBodies.settle(positions)) }) { data ->
+            CheckoutParser.settle(data) ?: throw IllegalStateException("结算响应缺少 order_id")
+        }
+
+    /** 发起支付：余额支付 paid=true；网关支付返回跳转链接。 */
+    suspend fun payOrder(orderId: String, gateway: String): ApiResult<PayOutcome> =
+        safeApiCall({ api.payOrder(CheckoutBodies.pay(orderId, gateway)) }) {
+            CheckoutParser.payOutcome(it)
+        }
+
+    /** 支付状态轮询："PAID" / "UNPAID"。 */
+    suspend fun payStatus(orderId: String): ApiResult<String> =
+        safeApiCall({ api.payStatus(orderId) }) { CheckoutParser.payStatus(it) }
 
     /**
      * 拉取站点云端购物车。先把列表里每个商品的配置定义补齐（用于把 configoption 的

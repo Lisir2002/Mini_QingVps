@@ -9,7 +9,9 @@ import com.vps.qing.data.repository.CartBodies
 import com.vps.qing.data.repository.CartCalculator
 import com.vps.qing.data.repository.CatalogParser
 import com.vps.qing.data.repository.CatalogRepository
+import com.vps.qing.data.repository.CheckoutParser
 import com.vps.qing.data.repository.ConfigOption
+import com.vps.qing.data.repository.GatewayOption
 import com.vps.qing.data.repository.MfCloudCart
 import com.vps.qing.data.repository.MfSelection
 import com.vps.qing.data.repository.OptionType
@@ -21,6 +23,7 @@ import com.vps.qing.data.repository.CartItem
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,6 +57,31 @@ data class ConfigSheetState(
     val displayTotal: Double? get() = quote?.total
 }
 
+/**
+ * 原生结算支付状态机（v1.4.8）：
+ * GATEWAY（选支付方式）→ PAYING（已拉起支付页，轮询中）→ SUCCESS / 失败回到 GATEWAY。
+ */
+data class CheckoutState(
+    val orderId: String? = null,
+    val amount: String? = null,
+    val hostIds: List<String> = emptyList(),
+    /** 已选中但未支付的行下标（结算来源）。 */
+    val positions: List<Int> = emptyList(),
+    val gateways: List<GatewayOption> = emptyList(),
+    val gatewaysLoading: Boolean = false,
+    val paying: Boolean = false,
+    val payUrl: String? = null,
+    val paid: Boolean = false,
+    val error: String? = null
+) {
+    val stage: String
+        get() = when {
+            paid -> "SUCCESS"
+            payUrl != null -> "PAYING"
+            else -> "GATEWAY"
+        }
+}
+
 data class ShopUiState(
     /** 顶栏：0 = 采购页，1 = 购物车。 */
     val tab: Int = 0,
@@ -83,6 +111,8 @@ data class ShopUiState(
     val cartSynced: Boolean = false,
     /** 自定义配置页；null = 不显示。 */
     val configSheet: ConfigSheetState? = null,
+    /** 原生结算支付面板（v1.4.8）；null = 不显示。 */
+    val checkout: CheckoutState? = null,
     /** 一次性提示（如「已加入云端购物车」）。 */
     val toast: String? = null
 ) {
@@ -135,12 +165,17 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
     /** 每次算价请求的自增序号：只有最新一次请求可以写回价格。 */
     private var quoteSeq = 0L
     private var lastCatalogSyncMs = 0L
+    /** 支付状态轮询任务（v1.4.8）。 */
+    private var payPollJob: Job? = null
 
     companion object {
         /** 目录静默刷新的最小间隔，避免每次切 Tab 都打网络。 */
         private const val CATALOG_TTL_MS = 60_000L
         /** 配置变化后的算价防抖，避免连续点选产生请求风暴。 */
         private const val QUOTE_DEBOUNCE_MS = 120L
+        /** 支付状态轮询间隔与最长时长。 */
+        private const val PAY_POLL_INTERVAL_MS = 2_000L
+        private const val PAY_POLL_MAX_MS = 10 * 60_000L
     }
 
     init {
@@ -424,7 +459,7 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
             // v1.4.7 修复：加购必须用 cartBody（product_id + activeName/login_way 等），
             // 之前误用算价用的 calcBody（字段是 id + promo_code），站点读不到
             // product_id 直接报 [400]「请选择商品」。
-            return MfCloudCart.cartBody(sheet.mf, sheet.product.id, qty)
+            return MfCloudCart.cartBody(sheet.mf, sheet.product.id, qty, cfg.mf.networkType)
         }
         val selections = cfg?.options.orEmpty().mapNotNull { opt ->
             val value = sheet.selections[opt.id] ?: defaultValue(opt) ?: return@mapNotNull null
@@ -557,6 +592,129 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
                 }
             }
         }
+    }
+
+    // ---- 原生结算支付（v1.4.8，协议对齐 route/home.php）----
+
+    /**
+     * 发起结算：结算购物车里所有云端行（position>=0），
+     * 成功后拉支付方式列表进入选方式阶段。
+     */
+    fun startCheckout() {
+        val positions = _ui.value.cart.filter { it.position >= 0 }.map { it.position }
+        if (positions.isEmpty()) {
+            _ui.update { it.copy(toast = "购物车没有可结算的商品") }
+            return
+        }
+        viewModelScope.launch {
+            _ui.update {
+                it.copy(checkout = CheckoutState(positions = positions, gatewaysLoading = true))
+            }
+            when (val r = catalog.settleCart(positions)) {
+                is ApiResult.Success -> {
+                    val gws = (catalog.gateways() as? ApiResult.Success)?.data.orEmpty()
+                    _ui.update {
+                        it.copy(checkout = it.checkout?.copy(
+                            orderId = r.data.orderId,
+                            amount = r.data.amount,
+                            hostIds = r.data.hostIds,
+                            gateways = gws,
+                            gatewaysLoading = false
+                        ))
+                    }
+                }
+                is ApiResult.Failure -> _ui.update {
+                    it.copy(checkout = null, toast = "[${r.code}] ${r.msg}")
+                }
+                is ApiResult.Error -> _ui.update {
+                    it.copy(checkout = null, toast = r.throwable.message ?: "结算失败")
+                }
+            }
+        }
+    }
+
+    /** 选择支付方式并拉起支付（余额支付直接到账，网关支付返回跳转链接）。 */
+    fun payWith(gateway: GatewayOption) {
+        val checkout = _ui.value.checkout ?: return
+        val orderId = checkout.orderId ?: return
+        if (checkout.paying) return
+        viewModelScope.launch {
+            _ui.update {
+                it.copy(checkout = it.checkout?.copy(paying = true, error = null))
+            }
+            when (val r = catalog.payOrder(orderId, gateway.name)) {
+                is ApiResult.Success -> {
+                    if (r.data.paid) {
+                        markPaid()
+                    } else if (r.data.payUrl != null) {
+                        startPayPolling(orderId)
+                        _ui.update {
+                            it.copy(checkout = it.checkout?.copy(paying = false, payUrl = r.data.payUrl))
+                        }
+                    } else {
+                        _ui.update {
+                            it.copy(checkout = it.checkout?.copy(
+                                paying = false, error = "站点未返回支付链接，请改用其他支付方式"
+                            ))
+                        }
+                    }
+                }
+                is ApiResult.Failure -> _ui.update {
+                    it.copy(checkout = it.checkout?.copy(paying = false, error = "[${r.code}] ${r.msg}"))
+                }
+                is ApiResult.Error -> _ui.update {
+                    it.copy(checkout = it.checkout?.copy(paying = false, error = r.throwable.message ?: "发起支付失败"))
+                }
+            }
+        }
+    }
+
+    /** 「我已完成支付」：立即查一次状态。 */
+    fun checkPayNow() {
+        val checkout = _ui.value.checkout ?: return
+        val orderId = checkout.orderId ?: return
+        viewModelScope.launch {
+            checkOnce(orderId)
+        }
+    }
+
+    /** 关闭结算面板：轮询停止（订单保留，可在订单列表继续支付）。 */
+    fun closeCheckout() {
+        payPollJob?.cancel()
+        payPollJob = null
+        _ui.update { it.copy(checkout = null) }
+    }
+
+    private fun startPayPolling(orderId: String) {
+        payPollJob?.cancel()
+        val startedAt = System.currentTimeMillis()
+        payPollJob = viewModelScope.launch {
+            while (isActive && System.currentTimeMillis() - startedAt < PAY_POLL_MAX_MS) {
+                delay(PAY_POLL_INTERVAL_MS)
+                val paid = checkOnce(orderId)
+                if (paid) return@launch
+            }
+        }
+    }
+
+    /** 查一次支付状态；Paid 时写回成功态并刷新购物车。返回是否已支付。 */
+    private suspend fun checkOnce(orderId: String): Boolean {
+        val status = (catalog.payStatus(orderId) as? ApiResult.Success)?.data ?: return false
+        return if (status == "PAID") {
+            markPaid()
+            true
+        } else false
+    }
+
+    private suspend fun markPaid() {
+        payPollJob?.cancel()
+        payPollJob = null
+        _ui.update {
+            it.copy(checkout = it.checkout?.copy(paid = true, payUrl = null, paying = false, error = null))
+        }
+        syncCart()
+        AppContainer.invalidateCache("host")
+        AppContainer.invalidateCache("order")
     }
 
     fun changeCartQty(item: CartItem, delta: Int) {

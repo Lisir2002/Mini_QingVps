@@ -91,8 +91,15 @@ data class MfCloudConfig(
     val memories: List<Int> = emptyList(),
     val systemDisks: List<Int> = emptyList(),
     val dataDisks: List<Int> = emptyList(),
-    val imageGroups: List<MfImageGroup> = emptyList()
+    val imageGroups: List<MfImageGroup> = emptyList(),
+    /**
+     * 网络类型开关（v1.4.8）：站点前端规则——
+     * type=="host" 且 support_normal_network==0 → "vpc"，否则 "normal"。
+     * 结算时站点校验 network_type 必填，传空串会报「请选择网络类型」。
+     */
+    val supportNormalNetwork: Boolean = true
 ) {
+    val networkType: String get() = if (supportNormalNetwork) "normal" else "vpc"
     val images: List<MfImage> get() = imageGroups.flatMap { it.images }
 
     fun imageName(imageId: Int): String? = images.firstOrNull { it.id == imageId }?.name
@@ -175,7 +182,13 @@ object MfParser {
             cpus = intValues("cpu").distinct(),
             memories = intValues("memory").distinct(),
             systemDisks = diskSizes("system_disk"),
-            dataDisks = diskSizes("data_disk")
+            dataDisks = diskSizes("data_disk"),
+            supportNormalNetwork = run {
+                // 与站点 mf_cloud.js 对齐：非 host 一律 normal；host 按 support_normal_network 开关
+                val type = data.string("config", "type").orEmpty()
+                val supportNormal = data.string("config", "support_normal_network").orEmpty()
+                type != "host" || supportNormal != "0"
+            }
         )
     }
 
@@ -213,8 +226,9 @@ object MfCloudCart {
     /**
      * config_options 主体（算价 / 周期 / 加购共用）。
      * 站点前端对 bw 计费线路删掉 flow、flow 计费删掉 bw；ip_num/ipv6_num 未选传 null。
+     * network_type 由商品配置推导（v1.4.8）：结算时站点强校验该字段。
      */
-    fun configOptions(sel: MfSelection): JsonObject {
+    fun configOptions(sel: MfSelection, networkType: String = "normal"): JsonObject {
         val body = JsonObject().apply {
             addProperty("data_center_id", sel.areaId)
             addProperty("cpu", sel.cpu)
@@ -237,7 +251,7 @@ object MfCloudCart {
             addProperty("peak_defence", "")
             add("ip_num", com.google.gson.JsonNull.INSTANCE)
             add("ipv6_num", com.google.gson.JsonNull.INSTANCE)
-            addProperty("network_type", "")
+            addProperty("network_type", networkType)
         }
         if (sel.bw > 0) body.addProperty("bw", sel.bw) else body.addProperty("flow", "")
         sel.durationId?.let { runCatching { body.addProperty("duration_id", it.toInt()) } }
@@ -246,13 +260,13 @@ object MfCloudCart {
     }
 
     /** POST /product/{id}/remf_cloud/duration：body = 配置参数平铺 + id。 */
-    fun durationBody(sel: MfSelection, productId: String): JsonObject =
-        configOptions(sel).apply { addProperty("id", productId.toIntOrNull() ?: 0) }
+    fun durationBody(sel: MfSelection, productId: String, networkType: String = "normal"): JsonObject =
+        configOptions(sel, networkType).apply { addProperty("id", productId.toIntOrNull() ?: 0) }
 
     /** POST /product/{id}/config_option（mf_cloud 算价）：{id, config_options, qty}。 */
-    fun calcBody(sel: MfSelection, productId: String, qty: Int): JsonObject = JsonObject().apply {
+    fun calcBody(sel: MfSelection, productId: String, qty: Int, networkType: String = "normal"): JsonObject = JsonObject().apply {
         addProperty("id", productId.toIntOrNull() ?: 0)
-        add("config_options", configOptions(sel).apply {
+        add("config_options", configOptions(sel, networkType).apply {
             addProperty("promo_code", "")
             addProperty("event_promotion", "")
         })
@@ -260,9 +274,9 @@ object MfCloudCart {
     }
 
     /** POST /cart（mf_cloud 加购）：实测「添加成功」，GET /cart 立即可见。 */
-    fun cartBody(sel: MfSelection, productId: String, qty: Int): JsonObject = JsonObject().apply {
+    fun cartBody(sel: MfSelection, productId: String, qty: Int, networkType: String = "normal"): JsonObject = JsonObject().apply {
         addProperty("product_id", productId.toIntOrNull() ?: 0)
-        add("config_options", configOptions(sel).apply {
+        add("config_options", configOptions(sel, networkType).apply {
             addProperty("activeName", "custom")
             addProperty("login_way", "auto_create")
             addProperty("password", "")

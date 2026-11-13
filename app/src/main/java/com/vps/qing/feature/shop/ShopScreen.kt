@@ -923,7 +923,7 @@ private fun CartPane(
                 }
                 CartoonButton(
                     text = Strings.CHECKOUT,
-                    onClick = { onOpenWeb(AppContainer.webUrl(AppContainer.CART_WEB_PATH)) },
+                    onClick = { vm.startCheckout() },
                     icon = AppIcons.Forward,
                     modifier = Modifier.fillMaxWidth()
                 )

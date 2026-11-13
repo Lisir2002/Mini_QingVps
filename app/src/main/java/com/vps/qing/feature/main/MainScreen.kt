@@ -50,6 +50,7 @@ import com.vps.qing.feature.dashboard.DashboardScreen
 import com.vps.qing.feature.message.AnnouncementPage
 import com.vps.qing.feature.message.MessagesScreen
 import com.vps.qing.feature.profile.ProfileScreen
+import com.vps.qing.feature.shop.CheckoutSheet
 import com.vps.qing.feature.shop.ConfigSheet
 import com.vps.qing.feature.shop.ShopScreen
 import com.vps.qing.feature.shop.ShopViewModel
@@ -102,10 +103,14 @@ fun MainScreen(
     val configOpen = shopState.configSheet != null
     BackHandler(enabled = configOpen) { shopVm.dismissConfig() }
 
+    // 原生结算支付面板（v1.4.8）：打开时隐藏底栏
+    val checkoutOpen = shopState.checkout != null
+    BackHandler(enabled = checkoutOpen) { shopVm.closeCheckout() }
+
     Scaffold(
         containerColor = Color.Transparent,
         bottomBar = {
-            if (!profileSubOpen && !configOpen && !showAnnouncements) {
+            if (!profileSubOpen && !configOpen && !showAnnouncements && !checkoutOpen) {
                 GlassBottomBar(
                     selected = selected,
                     cartCount = shopState.cartCount,
@@ -159,6 +164,17 @@ fun MainScreen(
                     onOpenWeb = onOpenWeb,
                     onMfSelect = { shopVm.updateMfSelection(it) },
                     onSelectImage = { shopVm.selectMfImage(it) }
+                )
+            }
+
+            // 原生结算支付面板（v1.4.8）：App 内完成支付，支付页仍用 WebView 打开
+            shopState.checkout?.let { checkout ->
+                CheckoutSheet(
+                    checkout = checkout,
+                    onDismiss = shopVm::closeCheckout,
+                    onPayWith = shopVm::payWith,
+                    onOpenPayUrl = onOpenWeb,
+                    onCheckPayNow = shopVm::checkPayNow
                 )
             }
 

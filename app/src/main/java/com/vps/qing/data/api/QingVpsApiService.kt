@@ -133,6 +133,24 @@ interface QingVpsApiService {
     @DELETE("cart/{position}")
     suspend fun deleteCartLine(@Path("position") position: Int): ApiEnvelope
 
+    // ---- 原生结算支付（v1.4.8，路由对齐 10.4.6 route/home.php）----
+
+    /** 支付方式列表：data.list[{id,name,title,url(base64 图标)}]。 */
+    @GET("gateway")
+    suspend fun gateways(): ApiEnvelope
+
+    /** 结算购物车：body = {positions:[行下标], customfield:{}}，data{order_id,amount,host_ids}。 */
+    @POST("cart/settle")
+    suspend fun settleCart(@Body body: JsonObject): ApiEnvelope
+
+    /** 发起支付：body = {id:订单ID, gateway}，data.html 含支付跳转链接；余额支付直接 code=Paid。 */
+    @POST("pay")
+    suspend fun payOrder(@Body body: JsonObject): ApiEnvelope
+
+    /** 支付状态轮询：官方语义 code=Paid 停止轮询，code=Upaid 持续调用。 */
+    @GET("pay/{id}/status")
+    suspend fun payStatus(@Path("id") id: String): ApiEnvelope
+
     // ---- 图形验证码 ----
     @GET("captcha")
     suspend fun captcha(): ApiEnvelope
