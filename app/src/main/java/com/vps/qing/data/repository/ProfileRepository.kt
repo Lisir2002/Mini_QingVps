@@ -82,6 +82,35 @@ class ProfileRepository(
     suspend fun certPlugins(): ApiResult<List<CertPlugin>> =
         safeApiCall({ api.certificationPlugins() }) { ServiceParser.certPlugins(it) }
 
+    // ---- v1.4.5：实名认证提交与进度 ----
+
+    /** 自定义认证字段（本站实测为空数组，仍保留通用支持）。 */
+    suspend fun certCustomFields(name: String, type: String): ApiResult<List<CertCustomField>> =
+        safeApiCall({ api.certificationCustomFields(name, type) }) { ServiceParser.certCustomFields(it) }
+
+    /** 插件收费配置（free/amount/pay/order）。 */
+    suspend fun certPluginConfig(name: String, type: String): ApiResult<CertPluginConfig> =
+        safeApiCall({ api.certificationPluginConfig(name, type) }) { ServiceParser.certPluginConfig(it) }
+
+    /** 个人认证提交；body 字段见官方文档（plugin_name/card_name/phone/card_type/card_number…）。 */
+    suspend fun submitPersonCert(body: JsonObject): ApiResult<Unit> =
+        safeApiCall({ api.certificationPerson(body) }) { }
+
+    /** 企业认证提交。 */
+    suspend fun submitCompanyCert(body: JsonObject): ApiResult<Unit> =
+        safeApiCall({ api.certificationCompany(body) }) { }
+
+    /** 认证验证页：200 → data.html（人脸页）；400 → data.code 10000/10001。 */
+    suspend fun certAuthPage(): ApiResult<CertAuthPage> =
+        safeApiCall({ api.certificationAuth() }) { ServiceParser.certAuthPage(200, it) }
+
+    /**
+     * 状态轮询。业务 400 表示无认证信息（未提交），由调用方按 ApiResult.Failure 处理；
+     * safeApiCall 会把 envelope.status!=200 归入 Failure，恰好符合官方「跳回选择页」的语义。
+     */
+    suspend fun certPollStatus(): ApiResult<CertPollStatus> =
+        safeApiCall({ api.certificationStatus() }) { ServiceParser.certPollStatus(it) }
+
     // ---- v1.4.2：已购产品详情（只读）----
 
     /**

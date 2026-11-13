@@ -2,6 +2,7 @@ package com.vps.qing.feature.profile
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,10 +20,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
@@ -33,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vps.qing.core.AppContainer
@@ -49,9 +54,9 @@ import com.vps.qing.core.ui.SectionTitle
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.theme.ThemePalettes
-import com.vps.qing.data.repository.CertInfo
 import com.vps.qing.data.repository.CertPlugin
 import com.vps.qing.data.repository.CertRecord
+import com.vps.qing.data.repository.ServiceParser
 import com.vps.qing.data.repository.HostLine
 import com.vps.qing.data.repository.OrderLine
 import com.vps.qing.data.repository.SubAccountLine
@@ -126,6 +131,12 @@ fun ServicePageScreen(
     onCreateSubAccount: () -> Unit = {},
     onToggleSubAccount: (String, Boolean) -> Unit = { _, _ -> },
     onDeleteSubAccount: (String) -> Unit = {},
+    // ---- v1.4.5 实名认证 ----
+    certForm: CertFormUi = CertFormUi(),
+    onSelectCertPlugin: (String) -> Unit = {},
+    onCertCompanyMode: (Boolean) -> Unit = {},
+    onCertFormChange: (CertFormUi) -> Unit = {},
+    onSubmitCert: () -> Unit = {},
     actionBusy: Boolean = false
 ) {
     val menu = ServicePanels.entries.firstOrNull { it.panel == panel }
@@ -188,7 +199,12 @@ fun ServicePageScreen(
                     panel == ServicePanel.CERTIFICATION -> {
                         CertBody(
                             data = data,
+                            form = certForm,
                             modifier = Modifier.fillMaxSize(),
+                            onSelectPlugin = onSelectCertPlugin,
+                            onCompanyMode = onCertCompanyMode,
+                            onFormChange = onCertFormChange,
+                            onSubmit = onSubmitCert,
                             onOpenWeb = onOpenWeb
                         )
                     }
@@ -378,14 +394,20 @@ fun ThemeSettingsPage(
 }
 
 /**
- * 实名认证页（v1.4.0 深度适配 /certification/info + /certification/plugin）。
- * 已实名：展示脱敏姓名/证件号/认证时间/状态；未实名：展示认证方式与网页办理入口。
+ * 实名认证页（v1.4.5 原生提交与进度，协议对齐官方插件 idcsmart_certification）。
+ * 已实名：脱敏姓名/证件号/认证时间/状态（官方语义 1=已实名 2=未通过 3=待审核 4=已提交资料）；
+ * 未实名：选择认证方式 → 原生表单提交 → 认证进度轮询；人脸核验环节用 WebView 打开站点官方认证页。
  */
 @Composable
 private fun CertBody(
     data: ServicePanelData,
+    form: CertFormUi,
     modifier: Modifier = Modifier,
-    onOpenWeb: (String) -> Unit
+    onSelectPlugin: (String) -> Unit = {},
+    onCompanyMode: (Boolean) -> Unit = {},
+    onFormChange: (CertFormUi) -> Unit = {},
+    onSubmit: () -> Unit = {},
+    onOpenWeb: (String) -> Unit = {}
 ) {
     val cert = data.cert
     Column(
@@ -396,7 +418,7 @@ private fun CertBody(
             EmptyHint(icon = AppIcons.EmptyBox, text = "暂无实名认证信息")
             return@Column
         }
-        // 总状态卡
+        // 总状态卡（含未实名购买限制提示）
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -417,102 +439,332 @@ private fun CertBody(
                         color = CartoonColors.Ink
                     )
                     Text(
-                        if (cert.open) "站点实名认证功能已开启" else "站点未开启实名认证",
+                        when {
+                            !cert.open -> "站点未开启实名认证"
+                            cert.isCertified -> "站点实名认证功能已开启"
+                            cert.buyBlocked -> "未实名账号无法购买商品，请尽快完成认证"
+                            else -> "站点实名认证功能已开启"
+                        },
                         style = MaterialTheme.typography.labelSmall,
-                        color = CartoonColors.InkSub
+                        color = if (cert.buyBlocked && !cert.isCertified) MaterialTheme.colorScheme.error
+                        else CartoonColors.InkSub
                     )
                 }
                 statusBadge(if (cert.isCertified) "Active" else "Pending")
             }
         }
 
-        // 个人认证记录（站点对姓名/证件号已脱敏后返回）
-        cert.person?.let { record ->
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "个人认证", style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold, color = CartoonColors.Ink
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        statusBadge(certRecordStatus(record.status))
-                        Spacer(Modifier.weight(1f))
-                        Text(record.createTime.ifBlank { "--" }, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
-                    }
-                    KeyValueRow("姓名", record.cardName.ifBlank { "--" })
-                    KeyValueRow("证件号", record.cardNumber.ifBlank { "--" })
-                    if (record.status == "3" && record.failReason.isNotBlank()) {
-                        Text(
-                            "驳回原因：${record.failReason}",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-            }
-        }
+        // 认证记录卡（站点对姓名/证件号已脱敏后返回）
+        certRecordCard(cert.person, "个人认证")
+        certRecordCard(cert.company, "企业认证")
 
-        // 企业认证记录（若站点开启且已提交）
-        cert.company?.let { record ->
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "企业认证", style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold, color = CartoonColors.Ink
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        statusBadge(certRecordStatus(record.status))
-                        Spacer(Modifier.weight(1f))
-                        Text(record.createTime.ifBlank { "--" }, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
-                    }
-                    KeyValueRow("企业名称", record.cardName.ifBlank { "--" })
-                    KeyValueRow("证件号", record.cardNumber.ifBlank { "--" })
-                    if (record.status == "3" && record.failReason.isNotBlank()) {
-                        Text(
-                            "驳回原因：${record.failReason}",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-            }
-        }
-
-        // 未实名：认证方式 + 办理入口
+        // 未实名：认证进度（提交后轮询）→ 认证方式 → 表单
         if (!cert.isCertified) {
+            if (form.polling) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(AppIcons.Shield, null, tint = CartoonColors.Mint, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "认证进度",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = CartoonColors.Ink
+                            )
+                        }
+                        Text(
+                            form.pollHint ?: "已提交，等待站点核验…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = CartoonColors.InkSub
+                        )
+                        LinearProgressIndicator(
+                            color = CartoonColors.Mint,
+                            modifier = Modifier.fillMaxWidth().height(4.dp)
+                        )
+                        Text(
+                            "如站点要求人脸核验，请点击下方按钮在官方认证页完成；完成后回到本页将自动显示最新状态",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CartoonColors.InkSub
+                        )
+                        CartoonButton(
+                            text = "前往人脸核验",
+                            onClick = { onOpenWeb(AppContainer.webUrl("authentication_thrid.htm?type=1")) },
+                            icon = AppIcons.Forward,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
+            // 认证方式选择
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("可用的认证方式", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
+                    Text(
+                        "选择认证方式",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = CartoonColors.Ink
+                    )
                     if (data.certPlugins.isEmpty()) {
-                        Text("站点未提供认证方式列表", style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+                        Text(
+                            "站点未提供认证方式，请前往网页端办理",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CartoonColors.InkSub
+                        )
+                        CartoonButton(
+                            text = "前往网页端办理",
+                            onClick = { onOpenWeb(AppContainer.webUrl("authentication_select.htm")) },
+                            icon = AppIcons.Forward,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     } else {
                         data.certPlugins.forEach { plugin ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(AppIcons.Check, null, tint = CartoonColors.Mint, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    plugin.title + if (plugin.types.containsOnly("person")) "（个人）" else "",
-                                    style = MaterialTheme.typography.bodySmall, color = CartoonColors.Ink
+                            val selected = form.selectedPlugin == plugin.id
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(CartoonKit.ItemShape)
+                                    .background(if (selected) CartoonColors.BrandSoft else Color.Transparent)
+                                    .clickable { onSelectPlugin(plugin.id) }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(
+                                    selected = selected,
+                                    onClick = null,
+                                    colors = RadioButtonDefaults.colors(selectedColor = CartoonColors.Brand)
                                 )
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        plugin.title,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (selected) CartoonColors.Brand else CartoonColors.Ink
+                                    )
+                                    Text(
+                                        certPluginTypeLabel(plugin),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = CartoonColors.InkSub
+                                    )
+                                }
                             }
                         }
+                        // 费用提示（GET /certification/plugin/config）
+                        form.config?.let { config ->
+                            Text(
+                                config.feeHint,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (config.pay) MaterialTheme.colorScheme.error else CartoonColors.Mint
+                            )
+                        }
                     }
-                    Text(
-                        "认证流程需人脸核验等站点端操作，App 内一键打开认证页办理",
-                        style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub
-                    )
-                    CartoonButton(
-                        text = "前往实名认证办理",
-                        onClick = { onOpenWeb(AppContainer.webUrl("plugin/22/certification.htm")) },
-                        icon = AppIcons.Forward,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                }
+            }
+
+            // 认证表单（提交期间与轮询期间禁用）
+            if (form.selectedPlugin.isNotBlank() && !form.polling) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            if (form.companyMode) "企业认证信息" else "个人认证信息",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = CartoonColors.Ink
+                        )
+                        // 插件同时支持个人与企业时可切换
+                        if (form.selectedPluginTypes.size > 1) {
+                            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                                listOf(false to "个人认证", true to "企业认证").forEach { (company, label) ->
+                                    val selected = form.companyMode == company
+                                    Row(
+                                        modifier = Modifier
+                                            .clip(CartoonKit.ItemShape)
+                                            .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White)
+                                            .clickable { onCompanyMode(company) }
+                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (selected) CartoonColors.Brand else CartoonColors.InkSub
+                                        )
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                            }
+                        }
+                        CertTextField(
+                            label = if (form.companyMode) "法人姓名" else "姓名",
+                            value = form.cardName,
+                            onValueChange = { onFormChange(form.copy(cardName = it)) },
+                            enabled = !form.submitting
+                        )
+                        CertTextField(
+                            label = "手机号（选填）",
+                            value = form.phone,
+                            onValueChange = { onFormChange(form.copy(phone = it)) },
+                            enabled = !form.submitting,
+                            keyboardType = KeyboardType.Phone
+                        )
+                        // 证件类型：横向 chips（官方 8 种证件）
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "证件类型",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CartoonColors.InkSub
+                            )
+                            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                                ServiceParser.CARD_TYPES.forEach { (value, label) ->
+                                    val selected = form.cardType == value
+                                    Row(
+                                        modifier = Modifier
+                                            .clip(CartoonKit.ItemShape)
+                                            .background(if (selected) CartoonColors.Brand else CartoonColors.White)
+                                            .clickable(enabled = !form.submitting) {
+                                                onFormChange(form.copy(cardType = value))
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (selected) CartoonColors.White else CartoonColors.Ink
+                                        )
+                                    }
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                            }
+                        }
+                        CertTextField(
+                            label = "证件号码",
+                            value = form.cardNumber,
+                            onValueChange = { onFormChange(form.copy(cardNumber = it)) },
+                            enabled = !form.submitting
+                        )
+                        // 企业认证附加字段
+                        if (form.companyMode) {
+                            CertTextField(
+                                label = "企业名称",
+                                value = form.customValues["company"].orEmpty(),
+                                onValueChange = {
+                                    onFormChange(form.copy(customValues = form.customValues + ("company" to it)))
+                                },
+                                enabled = !form.submitting
+                            )
+                            CertTextField(
+                                label = "统一社会信用代码",
+                                value = form.customValues["company_organ_code"].orEmpty(),
+                                onValueChange = {
+                                    onFormChange(form.copy(customValues = form.customValues + ("company_organ_code" to it)))
+                                },
+                                enabled = !form.submitting
+                            )
+                        }
+                        // 站点要求上传证件照时（本站 certification_upload=0，暂不内置上传）
+                        if (data.cert?.uploadRequired == true) {
+                            Text(
+                                "站点要求上传证件照片，请在网页端完成本步骤",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        form.submitError?.let { error ->
+                            Text(
+                                error,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        CartoonButton(
+                            text = if (form.submitting) "提交中…" else "提交认证",
+                            onClick = onSubmit,
+                            icon = AppIcons.Check,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !form.submitting
+                        )
+                        Text(
+                            "证件信息仅用于站点实名核验，App 不存储任何证件数据",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CartoonColors.InkSub
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+/** 认证记录卡：状态语义与文案对齐官方（1=已认证 2=未通过 3=待审核 4=已提交资料）。 */
+@Composable
+private fun certRecordCard(record: CertRecord?, title: String) {
+    if (record == null) return
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = CartoonColors.Ink
+                )
+                Spacer(Modifier.width(8.dp))
+                statusBadge(certRecordStatus(record.status))
+                Spacer(Modifier.weight(1f))
+                Text(
+                    record.createTime.ifBlank { "--" },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CartoonColors.InkSub
+                )
+            }
+            KeyValueRow(if (title == "企业认证") "企业名称" else "姓名", record.cardName.ifBlank { "--" })
+            KeyValueRow("证件号", record.cardNumber.ifBlank { "--" })
+            // 官方语义：2=未通过，驳回原因在 auth_fail
+            if (record.status == "2" && record.failReason.isNotBlank()) {
+                Text(
+                    "驳回原因：${record.failReason}",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
+}
+
+/** 认证方式支持的类型 → 展示标签。 */
+private fun certPluginTypeLabel(plugin: CertPlugin): String = when {
+    plugin.types.containsOnly("person") -> "支持：个人认证"
+    plugin.types.containsOnly("company") -> "支持：企业认证"
+    else -> "支持：个人认证 / 企业认证"
+}
+
+/** 认证表单输入框（统一卡通配色）。 */
+@Composable
+private fun CertTextField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    keyboardType: KeyboardType = KeyboardType.Text
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        singleLine = true,
+        enabled = enabled,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = CartoonColors.Brand,
+            unfocusedBorderColor = CartoonColors.InkSub,
+            focusedLabelColor = CartoonColors.Brand,
+            cursorColor = CartoonColors.Brand
+        ),
+        modifier = modifier.fillMaxWidth()
+    )
 }
 
 private fun List<String>.containsOnly(v: String) = isNotEmpty() && all { it == v }

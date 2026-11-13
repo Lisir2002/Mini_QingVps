@@ -189,8 +189,10 @@ object ServiceParser {
 
     /**
      * GET /certification/info → 实名认证开关与资料（2026-11 实测）：
-     * data{certification_open, is_certification, person{username, card_name, card_number,
-     * status, create_time, auth_fail...}, company{...}}。卡号/姓名已由站点脱敏。
+     * data{certification_open, certification_company_open, certification_upload,
+     * certification_uncertified_cannot_buy_product, is_certification,
+     * person{username, card_name, card_number, status, create_time, auth_fail...},
+     * company{...}}。卡号/姓名已由站点脱敏；company 未开启时为空对象，certFrom 会过滤。
      */
     fun certInfo(data: JsonElement?): CertInfo? {
         val root = data?.takeIf { it.isJsonObject }?.asJsonObject ?: return null
@@ -208,11 +210,18 @@ object ServiceParser {
                 failReason = it.string("auth_fail").orEmpty()
             )
         }
+        // 开关缺失视为开启（与旧行为一致）；upload/buyBlocked 为显式 opt-in：
+        // 缺省按未开启处理，避免站点不发字段时误拦表单或误提示购买受限
+        fun switch(key: String) = root.get(key)?.takeIf { it.isJsonPrimitive }?.asString != "0"
+        fun flag(key: String) = root.get(key)?.takeIf { it.isJsonPrimitive }?.asString == "1"
         val certifiedFlag = root.get("is_certification")
             ?.takeIf { it.isJsonPrimitive }?.asString?.lowercase()
         return CertInfo(
-            open = root.get("certification_open")?.takeIf { it.isJsonPrimitive }?.asString != "0",
+            open = switch("certification_open"),
             isCertified = certifiedFlag == "true" || certifiedFlag == "1",
+            companyOpen = switch("certification_company_open"),
+            uploadRequired = flag("certification_upload"),
+            buyBlocked = flag("certification_uncertified_cannot_buy_product"),
             person = certFrom(person),
             company = certFrom(company)
         )
@@ -232,6 +241,62 @@ object ServiceParser {
                 types = types
             )
         }
+
+    // ---- v1.4.5：实名认证提交与进度 ----
+
+    /** GET /certification/plugin/config → 收费配置；异常数据回退为免费。 */
+    fun certPluginConfig(data: JsonElement?): CertPluginConfig {
+        val o = data?.takeIf { it.isJsonObject }?.asJsonObject
+        if (o == null) return CertPluginConfig(0, "0", false)
+        return CertPluginConfig(
+            free = o.string("free")?.toIntOrNull() ?: 0,
+            amount = o.string("amount", "price").orEmpty().ifBlank { "0" },
+            pay = o.string("pay") == "1"
+        )
+    }
+
+    /** GET /certification/auth → 200 时取 data.html；400 时取 data.code（10000/10001）。 */
+    fun certAuthPage(status: Int, data: JsonElement?): CertAuthPage {
+        val o = data?.takeIf { it.isJsonObject }?.asJsonObject
+        return if (status == 200) {
+            CertAuthPage(code = 0, html = o?.string("html").orEmpty())
+        } else {
+            CertAuthPage(code = o?.string("code")?.toIntOrNull() ?: 0, html = "")
+        }
+    }
+
+    /** GET /certification/status → {code, refresh}。 */
+    fun certPollStatus(data: JsonElement?): CertPollStatus {
+        val o = data?.takeIf { it.isJsonObject }?.asJsonObject
+        return CertPollStatus(
+            code = o?.string("code")?.toIntOrNull() ?: 0,
+            refresh = o?.string("refresh")?.toIntOrNull() ?: 0
+        )
+    }
+
+    /** GET /certification/custom_fields → {custom_fields:[{title,field,type,options[]?}]}。 */
+    fun certCustomFields(data: JsonElement?): List<CertCustomField> =
+        (data?.takeIf { it.isJsonObject }?.asJsonObject?.get("custom_fields")
+            ?.takeIf { it.isJsonArray }?.asJsonArray?.toList() ?: emptyList())
+            .mapNotNull { el ->
+                val o = el.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+                val field = o.string("field") ?: return@mapNotNull null
+                val options = o.get("options")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?.mapNotNull { runCatching { it.asString }.getOrNull() }
+                    .orEmpty()
+                CertCustomField(
+                    title = o.string("title", "name").orEmpty().ifBlank { field },
+                    field = field,
+                    options = options
+                )
+            }
+
+    /** 证件类型字典（官方语义：1 身份证 … 8 其他），提交时 card_type 传值。 */
+    val CARD_TYPES: List<Pair<String, String>> = listOf(
+        "1" to "身份证", "2" to "港澳通行证", "3" to "台湾通行证",
+        "4" to "港澳居住证", "5" to "台湾居住证", "6" to "海外护照",
+        "7" to "中国以外驾照", "8" to "其他"
+    )
 
     // ---- v1.4.2：已购产品详情（已订购的配置信息 + 支付信息，只读）----
 
@@ -413,6 +478,12 @@ data class OrderItemLine(
 data class CertInfo(
     val open: Boolean,
     val isCertified: Boolean,
+    /** 企业认证是否开启（本站实测关闭）。 */
+    val companyOpen: Boolean = false,
+    /** 提交认证是否要求上传证件照（控制表单是否显示上传入口）。 */
+    val uploadRequired: Boolean = false,
+    /** 未实名是否禁止购买商品（用于提示 urgency）。 */
+    val buyBlocked: Boolean = false,
     val person: CertRecord?,
     val company: CertRecord?
 )
@@ -426,12 +497,16 @@ data class CertRecord(
     val createTime: String,
     val failReason: String
 ) {
-    /** 状态文案：实测已实名账号 status=1；2=审核中；3=未通过（含原因）；其余未实名。 */
+    /**
+     * 状态文案。语义取自官方插件源码（idcsmart_certification 控制器文档）：
+     * 1=已认证，2=未通过（含驳回原因），3=待审核，4=已提交资料；其余未实名。
+     */
     val statusText: String
         get() = when (status) {
             "1" -> "已实名"
-            "2" -> "审核中"
-            "3" -> "未通过"
+            "2" -> "未通过"
+            "3" -> "待审核"
+            "4" -> "已提交资料"
             else -> "未实名"
         }
 }
@@ -441,6 +516,47 @@ data class CertPlugin(
     val id: String,
     val title: String,
     val types: List<String>
+)
+
+/** GET /certification/plugin/config → 认证收费配置（本站实测：free=1, amount=1, pay=1）。 */
+data class CertPluginConfig(
+    /** 免费认证次数。 */
+    val free: Int,
+    /** 每次认证金额（元）。 */
+    val amount: String,
+    /** 是否需要支付。 */
+    val pay: Boolean
+) {
+    /** 给用户看的一句话费用说明；空串表示免费额度内。 */
+    val feeHint: String
+        get() = when {
+            !pay -> "当前认证方式免费"
+            free > 0 -> "享有 $free 次免费认证，超出后每次 ¥$amount"
+            else -> "本次认证需支付 ¥$amount"
+        }
+}
+
+/** GET /certification/auth → 验证页（人脸认证渲染 data.html；400 时按 code 跳转）。 */
+data class CertAuthPage(
+    /** 10000=去选择认证方式；10001=加载基础信息页（已通过/待审核/未通过）。 */
+    val code: Int,
+    /** status==200 时的人脸认证页面 HTML（内含第三方脚本与状态轮询）。 */
+    val html: String
+)
+
+/** GET /certification/status → 轮询响应：仅 code==2 && refresh==0 时继续轮询。 */
+data class CertPollStatus(
+    /** 1通过 2未通过 3待审核 4已提交资料。 */
+    val code: Int,
+    val refresh: Int
+)
+
+/** GET /certification/custom_fields → 自定义认证字段。 */
+data class CertCustomField(
+    val title: String,
+    val field: String,
+    /** 文本输入；下拉选项非空时为 select。 */
+    val options: List<String>
 )
 
 /**

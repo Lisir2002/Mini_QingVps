@@ -8,8 +8,10 @@ import com.vps.qing.core.network.ApiResult
 import com.vps.qing.core.network.HtmlFallbackException
 import com.vps.qing.data.repository.AccountInfo
 import com.vps.qing.data.repository.AuthNode
+import com.vps.qing.data.repository.CertCustomField
 import com.vps.qing.data.repository.CertInfo
 import com.vps.qing.data.repository.CertPlugin
+import com.vps.qing.data.repository.CertPluginConfig
 import com.vps.qing.data.repository.CountryOption
 import com.vps.qing.data.repository.HostLine
 import com.vps.qing.data.repository.HostOption
@@ -32,6 +34,7 @@ import com.vps.qing.data.repository.TicketStatistic
 import com.vps.qing.data.repository.TxnLine
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,6 +64,35 @@ data class ServicePanelData(
     val ticketStatuses: List<TicketOption> = emptyList(),
     val ticketDepartments: List<TicketOption> = emptyList(),
     val ticketConfig: TicketConfigInfo? = null
+)
+
+/**
+ * 实名认证提交表单与进度（v1.4.5）。
+ * 流程对齐官方插件 idcsmart_certification：选方式 → 填表提交 → 认证中轮询 → 结果。
+ */
+data class CertFormUi(
+    /** 选中的认证插件标识（提交时作为 plugin_name）。 */
+    val selectedPlugin: String = "",
+    val selectedPluginTitle: String = "",
+    /** 选中插件支持的认证类型（person/company）。 */
+    val selectedPluginTypes: List<String> = emptyList(),
+    /** 当前按企业类型提交（插件同时支持 person+company 时可切换）。 */
+    val companyMode: Boolean = false,
+    val cardName: String = "",
+    val phone: String = "",
+    val cardType: String = "1",
+    val cardNumber: String = "",
+    /** GET /certification/plugin/config → 费用提示。 */
+    val config: CertPluginConfig? = null,
+    /** GET /certification/custom_fields → 动态字段（本站为空）。 */
+    val customFields: List<CertCustomField> = emptyList(),
+    /** 动态字段值。 */
+    val customValues: Map<String, String> = emptyMap(),
+    val submitting: Boolean = false,
+    val submitError: String? = null,
+    /** 提交成功后进入认证进度：true 时按官方语义轮询 /certification/status。 */
+    val polling: Boolean = false,
+    val pollHint: String? = null
 )
 
 /** 工单详情子页面状态。 */
@@ -106,6 +138,8 @@ data class ProfileUiState(
     val ticketFilterStatusId: String? = null,
     /** 子账户表单元数据。 */
     val subFormMeta: SubAccountFormMeta = SubAccountFormMeta(),
+    /** 实名认证表单与进度（v1.4.5）。 */
+    val certForm: CertFormUi = CertFormUi(),
     /** 写操作反馈（一次性）。 */
     val actionBusy: Boolean = false,
     val actionMessage: String? = null,
@@ -176,6 +210,7 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
             ServicePanel.TRANSACTIONS -> "transaction"
             ServicePanel.TICKETS -> "ticket"
             ServicePanel.SUB_ACCOUNTS -> "sub_account"
+            ServicePanel.CERTIFICATION -> "certification"
             else -> "account"
         }
         AppContainer.invalidateCache(prefix)
@@ -184,6 +219,166 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
     }
 
     fun setTicketFilter(statusId: String?) = _ui.update { it.copy(ticketFilterStatusId = statusId) }
+
+    // ---- v1.4.5：实名认证提交与进度（协议对齐官方插件 idcsmart_certification）----
+
+    /** 选择认证方式：重置表单并加载该插件的费用配置与自定义字段。 */
+    fun selectCertPlugin(name: String) {
+        val plugin = _ui.value.panels[ServicePanel.CERTIFICATION]?.certPlugins
+            ?.firstOrNull { it.id == name } ?: return
+        val type = if (plugin.types.contains("person")) "person" else "company"
+        _ui.update {
+            it.copy(
+                certForm = it.certForm.copy(
+                    selectedPlugin = name,
+                    selectedPluginTitle = plugin.title,
+                    selectedPluginTypes = plugin.types,
+                    companyMode = type == "company",
+                    submitting = false, submitError = null,
+                    customValues = emptyMap()
+                )
+            )
+        }
+        viewModelScope.launch {
+            val config = (repo.certPluginConfig(name, type) as? ApiResult.Success)?.data
+            val fields = repo.certCustomFields(name, type).dataIfSuccess()
+            _ui.update {
+                it.copy(
+                    certForm = it.certForm.copy(
+                        config = config, customFields = fields,
+                        // 默认证件类型：身份证
+                        cardType = if (it.certForm.cardType.isBlank()) "1" else it.certForm.cardType
+                    )
+                )
+            }
+        }
+    }
+
+    /** 切换个人/企业提交类型（仅插件同时支持两种时 UI 才暴露）。 */
+    fun setCertCompanyMode(company: Boolean) {
+        val form = _ui.value.certForm
+        if (form.selectedPlugin.isBlank() || form.companyMode == company) return
+        _ui.update {
+            it.copy(certForm = it.certForm.copy(companyMode = company, customValues = emptyMap()))
+        }
+        viewModelScope.launch {
+            val config = (repo.certPluginConfig(form.selectedPlugin, if (company) "company" else "person") as? ApiResult.Success)?.data
+            val fields = repo.certCustomFields(form.selectedPlugin, if (company) "company" else "person").dataIfSuccess()
+            _ui.update { it.copy(certForm = it.certForm.copy(config = config, customFields = fields)) }
+        }
+    }
+
+    fun updateCertForm(transform: (CertFormUi) -> CertFormUi) =
+        _ui.update { it.copy(certForm = transform(it.certForm)) }
+
+    /**
+     * 提交个人/企业认证。成功后进入「认证进度」并按官方语义轮询：
+     * 仅 code==2 && refresh==0 继续轮询，其他情况终止并刷新基础信息。
+     */
+    fun submitCert() {
+        val form = _ui.value.certForm
+        if (form.submitting || form.selectedPlugin.isBlank()) return
+        // 本地表单校验（与服务端一致的最小集）
+        val missing = when {
+            form.cardName.isBlank() -> "请填写姓名"
+            form.cardNumber.isBlank() -> "请填写证件号码"
+            form.companyMode && form.customValues["company"].isNullOrBlank() -> "请填写企业名称"
+            else -> ""
+        }
+        if (missing.isNotEmpty()) {
+            _ui.update { it.copy(certForm = it.certForm.copy(submitError = missing)) }
+            return
+        }
+        val body = JsonObject().apply {
+            addProperty("plugin_name", form.selectedPlugin)
+            addProperty("card_name", form.cardName)
+            addProperty("card_type", form.cardType)
+            addProperty("card_number", form.cardNumber)
+            if (form.phone.isNotBlank()) addProperty("phone", form.phone)
+            if (form.companyMode) {
+                addProperty("company", form.customValues["company"].orEmpty())
+                addProperty("company_organ_code", form.customValues["company_organ_code"].orEmpty())
+            }
+            if (form.customFields.isNotEmpty()) {
+                add("custom_fields", JsonObject().apply {
+                    form.customFields.forEach { f -> addProperty(f.field, form.customValues[f.field].orEmpty()) }
+                })
+            }
+        }
+        viewModelScope.launch {
+            _ui.update { it.copy(certForm = it.certForm.copy(submitting = true, submitError = null)) }
+            val result = if (form.companyMode) repo.submitCompanyCert(body) else repo.submitPersonCert(body)
+            when (result) {
+                is ApiResult.Success -> {
+                    _ui.update {
+                        it.copy(
+                            certForm = it.certForm.copy(submitting = false, polling = true, pollHint = "已提交，正在核验…")
+                        )
+                    }
+                    pollCertStatus(maxPolls = 100)
+                }
+                is ApiResult.Failure -> _ui.update {
+                    it.copy(certForm = it.certForm.copy(submitting = false, submitError = "[${result.code}] ${result.msg}"))
+                }
+                is ApiResult.Error -> _ui.update {
+                    it.copy(certForm = it.certForm.copy(submitting = false, submitError = friendly(result.throwable)))
+                }
+            }
+        }
+    }
+
+    /**
+     * 认证状态轮询（3s 间隔，最多 maxPolls 次 ≈ 5 分钟）。
+     * 官方语义：业务 400（无认证信息）→ 终止；code==2 且 refresh==0 → 继续轮询；
+     * 其余（1 通过 / 3 待审核 / 4 已提交资料 / code==2 且 refresh!=0）→ 终止并刷新基础信息。
+     */
+    private suspend fun pollCertStatus(maxPolls: Int) {
+        repeat(maxPolls) { round ->
+            delay(3000)
+            when (val r = repo.certPollStatus()) {
+                is ApiResult.Success -> {
+                    val s = r.data
+                    if (s.code == 2 && s.refresh == 0) {
+                        _ui.update {
+                            it.copy(certForm = it.certForm.copy(pollHint = "核验未通过，等待用户重新发起…"))
+                        }
+                    } else {
+                        stopCertPolling(s.code)
+                        return
+                    }
+                }
+                else -> { // 400=无认证信息 或 网络异常：终止轮询，以基础信息为准
+                    stopCertPolling(0)
+                    return
+                }
+            }
+        }
+        stopCertPolling(0)
+    }
+
+    /** 终止轮询并刷新基础信息；UI 依据 person.status 展示最终状态。 */
+    private fun stopCertPolling(code: Int) {
+        viewModelScope.launch {
+            val hint = when (code) {
+                1 -> "实名认证已通过"
+                3 -> "资料已提交，等待审核"
+                4 -> "资料已提交，等待处理"
+                else -> "认证状态已更新"
+            }
+            val info = repo.certInfo()
+            _ui.update {
+                it.copy(
+                    certForm = it.certForm.copy(polling = false, pollHint = hint, submitting = false),
+                    panels = it.panels.toMutableMap().apply {
+                        val d = this[ServicePanel.CERTIFICATION] ?: ServicePanelData()
+                        if (info is ApiResult.Success && info.data != null) {
+                            this[ServicePanel.CERTIFICATION] = d.copy(cert = info.data, loaded = true)
+                        }
+                    }
+                )
+            }
+        }
+    }
 
     /** 进入工单创建 / 子账户编辑页时确保表单元数据（关联产品、权限树、模块、区号）已加载。 */
     fun ensureFormMeta() = ensureSubFormMeta()
@@ -502,14 +697,16 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
                     val rows = _ui.value.account?.let { ServiceParser.security(it) } ?: emptyList()
                     setPanel(panel) { it.copy(loading = false, loaded = true, security = rows, error = null) }
                 }
-                ServicePanel.CERTIFICATION -> {
-                    val infoResult = repo.certInfo()
-                    val pluginResult = repo.certPlugins()
+                ServicePanel.CERTIFICATION -> coroutineScope {
+                    val infoCall = async { repo.certInfo() }
+                    val pluginCall = async { repo.certPlugins() }
+                    val infoResult = infoCall.await()
+                    val plugins = pluginCall.await().dataIfSuccess()
                     when (infoResult) {
                         is ApiResult.Success -> setPanel(panel) {
                             it.copy(
                                 loading = false, loaded = true, error = null,
-                                cert = infoResult.data, certPlugins = pluginResult.dataIfSuccess()
+                                cert = infoResult.data, certPlugins = plugins
                             )
                         }
                         is ApiResult.Failure -> setPanel(panel) {
@@ -518,6 +715,12 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
                         is ApiResult.Error -> setPanel(panel) {
                             it.copy(loading = false, loaded = true, error = friendly(infoResult.throwable))
                         }
+                    }
+                    // v1.4.5：默认选中第一个支持个人的插件（费用配置与自定义字段随之加载）
+                    if (plugins.isNotEmpty() && _ui.value.certForm.selectedPlugin.isBlank()) {
+                        selectCertPlugin(
+                            plugins.firstOrNull { it.types.contains("person") }?.id ?: plugins.first().id
+                        )
                     }
                 }
             }

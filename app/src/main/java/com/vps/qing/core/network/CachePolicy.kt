@@ -142,6 +142,8 @@ object CachePolicy {
             rel.startsWith("cart") -> listOf("cart")
             rel.startsWith("ticket") -> listOf("ticket")
             rel.startsWith("sub_account") -> listOf("sub_account")
+            // 实名提交/认证订单会改变 /certification/info 的状态（v1.4.5）
+            rel.startsWith("certification/") -> listOf("certification")
             else -> emptyList()
         }
     }

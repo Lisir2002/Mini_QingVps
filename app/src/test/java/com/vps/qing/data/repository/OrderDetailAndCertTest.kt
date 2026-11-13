@@ -94,10 +94,113 @@ class OrderDetailAndCertTest {
     }
 
     @Test
-    fun `cert status text mapping`() {
-        assertEquals("审核中", ServiceParser.certInfo(certJson(2, false))!!.person!!.statusText)
-        assertEquals("未通过", ServiceParser.certInfo(certJson(3, false))!!.person!!.statusText)
+    fun `cert status text mapping follows official semantics`() {
+        // 官方插件源码语义：1=已认证，2=未通过，3=待审核，4=已提交资料
+        assertEquals("未通过", ServiceParser.certInfo(certJson(2, false))!!.person!!.statusText)
+        assertEquals("待审核", ServiceParser.certInfo(certJson(3, false))!!.person!!.statusText)
+        assertEquals("已提交资料", ServiceParser.certInfo(certJson(4, false))!!.person!!.statusText)
         assertEquals("未实名", ServiceParser.certInfo(certJson(0, false))!!.person!!.statusText)
+    }
+
+    @Test
+    fun `cert info parses new switches`() {
+        val json = certJson(personStatus = 1, isCertified = true).apply {
+            addProperty("certification_company_open", 0)
+            addProperty("certification_upload", 0)
+            addProperty("certification_uncertified_cannot_buy_product", 1)
+        }
+        val c = ServiceParser.certInfo(json)!!
+        assertFalse(c.companyOpen)
+        assertFalse(c.uploadRequired)
+        assertTrue(c.buyBlocked)
+        // 开关缺失时：companyOpen 视为开启；upload/buyBlocked 为 opt-in，缺省按未开启
+        val missing = ServiceParser.certInfo(certJson(1, true))!!
+        assertTrue(missing.companyOpen)
+        assertFalse(missing.uploadRequired)
+        assertFalse(missing.buyBlocked)
+    }
+
+    @Test
+    fun `cert plugin config parses fee info`() {
+        val data = JsonParser.parseString(
+            """{"free":1,"amount":1,"pay":1,"order":[]}"""
+        ).asJsonObject
+        val config = ServiceParser.certPluginConfig(data)
+        assertEquals(1, config.free)
+        assertEquals("1", config.amount)
+        assertTrue(config.pay)
+        assertEquals("享有 1 次免费认证，超出后每次 ¥1", config.feeHint)
+        // 免费场景
+        val free = ServiceParser.certPluginConfig(
+            JsonParser.parseString("""{"free":3,"amount":"2.00","pay":0}""").asJsonObject
+        )
+        assertEquals("当前认证方式免费", free.feeHint)
+        // 无免费额度需付费
+        val paid = ServiceParser.certPluginConfig(
+            JsonParser.parseString("""{"free":0,"amount":"2.00","pay":1}""").asJsonObject
+        )
+        assertEquals("本次认证需支付 ¥2.00", paid.feeHint)
+        // 异常数据回退为免费
+        assertEquals("当前认证方式免费", ServiceParser.certPluginConfig(null).feeHint)
+        assertEquals("当前认证方式免费", ServiceParser.certPluginConfig(JsonObject()).feeHint)
+    }
+
+    @Test
+    fun `cert poll status parses code and refresh`() {
+        val passed = ServiceParser.certPollStatus(
+            JsonParser.parseString("""{"code":1,"refresh":1}""").asJsonObject
+        )
+        assertEquals(1, passed.code)
+        assertEquals(1, passed.refresh)
+        // 官方语义：仅 code==2 && refresh==0 继续轮询
+        val rejected = ServiceParser.certPollStatus(
+            JsonParser.parseString("""{"code":2,"refresh":0}""").asJsonObject
+        )
+        assertTrue(rejected.code == 2 && rejected.refresh == 0)
+        val garbage = ServiceParser.certPollStatus(JsonObject())
+        assertEquals(0, garbage.code)
+    }
+
+    @Test
+    fun `cert auth page parses html or redirect code`() {
+        val page = ServiceParser.certAuthPage(
+            200, JsonParser.parseString("""{"html":"<div>face</div>"}""").asJsonObject
+        )
+        assertEquals(0, page.code)
+        assertEquals("<div>face</div>", page.html)
+        val redirect = ServiceParser.certAuthPage(
+            400, JsonParser.parseString("""{"code":10001}""").asJsonObject
+        )
+        assertEquals(10001, redirect.code)
+        assertTrue(redirect.html.isEmpty())
+    }
+
+    @Test
+    fun `cert custom fields parse and tolerate empty`() {
+        // 本站实测：custom_fields 为空数组
+        val empty = ServiceParser.certCustomFields(
+            JsonParser.parseString("""{"custom_fields":[]}""").asJsonObject
+        )
+        assertTrue(empty.isEmpty())
+        val data = JsonParser.parseString(
+            """{"custom_fields":[{"title":"证件类型","field":"cert_type","type":"select",
+                "options":["IDENTITY_CARD","PASSPORT"]},{"title":"备注","field":"note"}]}"""
+        ).asJsonObject
+        val fields = ServiceParser.certCustomFields(data)
+        assertEquals(2, fields.size)
+        assertEquals("证件类型", fields[0].title)
+        assertEquals("cert_type", fields[0].field)
+        assertEquals(listOf("IDENTITY_CARD", "PASSPORT"), fields[0].options)
+        assertEquals("备注", fields[1].title)
+        assertTrue(fields[1].options.isEmpty())
+    }
+
+    @Test
+    fun `card types dictionary matches official docs`() {
+        assertEquals(8, ServiceParser.CARD_TYPES.size)
+        assertEquals("1" to "身份证", ServiceParser.CARD_TYPES.first())
+        assertEquals("8" to "其他", ServiceParser.CARD_TYPES.last())
+        assertTrue(ServiceParser.CARD_TYPES.any { it.first == "6" && it.second == "海外护照" })
     }
 
     @Test

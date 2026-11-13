@@ -210,6 +210,42 @@ interface QingVpsApiService {
     @GET("certification/plugin")
     suspend fun certificationPlugins(): ApiEnvelope
 
+    // ---- v1.4.5：实名认证提交与进度（协议取自魔方官方插件 idcsmart_certification 路由表）----
+
+    /** 自定义字段：data.custom_fields[]（title/field/type 等），按插件与类型查询。 */
+    @GET("certification/custom_fields")
+    suspend fun certificationCustomFields(
+        @Query("name") name: String,
+        @Query("type") type: String
+    ): ApiEnvelope
+
+    /** 个人认证提交：plugin_name/card_name/phone/card_type/card_number(+img/custom_fields)。 */
+    @POST("certification/person")
+    suspend fun certificationPerson(@Body body: JsonObject): ApiEnvelope
+
+    /** 企业认证提交：同上 + company/company_organ_code。 */
+    @POST("certification/company")
+    suspend fun certificationCompany(@Body body: JsonObject): ApiEnvelope
+
+    /** 认证验证页：200 → data.html（人脸页，内含轮询）；400 → data.code 10000/10001。 */
+    @GET("certification/auth")
+    suspend fun certificationAuth(): ApiEnvelope
+
+    /** 状态轮询：data{code:1通过/2未通过/3待审核/4已提交, refresh}；仅 code==2&&refresh==0 继续轮询。 */
+    @GET("certification/status")
+    suspend fun certificationStatus(): ApiEnvelope
+
+    /** 插件收费配置：data{free 免费次数, amount 金额, pay 是否需支付, order 订单}。 */
+    @GET("certification/plugin/config")
+    suspend fun certificationPluginConfig(
+        @Query("name") name: String,
+        @Query("type") type: String
+    ): ApiEnvelope
+
+    /** 生成认证订单（需支付时先调用）：data.order_id。 */
+    @POST("certification/plugin/order")
+    suspend fun certificationPluginOrder(@Body body: JsonObject): ApiEnvelope
+
     // ---- v1.4.2：已购产品详情（只读，展示已订购的配置与支付信息）----
 
     /** 主机详情：data.host 含支付信息、addition（用户名/密码/端口/地区）。 */

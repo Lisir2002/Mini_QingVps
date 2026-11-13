@@ -231,6 +231,12 @@ fun ProfileScreen(
             onCreateSubAccount = { pushDetail("subnew") },
             onToggleSubAccount = vm::toggleSubAccountStatus,
             onDeleteSubAccount = vm::deleteSubAccount,
+            // v1.4.5 实名认证提交与进度
+            certForm = state.certForm,
+            onSelectCertPlugin = vm::selectCertPlugin,
+            onCertCompanyMode = vm::setCertCompanyMode,
+            onCertFormChange = { newForm -> vm.updateCertForm { newForm } },
+            onSubmitCert = vm::submitCert,
             actionBusy = state.actionBusy
         )
         return
