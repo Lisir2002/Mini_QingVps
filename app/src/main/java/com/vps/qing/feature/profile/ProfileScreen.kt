@@ -113,6 +113,16 @@ fun ProfileScreen(
         if (state.loggedOut) onLoggedOut()
     }
 
+    // 写操作反馈（v1.4.3）：用系统 Toast，任意子页面都能收到，显示后即消费
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(state.actionMessage, state.actionError) {
+        val msg = state.actionMessage ?: state.actionError
+        if (msg != null) {
+            android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_SHORT).show()
+            vm.consumeAction()
+        }
+    }
+
     // 子页面打开时：进入懒加载 + 系统返回键逐级回退（详情页 → 服务页 / 设置页 → 主页）
     LaunchedEffect(servicePage) { servicePage?.let(vm::ensurePanel) }
     LaunchedEffect(currentDetail) {
@@ -122,6 +132,13 @@ fun ProfileScreen(
                 vm.ensureProductDetail(currentDetail.removePrefix("product:"))
             currentDetail.startsWith("order:") ->
                 vm.ensureOrderDetail(currentDetail.removePrefix("order:"))
+            currentDetail.startsWith("ticket:") ->
+                vm.ensureTicketDetail(currentDetail.removePrefix("ticket:"))
+            currentDetail == "ticketnew" || currentDetail == "subnew" -> vm.ensureFormMeta()
+            currentDetail.startsWith("subedit:") -> {
+                vm.ensureFormMeta()
+                vm.ensureSubAccountDetail(currentDetail.removePrefix("subedit:"))
+            }
         }
     }
     // 上报主容器：任意子页面打开即隐藏底栏
@@ -163,6 +180,37 @@ fun ProfileScreen(
                 )
                 return
             }
+            // v1.4.3：工单详情 / 新建工单
+            token.startsWith("ticket:") -> {
+                TicketDetailPage(
+                    vm = vm,
+                    ticketId = token.removePrefix("ticket:"),
+                    onBack = popDetail
+                )
+                return
+            }
+            token == "ticketnew" -> {
+                TicketCreatePage(
+                    vm = vm,
+                    onBack = popDetail,
+                    onCreated = popDetail
+                )
+                return
+            }
+            // v1.4.3：子账户新建 / 编辑
+            token == "subnew" -> {
+                SubAccountFormPage(vm = vm, editId = null, onBack = popDetail, onSaved = popDetail)
+                return
+            }
+            token.startsWith("subedit:") -> {
+                SubAccountFormPage(
+                    vm = vm,
+                    editId = token.removePrefix("subedit:"),
+                    onBack = popDetail,
+                    onSaved = popDetail
+                )
+                return
+            }
         }
     }
 
@@ -174,7 +222,16 @@ fun ProfileScreen(
             onRefresh = { vm.refreshPanel(panel) },
             onOpenOrder = openOrderDetail,
             onOpenProduct = { openHostDetail(it, "") },
-            onOpenWeb = onOpenWeb
+            onOpenWeb = onOpenWeb,
+            onOpenTicket = { pushDetail("ticket:$it") },
+            onCreateTicket = { pushDetail("ticketnew") },
+            onTicketFilter = vm::setTicketFilter,
+            ticketFilterStatusId = state.ticketFilterStatusId,
+            onOpenSubAccount = { pushDetail("subedit:$it") },
+            onCreateSubAccount = { pushDetail("subnew") },
+            onToggleSubAccount = vm::toggleSubAccountStatus,
+            onDeleteSubAccount = vm::deleteSubAccount,
+            actionBusy = state.actionBusy
         )
         return
     }

@@ -3,6 +3,7 @@ package com.vps.qing.data.repository
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.vps.qing.core.network.arrayAt
+import com.vps.qing.core.network.objectAt
 import com.vps.qing.core.network.string
 
 /**
@@ -38,9 +39,39 @@ data class ProductInfo(
     val payType: String = "",
     val descriptionHtml: String = "",
     /** 从商品 description 的 `div.pd-br` 里抽出来的真实配置项，例如「月流量：50GiB」。 */
-    val specs: List<String> = emptyList()
+    val specs: List<String> = emptyList(),
+    /** v1.4.3 商品指标：实际资源模块（mf_cloud / idcsmart_common…），可提前判断配置类型。 */
+    val resModule: String = "",
+    /** 商品模式（only_api 等）。 */
+    val mode: String = "",
+    /** 站点商品分组 id（product_group_id）。 */
+    val groupId: String = "",
+    /** 库存（qty）。 */
+    val stock: String = "",
+    /** 是否支持试用付费。 */
+    val payOnTrial: Boolean = false,
+    /** 是否推荐商品。 */
+    val recommend: Boolean = false,
+    /** 供应商名称（商品详情）。 */
+    val supplierName: String = "",
+    /** 是否上架（商品详情 show=1）。 */
+    val show: Boolean = true
 ) {
     val unitPrice: Double get() = price.toDoubleOrNull() ?: 0.0
+
+    /** 是否需要走 mf_cloud 深度配置（列表字段即可预判，省掉一次必失败的通用配置请求）。 */
+    val isMfCloud: Boolean
+        get() = resModule.contains("mf_cloud", true) || resModule.contains("mf_dcim", true)
+
+    /** 展示用的计费方式文案。 */
+    val payTypeText: String
+        get() = when (payType) {
+            "recurring_prepayment" -> "预付费续费"
+            "onetime" -> "一次性"
+            "free" -> "免费"
+            "on_demand" -> "按需计费"
+            else -> payType.ifBlank { "--" }
+        }
 }
 
 data class NewsItem(
@@ -67,12 +98,17 @@ data class MenuEntry(
 
 object CatalogParser {
 
-    private val DIV_BLOCK = Regex("""<div[^>]*>([\s\S]*?)</div>""")
+    private val DIV_BLOCK = Regex("""<div[^>]*>([\s\S]*?)</div>""", RegexOption.IGNORE_CASE)
     private val ANY_TAG = Regex("""<[^>]*>""")
     private val BR_TAG = Regex("""<br\s*/?>""", RegexOption.IGNORE_CASE)
+    private val DIV_CLOSE = Regex("""</div\s*>""", RegexOption.IGNORE_CASE)
+    private val DOC_TAG = Regex("""<!DOCTYPE[^>]*>""", RegexOption.IGNORE_CASE)
+    private val SCRIPT_BLOCK = Regex("""<(script|style)[\s\S]*?</\1>""", RegexOption.IGNORE_CASE)
+    private val STRUCT_TAG = Regex("""</?(html|head|body)[^>]*>""", RegexOption.IGNORE_CASE)
     private val ENTITIES = listOf(
         "&nbsp;" to " ", "&amp;" to "&", "&lt;" to "<", "&gt;" to ">",
-        "&quot;" to "\"", "&#39;" to "'", "&ldquo;" to "\"", "&rdquo;" to "\""
+        "&quot;" to "\"", "&#39;" to "'", "&ldquo;" to "\"", "&rdquo;" to "\"",
+        "&times;" to "×", "&ge;" to "≥", "&le;" to "≤"
     )
 
     private fun JsonElement?.listOrNull(): JsonArray? =
@@ -85,16 +121,22 @@ object CatalogParser {
      */
     fun specsFromHtml(html: String): List<String> {
         if (html.isBlank()) return emptyList()
-        val blocks = DIV_BLOCK.findAll(html).map { it.groupValues[1] }.toList()
-        val source = blocks.ifEmpty { listOf(html) }
-        return source.flatMap { block ->
-            val noBr = BR_TAG.replace(block, "\n")
-            val plain = ANY_TAG.replace(noBr, "")
-            val decoded = ENTITIES.fold(plain) { acc, (entity, value) -> acc.replace(entity, value) }
-            decoded.split("\n")
-                .map { it.trim() }
-                .filter { it.isNotBlank() && it.length <= 120 }
-        }.distinct().take(12)
+        // 站点 description 是「整页 HTML 套整页 HTML」的嵌套结构（含 DOCTYPE / html / head / body）。
+        // v1.4.3：先剥离结构性标签与脚本，再把 div 开合、br 统一转成换行，
+        // 这样既拿得到 div.pd-br 里的配置项，也不会漏掉块外的「处理器：…」等说明。
+        var text = DOC_TAG.replace(html, "")
+        text = SCRIPT_BLOCK.replace(text, "")
+        text = STRUCT_TAG.replace(text, "")
+        text = DIV_BLOCK.replace(text) { it.groupValues[1] + "\n" }
+        text = DIV_CLOSE.replace(text, "\n")
+        text = BR_TAG.replace(text, "\n")
+        text = ANY_TAG.replace(text, "")
+        text = ENTITIES.fold(text) { acc, (entity, value) -> acc.replace(entity, value, true) }
+        return text.split("\n")
+            .map { it.trim().replace(Regex("""\s{2,}"""), " ") }
+            .filter { it.isNotBlank() && it.length <= 120 && it != "DOCTYPE" }
+            .distinct()
+            .take(16)
     }
 
     fun firstGroups(data: JsonElement?): List<ProductGroup> = groups(data)
@@ -149,9 +191,38 @@ object CatalogParser {
                 groupSecondName = el.string("product_group_name_second"),
                 payType = el.string("pay_type").orEmpty(),
                 descriptionHtml = html,
-                specs = specsFromHtml(html)
+                specs = specsFromHtml(html),
+                resModule = el.string("res_module", "module").orEmpty(),
+                mode = el.string("mode").orEmpty(),
+                groupId = el.string("product_group_id").orEmpty(),
+                stock = el.string("qty").orEmpty(),
+                payOnTrial = el.arrayAt("pay_ontrial")?.size()?.takeIf { it > 0 } != null,
+                recommend = el.string("recommend") == "1"
             )
         } ?: emptyList()
+
+    /**
+     * 商品详情 GET /product/{id} → data.product。
+     * v1.4.3：补齐列表接口没有的指标（分组 id、供应商、上架状态、模块、模式），
+     * 用于配置页展示「计费方式 / 起价 / 商品类型」，避免只靠列表字段猜测。
+     */
+    fun productDetail(data: JsonElement?): ProductInfo? {
+        val el = data?.objectAt("product") ?: data?.takeIf { it.isJsonObject } ?: return null
+        val id = el.string("id") ?: return null
+        return ProductInfo(
+            id = id,
+            name = el.string("name") ?: "未命名商品",
+            price = el.string("price").orEmpty(),
+            cycle = el.string("cycle").orEmpty(),
+            payType = el.string("pay_type").orEmpty(),
+            groupId = el.string("product_group_id").orEmpty(),
+            groupFirstId = el.string("product_group_id_first").orEmpty(),
+            resModule = el.string("module").orEmpty(),
+            mode = el.string("mode").orEmpty(),
+            supplierName = el.string("supplier_name").orEmpty(),
+            show = el.string("show") == "1"
+        )
+    }
 
     fun news(data: JsonElement?): List<NewsItem> =
         data.listOrNull()?.mapNotNull { el ->

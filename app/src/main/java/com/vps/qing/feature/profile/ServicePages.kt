@@ -115,12 +115,25 @@ fun ServicePageScreen(
     onOpenOrder: (String) -> Unit = {},
     /** 打开「已购产品详情」页（传入 hostId，v1.4.2：已订购配置而非购买页）。 */
     onOpenProduct: (String) -> Unit = {},
-    onOpenWeb: (String) -> Unit = {}
+    onOpenWeb: (String) -> Unit = {},
+    // ---- v1.4.3 工单中心 ----
+    onOpenTicket: (String) -> Unit = {},
+    onCreateTicket: () -> Unit = {},
+    onTicketFilter: (String?) -> Unit = {},
+    ticketFilterStatusId: String? = null,
+    // ---- v1.4.3 子账户管理 ----
+    onOpenSubAccount: (String) -> Unit = {},
+    onCreateSubAccount: () -> Unit = {},
+    onToggleSubAccount: (String, Boolean) -> Unit = { _, _ -> },
+    onDeleteSubAccount: (String) -> Unit = {},
+    actionBusy: Boolean = false
 ) {
     val menu = ServicePanels.entries.firstOrNull { it.panel == panel }
     val pageTitle = menu?.title
         ?: if (panel == ServicePanel.CERTIFICATION) Strings.CERTIFICATION else Strings.ACCOUNT_SERVICES
     val pageSub = menu?.subtitle ?: "实名状态与认证办理"
+    val isTicketPanel = panel == ServicePanel.TICKETS
+    val isSubPanel = panel == ServicePanel.SUB_ACCOUNTS
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
             GlassTopBar(
@@ -129,6 +142,15 @@ fun ServicePageScreen(
                 navIcon = AppIcons.Back,
                 onNavClick = onBack,
                 actions = {
+                    if (isTicketPanel || isSubPanel) {
+                        CartoonIconChip(
+                            icon = AppIcons.Plus,
+                            onClick = { if (isTicketPanel) onCreateTicket() else onCreateSubAccount() },
+                            tint = CartoonColors.Brand,
+                            bg = CartoonColors.BrandSoft
+                        )
+                        Spacer(Modifier.width(6.dp))
+                    }
                     CartoonIconChip(
                         icon = AppIcons.Refresh,
                         onClick = onRefresh,
@@ -170,9 +192,32 @@ fun ServicePageScreen(
                             onOpenWeb = onOpenWeb
                         )
                     }
+                    // v1.4.3：工单中心 = 统计条 + 状态筛选 + 可点进详情的列表 + 新建入口
+                    isTicketPanel -> {
+                        TicketsListBody(
+                            data = data,
+                            filterStatusId = ticketFilterStatusId,
+                            onFilter = onTicketFilter,
+                            onOpenTicket = onOpenTicket,
+                            onCreateTicket = onCreateTicket,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    // v1.4.3：子账户管理 = 列表 + 启停/编辑/删除 + 新建入口
+                    isSubPanel -> {
+                        SubAccountsListBody(
+                            data = data,
+                            busy = actionBusy,
+                            onOpenSubAccount = onOpenSubAccount,
+                            onCreateSubAccount = onCreateSubAccount,
+                            onToggle = onToggleSubAccount,
+                            onDelete = onDeleteSubAccount,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                     else -> {
                         val empty = data.hosts.isEmpty() && data.orders.isEmpty() && data.txns.isEmpty() &&
-                            data.tickets.isEmpty() && data.subAccounts.isEmpty() && data.security.isEmpty()
+                            data.security.isEmpty()
                         if (empty) {
                             EmptyHint(
                                 icon = AppIcons.EmptyBox,
@@ -205,8 +250,6 @@ fun ServicePageScreen(
                                         TxnLineRow(txn)
                                     }
                                 }
-                                items(data.tickets, key = { "ticket-${it.id}" }) { TicketLineRow(it) }
-                                items(data.subAccounts, key = { "sub-${it.id}" }) { SubAccountLineRow(it) }
                                 if (data.security.isNotEmpty()) {
                                     item {
                                         GlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -783,39 +826,5 @@ internal fun TxnLineRow(txn: TxnLine) {
     }
 }
 
-@Composable
-internal fun TicketLineRow(ticket: TicketLine) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    ticket.title.ifBlank { "#${ticket.id}" },
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold, color = CartoonColors.Ink,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Spacer(Modifier.weight(1f))
-                Text(ticket.createTime, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
-            }
-        }
-    }
-}
-
-@Composable
-internal fun SubAccountLineRow(sub: SubAccountLine) {
-    GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(sub.username.ifBlank { "#${sub.id}" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
-                Text(sub.email, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
-            }
-        }
-    }
-}
+// 工单 / 子账户列表已迁移到 AccountServicePages.kt 的增强实现（v1.4.3）：
+// 统计条 + 状态筛选 + 详情跳转 + 新建，以及启停 / 编辑 / 删除操作。

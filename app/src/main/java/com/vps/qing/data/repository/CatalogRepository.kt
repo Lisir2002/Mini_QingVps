@@ -8,6 +8,8 @@ import com.vps.qing.core.network.number
 import com.vps.qing.core.network.safeApiCall
 import com.vps.qing.core.network.string
 import com.vps.qing.data.api.QingVpsApiService
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -32,34 +34,42 @@ class CatalogRepository(private val api: QingVpsApiService) {
     suspend fun secondGroups(firstId: String): ApiResult<List<ProductGroup>> =
         safeApiCall({ api.secondGroups(firstId) }) { CatalogParser.secondGroups(it) }
 
-    /** 商品分页大小：站点 /product 默认 limit=20 会漏商品，必须显式传大值并按 count 兜底。 */
+    /** 商品分页大小：站点 /product 默认 limit=20 会漏商品，必须显式传大值。 */
     private val productPageSize = 100
-    private val productMaxPages = 10
+    private val productMaxPages = 20
 
     /**
      * 全量商品（分类在本地过滤）。
-     * v1.2.4 修复根本性 bug：/product 是分页接口（默认 limit=20），站点已有 40+ 商品，
-     * 不带 limit 只能拿到前 20 个 —— 上新商品和旧款全部"抓不到"。
-     * 现在显式 limit=100 一次取回，并按 data.count 校验、必要时继续翻页。
+     *
+     * v1.4.3 修正分页判定：实测 `data.count` 恒等于「默认每页条数 20」，
+     * 并不是商品总数（limit=100 一次返回 44 条但 count 仍是 20）。
+     * 旧版用 `collected.size >= count` 当终止条件：小 limit 时会提前停在 20 条、
+     * 大 limit 时又会因第一页就超过 20 而立刻停止翻页，两种情况都可能漏商品。
+     * 现在以「本页返回条数小于 limit」判定最后一页，并按 id 去重防止翻页重叠。
      */
     suspend fun allProducts(): ApiResult<List<ProductInfo>> {
         val collected = mutableListOf<JsonElement>()
+        val seenIds = mutableSetOf<String>()
         var page = 1
-        while (true) {
+        while (page <= productMaxPages) {
             val r = safeApiCall({ api.allProducts(page, productPageSize) }) { it }
             val arr = when (r) {
                 is ApiResult.Success -> r.data.arrayAt("list")
                 is ApiResult.Failure -> return ApiResult.Failure(r.code, r.msg, r.data)
                 is ApiResult.Error -> return ApiResult.Error(r.throwable)
             } ?: break
-            if (arr.size() == 0 && page > 1) break
-            collected.addAll(arr)
-            val total = r.data.number("count")?.toInt() ?: collected.size
-            if (collected.size >= total || page >= productMaxPages) break
+            arr.forEach { el ->
+                val id = el.string("id")
+                if (id == null || seenIds.add(id)) collected.add(el)
+            }
+            // 本页没填满 = 已经是最后一页；空页同样终止
+            if (arr.size() < productPageSize) break
             page++
         }
         if (collected.isEmpty()) return ApiResult.Success(emptyList())
-        val wrapper = JsonObject().apply { add("list", com.google.gson.JsonArray().apply { collected.forEach { add(it) } }) }
+        val wrapper = JsonObject().apply {
+            add("list", com.google.gson.JsonArray().apply { collected.forEach { add(it) } })
+        }
         return ApiResult.Success(CatalogParser.products(wrapper))
     }
 
@@ -74,8 +84,9 @@ class CatalogRepository(private val api: QingVpsApiService) {
      *     order_page + image + line 详情做深度适配（v1.2.2 起，不再丢给网页）；
      *  3. 两者都失败才降级 requiresWebOrder=true 引导网页选购。
      */
-    suspend fun productConfig(productId: String): ApiResult<ProductConfig> {
-        cachedConfig(productId)?.let { return ApiResult.Success(it) }
+    suspend fun productConfig(productId: String, forceRefresh: Boolean = false): ApiResult<ProductConfig> {
+        if (!forceRefresh) cachedConfig(productId)?.let { return ApiResult.Success(it) }
+        if (forceRefresh) configCache.remove(productId)
         return safeApiCall({ api.productConfig(productId) }) { data ->
             ConfigParser.parse(productId, data)
         }.let { result ->
@@ -161,6 +172,27 @@ class CatalogRepository(private val api: QingVpsApiService) {
     /** 实时算价（配置面板展示当前配置的价格）。 */
     suspend fun calcPrice(productId: String, body: JsonObject): ApiResult<PriceQuote> =
         safeApiCall({ api.calcPrice(productId, body) }) { ConfigParser.price(it) }
+
+    /**
+     * v1.4.3：按当前配置对所有付费周期并发算价。
+     * custom_cycles[].cycle_amount 是站点标价（未含折扣 / 首购优惠），实测月付标价
+     * 13.33 而算价返回 10.00、年付标价 133.32 而算价返回 100.00，
+     * 所以只有逐周期调用算价接口才能拿到「配置对应」的真实价格。
+     * 单个周期失败不影响其它周期（失败项由 UI 回退展示标价并明确标注）。
+     */
+    suspend fun calcCycleQuotes(
+        productId: String,
+        bodies: Map<String, JsonObject>
+    ): Map<String, PriceQuote> = coroutineScope {
+        val calls = bodies.mapValues { (_, body) -> async { calcPrice(productId, body) } }
+        calls.mapNotNull { (cycleId, deferred) ->
+            (deferred.await() as? ApiResult.Success)?.data?.let { cycleId to it }
+        }.toMap()
+    }
+
+    /** 商品详情指标（GET /product/{id}），用于配置页展示计费方式与起价。 */
+    suspend fun productIndicators(productId: String): ApiResult<ProductInfo?> =
+        safeApiCall({ api.productDetail(productId) }) { CatalogParser.productDetail(it) }
 
     /** 真实加入站点购物车。 */
     suspend fun addToCart(body: JsonObject): ApiResult<Unit> =

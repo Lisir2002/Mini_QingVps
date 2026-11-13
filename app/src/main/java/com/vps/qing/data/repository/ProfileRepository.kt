@@ -1,6 +1,7 @@
 package com.vps.qing.data.repository
 
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.vps.qing.core.network.ApiResult
 import com.vps.qing.core.network.TokenManager
 import com.vps.qing.core.network.objectAt
@@ -64,11 +65,11 @@ class ProfileRepository(
     suspend fun transactions(): ApiResult<List<TxnLine>> =
         safeApiCall({ api.transactions() }) { ServiceParser.transactions(it) }
 
-    suspend fun tickets(): ApiResult<List<TicketLine>> =
-        safeApiCall({ api.tickets() }) { ServiceParser.tickets(it) }
+    suspend fun tickets(keywords: String? = null): ApiResult<List<TicketLine>> =
+        safeApiCall({ api.tickets(keywords = keywords) }) { ServiceParser.tickets(it) }
 
-    suspend fun subAccounts(): ApiResult<List<SubAccountLine>> =
-        safeApiCall({ api.subAccounts() }) { ServiceParser.subAccounts(it) }
+    suspend fun subAccounts(keywords: String? = null): ApiResult<List<SubAccountLine>> =
+        safeApiCall({ api.subAccounts(keywords = keywords) }) { ServiceParser.subAccounts(it) }
 
     // ---- v1.4.0：订单详情 + 实名认证 ----
 
@@ -111,6 +112,72 @@ class ProfileRepository(
             }
         }
     }
+
+    // ---- v1.4.3：工单中心（插件 idcsmart_ticket 全量读写）----
+
+    suspend fun ticketStatistic(): ApiResult<TicketStatistic> =
+        safeApiCall({ api.ticketStatistic() }) { TicketParser.statistic(it) }
+
+    suspend fun ticketTypes(): ApiResult<List<TicketOption>> =
+        safeApiCall({ api.ticketTypes() }) { TicketParser.types(it) }
+
+    suspend fun ticketStatuses(): ApiResult<List<TicketOption>> =
+        safeApiCall({ api.ticketStatuses() }) { TicketParser.statuses(it) }
+
+    suspend fun ticketDepartments(): ApiResult<List<TicketOption>> =
+        safeApiCall({ api.ticketDepartments() }) { TicketParser.departments(it) }
+
+    suspend fun ticketConfig(): ApiResult<TicketConfigInfo> =
+        safeApiCall({ api.ticketConfig() }) { TicketParser.config(it) }
+
+    suspend fun ticketDetail(id: String): ApiResult<TicketDetail?> =
+        safeApiCall({ api.ticketDetail(id) }) { TicketParser.detail(it) }
+
+    suspend fun createTicket(body: JsonObject): ApiResult<Unit> =
+        safeApiCall({ api.createTicket(body) }) { Unit }
+
+    suspend fun replyTicket(id: String, body: JsonObject): ApiResult<Unit> =
+        safeApiCall({ api.replyTicket(id, body) }) { Unit }
+
+    suspend fun closeTicket(id: String): ApiResult<Unit> =
+        safeApiCall({ api.closeTicket(id, TicketBodies.action(id)) }) { Unit }
+
+    suspend fun urgeTicket(id: String): ApiResult<Unit> =
+        safeApiCall({ api.urgeTicket(id, TicketBodies.action(id)) }) { Unit }
+
+    // ---- v1.4.3：子账户管理（插件 idcsmart_sub_account 全量读写）----
+
+    suspend fun subAccountDetail(id: String): ApiResult<SubAccountDetail?> =
+        safeApiCall({ api.subAccountDetail(id) }) { SubAccountParser.detail(it) }
+
+    suspend fun subAccountAuth(id: String): ApiResult<JsonElement?> =
+        safeApiCall({ api.subAccountAuth(id) }) { it }
+
+    /** 权限树（GET /auth）。 */
+    suspend fun authTree(): ApiResult<List<AuthNode>> =
+        safeApiCall({ api.auth() }) { SubAccountParser.auth(it) }
+
+    suspend fun modules(): ApiResult<List<ModuleOption>> =
+        safeApiCall({ api.modules() }) { SubAccountParser.modules(it) }
+
+    suspend fun allHosts(): ApiResult<List<HostOption>> =
+        safeApiCall({ api.allHosts() }) { SubAccountParser.hosts(it) }
+
+    /** 国家区号（/country 结构可能因版本不同，解析失败降级空列表）。 */
+    suspend fun countryCodes(): ApiResult<List<CountryOption>> =
+        safeApiCall({ api.countries() }) { SubAccountParser.countries(it) }
+
+    suspend fun createSubAccount(body: JsonObject): ApiResult<Unit> =
+        safeApiCall({ api.createSubAccount(body) }) { Unit }
+
+    suspend fun updateSubAccount(id: String, body: JsonObject): ApiResult<Unit> =
+        safeApiCall({ api.updateSubAccount(id, body) }) { Unit }
+
+    suspend fun deleteSubAccount(id: String): ApiResult<Unit> =
+        safeApiCall({ api.deleteSubAccount(id) }) { Unit }
+
+    suspend fun updateSubAccountStatus(id: String, enabled: Boolean): ApiResult<Unit> =
+        safeApiCall({ api.updateSubAccountStatus(id, SubAccountBodies.status(enabled)) }) { Unit }
 
     suspend fun logout(): ApiResult<Unit> {
         val result = safeApiCall({ api.logout() }) { Unit }

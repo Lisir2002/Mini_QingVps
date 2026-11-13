@@ -63,13 +63,16 @@ interface QingVpsApiService {
     @GET("ticket")
     suspend fun tickets(
         @Query("page") page: Int = 1,
-        @Query("limit") limit: Int = 100
+        @Query("limit") limit: Int = 100,
+        @Query("keywords") keywords: String? = null,
+        @Query("ticket_type_id") ticketTypeId: String? = null
     ): ApiEnvelope
 
     @GET("sub_account")
     suspend fun subAccounts(
         @Query("page") page: Int = 1,
-        @Query("limit") limit: Int = 100
+        @Query("limit") limit: Int = 100,
+        @Query("keywords") keywords: String? = null
     ): ApiEnvelope
 
     /** 兼容旧调用：按站点参数请求商品（返回仍是全量，由调用方本地过滤）。 */
@@ -224,6 +227,93 @@ interface QingVpsApiService {
      */
     @GET("remf_cloud/{id}")
     suspend fun cloudDetail(@Path("id") id: String): ApiEnvelope
+
+    // ---- v1.4.3：工单中心（插件 idcsmart_ticket）----
+    // 端点全部来自站点前端 ticket.js / addTicket.js / ticketDetails.js 实测，非猜测。
+    // 插件页面：plugin/27/ticket.htm、addTicket.htm、ticketDetails.htm
+
+    /** 工单统计：data 是 {状态id: 数量} 映射。 */
+    @GET("ticket/statistic")
+    suspend fun ticketStatistic(): ApiEnvelope
+
+    /** 工单类型：data.list[{id,name}]。 */
+    @GET("ticket/type")
+    suspend fun ticketTypes(): ApiEnvelope
+
+    /** 工单状态字典：data.list[{id,name,color,status,default}]。 */
+    @GET("ticket/status")
+    suspend fun ticketStatuses(): ApiEnvelope
+
+    /** 工单部门：data.list[{id,name}]。 */
+    @GET("ticket/department")
+    suspend fun ticketDepartments(): ApiEnvelope
+
+    /** 工单通知设置：data{ticket_notice_open,ticket_notice_description}。 */
+    @GET("ticket/config")
+    suspend fun ticketConfig(): ApiEnvelope
+
+    /** 工单详情：data.ticket 含 replies[] 回复时间轴。 */
+    @GET("ticket/{id}")
+    suspend fun ticketDetail(@Path("id") id: String): ApiEnvelope
+
+    /** 创建工单：body{title,ticket_type_id,host_ids,content,attachment}。 */
+    @POST("ticket")
+    suspend fun createTicket(@Body body: JsonObject): ApiEnvelope
+
+    /** 回复工单：body{content,attachment,quote_reply_id}。 */
+    @POST("ticket/{id}/reply")
+    suspend fun replyTicket(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
+
+    /** 关闭工单。 */
+    @PUT("ticket/{id}/close")
+    suspend fun closeTicket(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
+
+    /** 催单（站点限制 15 分钟一次）。 */
+    @PUT("ticket/{id}/urge")
+    suspend fun urgeTicket(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
+
+    // ---- v1.4.3：子账户管理（插件 idcsmart_sub_account）----
+    // 端点来自站点前端 childAccount.js / addChildAccount.js 实测。
+    // 插件页面：plugin/28/childAccount.htm、addChildAccount.htm
+
+    /** 子账户详情：data.account 含基本信息与 auth 权限 id 列表。 */
+    @GET("sub_account/{id}")
+    suspend fun subAccountDetail(@Path("id") id: String): ApiEnvelope
+
+    /** 创建子账户。 */
+    @POST("sub_account")
+    suspend fun createSubAccount(@Body body: JsonObject): ApiEnvelope
+
+    /** 编辑子账户。 */
+    @PUT("sub_account/{id}")
+    suspend fun updateSubAccount(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
+
+    /** 删除子账户。 */
+    @DELETE("sub_account/{id}")
+    suspend fun deleteSubAccount(@Path("id") id: String): ApiEnvelope
+
+    /** 启用/停用子账户：body{status:0|1}。 */
+    @PUT("sub_account/{id}/status")
+    suspend fun updateSubAccountStatus(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
+
+    /** 子账户权限 id 列表。 */
+    @GET("sub_account/{id}/auth")
+    suspend fun subAccountAuth(@Path("id") id: String): ApiEnvelope
+
+    /** 权限树（GET /auth）：data.list[{id,title,parent_id,rules,child}]。 */
+    /** 注意：/auth 已在上方声明（getAuthRole），此处复用同一方法。 */
+
+    /** 可选模块：data.list[{name,display_name,version}]。 */
+    @GET("module")
+    suspend fun modules(): ApiEnvelope
+
+    /** 关联产品精简列表：data.list[{id,product_id,product_name,name,status}]。 */
+    @GET("host/all")
+    suspend fun allHosts(): ApiEnvelope
+
+    /** 项目列表（部分版本未启用，返回 HTML，仓库层容错为空）。 */
+    @GET("project")
+    suspend fun projects(): ApiEnvelope
 }
 
 /** /captcha/tp_captcha/index/refresh 的响应。 */

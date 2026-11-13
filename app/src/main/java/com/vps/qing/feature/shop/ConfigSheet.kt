@@ -48,12 +48,15 @@ import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.QuantityStepper
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.data.repository.CartCalculator
+import com.vps.qing.data.repository.CatalogParser
 import com.vps.qing.data.repository.ConfigOption
 import com.vps.qing.data.repository.CycleOption
 import com.vps.qing.data.repository.MfCloudConfig
 import com.vps.qing.data.repository.MfSelection
 import com.vps.qing.data.repository.OptionType
+import com.vps.qing.data.repository.PriceQuote
 import com.vps.qing.data.repository.ProductConfig
+import com.vps.qing.data.repository.ProductInfo
 
 /**
  * 自定义配置独立页（v1.4.0，原为弹窗）。
@@ -220,9 +223,9 @@ private fun MfConfigBody(
         // 操作系统：分组下拉 + 镜像胶囊
         MfImagePicker(mf, sel, onSelectImage)
 
-        // 周期
+        // 周期（显示随配置同步刷新的实时价格）
         if (cfg.cycles.isNotEmpty()) {
-            CycleChips(cfg.cycles, sheet.cycleId, onSelectCycle)
+            CycleChips(cfg.cycles, sheet.cycleId, onSelectCycle, sheet.cycleQuotes)
         }
 
         // 数量
@@ -231,7 +234,7 @@ private fun MfConfigBody(
             QuantityStepper(sheet.qty, onQty)
         }
 
-        MfPriceBar(sheet, cfg)
+        PriceSummary(sheet)
         sheet.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
@@ -335,27 +338,39 @@ private fun MfImagePicker(
     }
 }
 
-/** 周期胶囊行（通用 / mf_cloud 共用样式）。 */
+/**
+ * 周期胶囊行（通用 / mf_cloud 共用样式）。
+ * v1.4.3：价格优先取该周期的实时算价（随选配同步刷新）；未取到时显示站点标价并标注「标价」，
+ * 绝不把未校验的原价伪装成成交价。
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CycleChips(cycles: List<CycleOption>, selectedId: String?, onSelect: (String) -> Unit) {
+private fun CycleChips(
+    cycles: List<CycleOption>,
+    selectedId: String?,
+    onSelect: (String) -> Unit,
+    quotes: Map<String, PriceQuote>
+) {
     Column(Modifier.fillMaxWidth()) {
         FieldLabel(Strings.CONFIG_CYCLE)
         Spacer(Modifier.height(6.dp))
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             cycles.forEach { cycle ->
                 val selected = selectedId == cycle.id
+                val live = quotes[cycle.id]
+                val amount = live?.total ?: cycle.amount
                 Box(
                     Modifier
-                        .weight(1f)
                         .clip(RoundedCornerShape(16.dp))
                         .background(
                             if (selected) CartoonColors.Brand else CartoonColors.White.copy(alpha = 0.7f)
                         )
                         .clickable { onSelect(cycle.id) }
-                        .padding(vertical = 10.dp),
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -365,11 +380,17 @@ private fun CycleChips(cycles: List<CycleOption>, selectedId: String?, onSelect:
                             fontWeight = FontWeight.Bold,
                             color = if (selected) Color.White else CartoonColors.Ink
                         )
-                        if (cycle.amount > 0) {
+                        if (amount > 0) {
                             Text(
-                                CartCalculator.money(cycle.amount),
+                                CartCalculator.money(amount),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (selected) Color.White.copy(alpha = 0.9f) else CartoonColors.InkSub
+                                fontWeight = FontWeight.Bold,
+                                color = if (selected) Color.White else CartoonColors.Coral
+                            )
+                            Text(
+                                if (live != null) "实时价 / 单份" else "站点标价",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (selected) Color.White.copy(alpha = 0.85f) else CartoonColors.InkSub
                             )
                         }
                     }
@@ -379,40 +400,193 @@ private fun CycleChips(cycles: List<CycleOption>, selectedId: String?, onSelect:
     }
 }
 
-/** mf_cloud 预估价格条（站点 config_option 实时返回）。 */
+/**
+ * 应付总额 + 逐项价格明细（v1.4.3）。
+ * 站点算价的 price 已经包含数量与折扣，这里直接展示，不再乘 qty；
+ * 算价失败时显示明确提示而非静态原价，杜绝「价格错误」。
+ */
 @Composable
-private fun MfPriceBar(sheet: ConfigSheetState, cfg: ProductConfig) {
+private fun PriceSummary(sheet: ConfigSheetState) {
+    val quote = sheet.quote
     GlassSurface(
         modifier = Modifier.fillMaxWidth(),
         shape = CartoonKit.CardShape,
         alpha = 0.55f,
         elevation = 0.dp
     ) {
-        Row(
+        Column(
             Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(Strings.CONFIG_ESTIMATE, style = MaterialTheme.typography.bodyMedium, color = CartoonColors.InkSub)
-            Spacer(Modifier.weight(1f))
-            when {
-                sheet.quoting -> {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = CartoonColors.Brand)
-                    Spacer(Modifier.width(8.dp))
-                    Text(Strings.CONFIG_QUOTING, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    Strings.CONFIG_ESTIMATE,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = CartoonColors.InkSub
+                )
+                Spacer(Modifier.weight(1f))
+                when {
+                    sheet.quoting -> {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = CartoonColors.Brand)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            Strings.CONFIG_QUOTING,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CartoonColors.InkSub
+                        )
+                    }
+                    quote == null -> Text(
+                        "价格待确认",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = CartoonColors.InkSub
+                    )
+                    else -> Column(horizontalAlignment = Alignment.End) {
+                        if (quote.discounted) {
+                            Text(
+                                CartCalculator.money(quote.basePrice * sheet.qty),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CartoonColors.InkSub
+                            )
+                        }
+                        Text(
+                            CartCalculator.money(quote.total),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = CartoonColors.Coral
+                        )
+                        Text(
+                            "${sheet.qty} 份 · ${quote.billingCycle.ifBlank { "站点实时算价" }}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CartoonColors.InkSub
+                        )
+                    }
                 }
-                else -> {
-                    val price = sheet.quote?.price
-                        ?: cfg.cycles.firstOrNull { it.id == sheet.cycleId }?.amount
-                        ?: sheet.product.unitPrice
-                    Text(
-                        CartCalculator.money(price * sheet.qty),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = CartoonColors.Coral
+            }
+
+            if (quote != null && quote.lines.isNotEmpty()) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(CartoonColors.White.copy(alpha = 0.55f))
+                        .padding(10.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "配置与价格明细（站点实时返回）",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = CartoonColors.Brand
+                        )
+                        quote.lines.forEach { line ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    listOf(line.name, line.value).filter { it.isNotBlank() }.joinToString("："),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = CartoonColors.Ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    if (line.price > 0) "+${CartCalculator.money(line.price)}" else "已含",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (line.price > 0) CartoonColors.Coral else CartoonColors.InkSub
+                                )
+                            }
+                        }
+                    }
+                }
+                if (quote.setupFee > 0) {
+                    KeyValueLine("开通费", CartCalculator.money(quote.setupFee))
+                }
+                if (quote.renewPrice > 0) {
+                    KeyValueLine(
+                        if (quote.renewDiffers) "续费单价（不同于首期）" else "续费单价",
+                        CartCalculator.money(quote.renewPrice)
                     )
                 }
             }
+            sheet.quoteError?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
+    }
+}
+
+/** 商品指标卡片：把商品详情与配置定义里的关键指标摊开，方便核对「配置对不对」。 */
+@Composable
+private fun ProductIndicatorsCard(info: ProductInfo, cfg: ProductConfig) {
+    val specs = CatalogParser.specsFromHtml(cfg.orderPageDescription).take(5)
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = CartoonKit.CardShape,
+        alpha = 0.5f,
+        elevation = 0.dp
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Text(
+                "商品指标",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = CartoonColors.Ink
+            )
+            KeyValueLine(
+                "计费方式",
+                (cfg.payType.takeIf { it.isNotBlank() } ?: info.payType)
+                    .let { raw ->
+                        when (raw) {
+                            "recurring_prepayment" -> "预付费续费"
+                            "onetime" -> "一次性"
+                            "free" -> "免费"
+                            "on_demand" -> "按需计费"
+                            else -> raw.ifBlank { "--" }
+                        }
+                    }
+            )
+            if (info.price.isNotBlank()) {
+                KeyValueLine("站点起价", "￥${info.price} / ${info.cycle}")
+            }
+            if (cfg.productName.isNotBlank()) {
+                KeyValueLine("配置模板", cfg.productName)
+            }
+            if (info.resModule.isNotBlank()) {
+                KeyValueLine("资源模块", info.resModule)
+            }
+            KeyValueLine("可购数量", if (cfg.allowQty) "可多份" else "限 1 份")
+            specs.forEach { spec ->
+                Text(
+                    "· $spec",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CartoonColors.InkSub,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun KeyValueLine(label: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+        Spacer(Modifier.weight(1f))
+        Text(
+            value,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = CartoonColors.Ink
+        )
     }
 }
 
@@ -451,52 +625,19 @@ private fun ConfigBody(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 可自定义配置项
-        cfg.options.filter { it.type != OptionType.CASCADE }.forEach { opt ->
+        // 商品指标（GET /product/{id} + configoption.common_product）
+        sheet.indicators?.let { ProductIndicatorsCard(it, cfg) }
+
+        // 可自定义配置项（隐藏项仍会随算价/加购提交，只是不在面板显示）
+        cfg.visibleOptions.forEach { opt ->
             ConfigOptionRow(opt, sheet.selections[opt.id]) { value ->
                 onSelectOption(opt.id, value)
             }
         }
 
-        // 周期
+        // 周期：显示随配置同步刷新的实时价格
         if (cfg.cycles.isNotEmpty()) {
-            FieldLabel(Strings.CONFIG_CYCLE)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                cfg.cycles.forEach { cycle ->
-                    val selected = sheet.cycleId == cycle.id
-                    val accent = if (selected) CartoonColors.Brand else CartoonColors.InkSub
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                if (selected) CartoonColors.Brand else CartoonColors.White.copy(alpha = 0.7f)
-                            )
-                            .clickable { onSelectCycle(cycle.id) }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                cycle.name,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (selected) Color.White else CartoonColors.Ink
-                            )
-                            if (cycle.amount > 0) {
-                                Text(
-                                    CartCalculator.money(cycle.amount),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (selected) Color.White.copy(alpha = 0.9f) else CartoonColors.InkSub
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            CycleChips(cfg.cycles, sheet.cycleId, onSelectCycle, sheet.cycleQuotes)
         }
 
         // 数量
@@ -505,39 +646,8 @@ private fun ConfigBody(
             QuantityStepper(sheet.qty, onQty)
         }
 
-        // 预估价格
-        GlassSurface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = CartoonKit.CardShape,
-            alpha = 0.55f,
-            elevation = 0.dp
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(Strings.CONFIG_ESTIMATE, style = MaterialTheme.typography.bodyMedium, color = CartoonColors.InkSub)
-                Spacer(Modifier.weight(1f))
-                when {
-                    sheet.quoting -> {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = CartoonColors.Brand)
-                        Spacer(Modifier.width(8.dp))
-                        Text(Strings.CONFIG_QUOTING, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
-                    }
-                    else -> {
-                        val price = sheet.quote?.price
-                            ?: cfg.cycles.firstOrNull { it.id == sheet.cycleId }?.amount
-                            ?: sheet.product.unitPrice
-                        Text(
-                            CartCalculator.money(price * sheet.qty),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = CartoonColors.Coral
-                        )
-                    }
-                }
-            }
-        }
+        // 应付总额 + 逐项价格明细（站点实时算价，已含数量）
+        PriceSummary(sheet)
 
         sheet.error?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -585,15 +695,12 @@ private fun ConfigOptionRow(
                 )
             }
             opt.type == OptionType.QUANTITY || opt.type == OptionType.QUANTITY_RANGE -> {
-                val value = current?.toIntOrNull() ?: opt.qtyMin.takeIf { it > 0 } ?: 1
+                val value = (current?.toIntOrNull() ?: opt.minValue).coerceIn(opt.minValue, opt.maxValue)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     QuantityStepper(
                         value = value,
                         onDelta = { delta ->
-                            val next = (value + delta).coerceIn(
-                                opt.qtyMin.takeIf { it > 0 } ?: 1,
-                                opt.qtyMax.takeIf { it > 0 } ?: 99
-                            )
+                            val next = (value + delta).coerceIn(opt.minValue, opt.maxValue)
                             onSelect(next.toString())
                         }
                     )

@@ -25,8 +25,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -114,6 +116,118 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
     }
 
     // 商品配置页与轻提示已提升到 MainScreen 渲染层（v1.4.1），打开时由主容器隐藏底栏
+}
+
+/** 分类右侧的商品数角标：让用户一眼看出哪些分类有货，避免点进空分类。 */
+@Composable
+private fun CountBadge(count: Int, selected: Boolean, accent: Color) {
+    Text(
+        count.toString(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = if (selected) Color.White else accent,
+        modifier = Modifier
+            .clip(CartoonKit.PillShape)
+            .background(if (selected) accent else accent.copy(alpha = 0.14f))
+            .padding(horizontal = 7.dp, vertical = 2.dp)
+    )
+}
+
+/** 「全部商品」快捷入口：忽略分类过滤，一键回到全量列表。 */
+@Composable
+private fun SidebarAllItem(
+    count: Int,
+    selected: Boolean,
+    sidebarExpanded: Boolean,
+    onClick: () -> Unit
+) {
+    val (accent, soft) = CartoonColors.accent(0)
+    if (sidebarExpanded) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(CartoonKit.ItemShape)
+                .background(if (selected) soft else Color.Transparent)
+                .clickable { onClick() }
+                .padding(horizontal = UiT.spaceSm + 2.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier.size(30.dp).clip(CartoonKit.PillShape).background(soft),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(AppIcons.Shop, null, tint = accent, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(UiT.spaceSm))
+            Text(
+                "全部商品",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                color = if (selected) accent else CartoonColors.Ink,
+                modifier = Modifier.weight(1f)
+            )
+            CountBadge(count, selected, accent)
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(CartoonKit.ItemShape)
+                .clickable { onClick() }
+                .padding(vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                Modifier.size(34.dp).clip(CartoonKit.ItemShape)
+                    .background(if (selected) accent else soft.copy(alpha = 0.45f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    AppIcons.Shop, null,
+                    tint = if (selected) Color.White else accent,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.height(UiT.spaceXs))
+            Text(
+                count.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (selected) accent else CartoonColors.InkSub
+            )
+        }
+    }
+}
+
+/** 商品搜索框：匹配名称、分类名与配置指标，搜索态自动跨分类检索。 */
+@Composable
+private fun ProductSearchField(query: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = UiT.spaceMd, vertical = UiT.spaceXs),
+        placeholder = {
+            Text(
+                "搜索商品名称 / 配置指标",
+                style = MaterialTheme.typography.bodySmall,
+                color = CartoonColors.InkSub
+            )
+        },
+        leadingIcon = {
+            Icon(AppIcons.Shop, null, tint = CartoonColors.Brand, modifier = Modifier.size(18.dp))
+        },
+        trailingIcon = {
+            if (query.isNotBlank()) {
+                IconButton(onClick = { onChange("") }) {
+                    Icon(AppIcons.Close, null, tint = CartoonColors.InkSub, modifier = Modifier.size(16.dp))
+                }
+            }
+        },
+        singleLine = true,
+        shape = CartoonKit.PillShape,
+        textStyle = MaterialTheme.typography.bodyMedium
+    )
 }
 
 /** 侧边栏底部内嵌开关：展开态是带文字的胶囊，收起态是居中的圆形图标按钮。 */
@@ -254,6 +368,13 @@ private fun PurchasePane(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(UiT.spaceXs + 2.dp)
                 ) {
+                    // 「全部商品」快捷入口：一键忽略分类过滤
+                    SidebarAllItem(
+                        count = state.allProducts.size,
+                        selected = state.showAll,
+                        sidebarExpanded = state.sidebarExpanded,
+                        onClick = { vm.showAllProducts() }
+                    )
                     if (state.firstGroups.isEmpty() && !state.groupsLoading) {
                         Text(
                             Strings.NO_GROUP,
@@ -262,18 +383,18 @@ private fun PurchasePane(
                             modifier = Modifier.padding(UiT.spaceSm)
                         )
                     }
-                    // 一级分类（产品类型）：手风琴展开对应二级分类（商品分类）
+                    // 一级分类（产品类型）：可多个同时展开，带商品数角标
                     state.firstGroups.forEachIndexed { idx, first ->
                         val seconds = state.secondGroups[first.id].orEmpty()
-                        val open = state.openFirstId == first.id
+                        val open = first.id in state.expandedFirstIds
                         SidebarFirstItem(
                             name = first.name,
                             icon = AppIcons.forCategory(first.name),
                             sidebarExpanded = state.sidebarExpanded,
-                            selected = state.selectedFirstId == first.id,
-                            open = open && seconds.isNotEmpty(),
-                            hasChildren = seconds.isNotEmpty() ||
-                                state.secondGroups[first.id] == null,
+                            selected = !state.showAll && state.selectedFirstId == first.id,
+                            open = open,
+                            hasChildren = seconds.isNotEmpty(),
+                            count = state.countForFirst(first.id),
                             accentIndex = idx,
                             onHeaderClick = { vm.selectFirst(first.id) },
                             onToggle = { vm.toggleFirstExpanded(first.id) }
@@ -284,7 +405,8 @@ private fun PurchasePane(
                                     name = second.name,
                                     icon = AppIcons.forCategory(second.name),
                                     sidebarExpanded = state.sidebarExpanded,
-                                    selected = state.selectedSecondId == second.id,
+                                    selected = !state.showAll && state.selectedSecondId == second.id,
+                                    count = state.countForSecond(second.id),
                                     accentIndex = idx + sIdx + 1,
                                     onClick = { vm.selectSecond(second.id) }
                                 )
@@ -299,58 +421,59 @@ private fun PurchasePane(
             }
         }
 
-        // 右侧商品列表
-        Box(
+        // 右侧：搜索框 + 商品列表
+        Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
         ) {
-            when {
-                state.productsLoading -> {
-                    LinearProgressIndicator(
-                        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
-                        color = CartoonColors.Brand
-                    )
-                }
-                state.visibleProducts.isEmpty() && state.error != null -> {
-                    EmptyHint(
-                        icon = AppIcons.EmptyBox,
-                        text = state.error.orEmpty(),
-                        modifier = Modifier.align(Alignment.Center),
-                        action = {
-                            CartoonButton(text = Strings.RETRY, onClick = { vm.refresh() })
-                        }
-                    )
-                }
-                state.visibleProducts.isEmpty() -> {
-                    // 选中了没有商品的分类（v1.2.2 起二级严格过滤，空分类有明确提示）
-                    EmptyHint(
-                        icon = AppIcons.EmptyBox,
-                        text = Strings.NO_PRODUCT,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(
-                            start = UiT.spaceMd, end = UiT.pagePad, bottom = UiT.spaceLg
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(UiT.spaceMd)
-                    ) {
-                        item {
-                            Text(
-                                "共 ${state.visibleProducts.size} 款商品",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = CartoonColors.InkSub
-                            )
-                        }
-                        items(state.visibleProducts, key = { it.id }) { product ->
-                            ProductCard(
-                                product = product,
-                                compact = state.sidebarExpanded,
-                                onCustomize = { vm.openConfig(product) }
-                            )
+            ProductSearchField(state.searchQuery, vm::setSearchQuery)
+            if (state.productsLoading || state.refreshing) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = CartoonColors.Brand)
+            }
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                when {
+                    state.visibleProducts.isEmpty() && state.error != null -> {
+                        EmptyHint(
+                            icon = AppIcons.EmptyBox,
+                            text = state.error.orEmpty(),
+                            modifier = Modifier.align(Alignment.Center),
+                            action = {
+                                CartoonButton(text = Strings.RETRY, onClick = { vm.refresh() })
+                            }
+                        )
+                    }
+                    state.visibleProducts.isEmpty() -> {
+                        EmptyHint(
+                            icon = AppIcons.EmptyBox,
+                            text = if (state.searchQuery.isNotBlank()) "没有匹配的商品"
+                            else Strings.NO_PRODUCT,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                start = UiT.spaceMd, end = UiT.pagePad, bottom = UiT.spaceLg
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(UiT.spaceMd)
+                        ) {
+                            item {
+                                Text(
+                                    "共 ${state.visibleProducts.size} 款商品" +
+                                        if (state.searchQuery.isNotBlank()) " · 搜索「${state.searchQuery}」" else "",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = CartoonColors.InkSub
+                                )
+                            }
+                            items(state.visibleProducts, key = { it.id }) { product ->
+                                ProductCard(
+                                    product = product,
+                                    compact = state.sidebarExpanded,
+                                    onCustomize = { vm.openConfig(product) }
+                                )
+                            }
                         }
                     }
                 }
@@ -374,6 +497,7 @@ private fun SidebarFirstItem(
     selected: Boolean,
     open: Boolean,
     hasChildren: Boolean,
+    count: Int,
     accentIndex: Int,
     onHeaderClick: () -> Unit,
     onToggle: () -> Unit
@@ -416,7 +540,10 @@ private fun SidebarFirstItem(
                     .weight(1f)
                     .basicMarquee(iterations = Int.MAX_VALUE)
             )
+            Spacer(Modifier.width(4.dp))
+            CountBadge(count, selected, accent)
             if (hasChildren) {
+                Spacer(Modifier.width(2.dp))
                 Icon(
                     AppIcons.ChevronDown,
                     contentDescription = if (open) Strings.COLLAPSE_SIDEBAR else Strings.CATEGORY,
@@ -484,6 +611,7 @@ private fun SidebarSecondItem(
     icon: ImageVector,
     sidebarExpanded: Boolean,
     selected: Boolean,
+    count: Int,
     accentIndex: Int,
     onClick: () -> Unit
 ) {
@@ -517,6 +645,8 @@ private fun SidebarSecondItem(
                     .weight(1f)
                     .basicMarquee(iterations = Int.MAX_VALUE)
             )
+            Spacer(Modifier.width(4.dp))
+            CountBadge(count, selected, accent)
         }
     } else {
         Column(
@@ -598,7 +728,39 @@ private fun ProductCard(
                     Text(
                         product.groupSecondName ?: product.groupFirstName ?: Strings.UNKNOWN,
                         style = MaterialTheme.typography.labelSmall,
-                        color = CartoonColors.InkSub
+                        color = CartoonColors.InkSub,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // 商品指标：计费方式 / 资源模块 / 库存（v1.4.3 由列表字段直接解析）
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    product.payTypeText,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = CartoonColors.Brand,
+                    modifier = Modifier
+                        .clip(CartoonKit.PillShape)
+                        .background(CartoonColors.BrandSoft)
+                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                )
+                val summary = buildList {
+                    product.resModule.takeIf { it.isNotBlank() }?.let { add(it) }
+                    if (product.stockControl) add("库存 ${product.stock}")
+                }.joinToString(" · ")
+                if (summary.isNotBlank()) {
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CartoonColors.InkSub,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

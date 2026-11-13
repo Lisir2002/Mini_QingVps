@@ -96,26 +96,47 @@ object ServiceParser {
             )
         }
 
+    /**
+     * 工单列表（plugin/27/ticket.htm 表格字段）：
+     * id / ticket_num / title / name(类型名) / status(状态名) / status_id /
+     * color(状态色) / post_time / last_reply_time / create_time / ticket_type_id。
+     * v1.4.3 补全字段，供统计条与状态徽章使用。
+     */
     fun tickets(data: JsonElement?): List<TicketLine> =
         rawList(data).first.mapNotNull { el ->
             val id = el.string("id") ?: return@mapNotNull null
             TicketLine(
                 id = id,
-                title = el.string("title", "name").orEmpty(),
+                num = el.string("ticket_num").orEmpty(),
+                title = el.string("title").orEmpty(),
+                typeName = el.string("name", "ticket_type_name").orEmpty(),
+                typeId = el.string("ticket_type_id").orEmpty(),
                 status = el.string("status").orEmpty(),
-                createTime = time(el.string("create_time")),
-                lastReply = time(el.string("last_reply_time", "update_time"))
+                statusId = el.string("status_id").orEmpty(),
+                color = el.string("color").orEmpty(),
+                createTime = time(el.string("create_time", "post_time")),
+                lastReply = time(el.string("last_reply_time", "update_time", "post_time"))
             )
         }
 
+    /**
+     * 子账户列表（plugin/28/childAccount.htm 表格字段）：
+     * id / username / last_action_time / status(0停用 1启用)，详情另有 email / phone。
+     */
     fun subAccounts(data: JsonElement?): List<SubAccountLine> =
         rawList(data).first.mapNotNull { el ->
             val id = el.string("id") ?: return@mapNotNull null
+            val rawStatus = el.string("status").orEmpty()
             SubAccountLine(
                 id = id,
                 username = el.string("username", "name").orEmpty(),
                 email = el.string("email").orEmpty(),
-                status = el.string("status").orEmpty()
+                phone = el.string("phone").orEmpty(),
+                status = rawStatus,
+                enabled = rawStatus == "1" || rawStatus.equals("true", true) ||
+                    rawStatus.equals("Active", true),
+                lastActionTime = time(el.string("last_action_time", "update_time")),
+                createTime = time(el.string("create_time"))
             )
         }
 
@@ -332,14 +353,32 @@ data class TicketLine(
     val title: String,
     val status: String,
     val createTime: String,
-    val lastReply: String
-)
+    val lastReply: String,
+    /** 工单号 ticket_num（对外展示的编号）。 */
+    val num: String = "",
+    /** 工单类型名称。 */
+    val typeName: String = "",
+    val typeId: String = "",
+    /** 状态 id（4 = 已关闭，站点据此禁用催单/关闭按钮）。 */
+    val statusId: String = "",
+    /** 站点返回的状态色（#RRGGBB），用于动态徽章配色。 */
+    val color: String = ""
+) {
+    val isClosed: Boolean get() = statusId == "4" || status.equals("已关闭", true)
+    /** 编号优先展示工单号，缺失回退 id。 */
+    val displayNum: String get() = num.ifBlank { id }
+}
 
 data class SubAccountLine(
     val id: String,
     val username: String,
     val email: String,
-    val status: String
+    val status: String,
+    val phone: String = "",
+    /** 是否启用（status=1）。 */
+    val enabled: Boolean = false,
+    val lastActionTime: String = "",
+    val createTime: String = ""
 )
 
 /** 订单详情（GET /order/{id}）。 */

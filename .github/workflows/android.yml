@@ -122,11 +122,10 @@ jobs:
           body: |
             ## QingVPS ${{ github.ref_name }}
 
-            第一版（登录 / 注册 / 个人中心）。此 APK 为 debug 构建，可直接安装测试。
+            Debug 构建，使用固定签名，可直接覆盖安装（不会与旧包冲突）。
 
             - 应用名：QingVPS，包名：`com.vps.qing`
             - 站点：`https://vps.qingyayun.cn`（IDCSmart 10.7.2，`/console/v1`）
-            - 登录密码按站点协议做 AES/CBC/PKCS5Padding 加密后提交
-            - 注册 / 找回密码需先完成图形验证码再获取邮箱验证码
+            - v1.4.3：选配页实时算价与周期同步、商品/分类实时抓取与指标增强、侧边栏交互优化、工单中心与子账户管理原生化
 
             详见 `SHA256SUMS.txt`。如遇网络错误，站点提示不要使用 VPN 访问。
