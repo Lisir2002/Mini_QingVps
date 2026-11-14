@@ -27,12 +27,15 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -63,21 +66,54 @@ object CartoonKit {
 }
 
 /**
- * 全局背景画布（v1.4.14）：默认「纯色底 + 几团半透明糖果色光斑」；
- * 用户在主题设置里选了自定义背景图后，改为把该图铺满整屏（ContentScale.Crop），
- * 再叠一层可调节的柔化遮罩。此前所有卡片/顶栏/底栏都做成半透明磨砂玻璃，
- * 正是为了让这张图从玻璃之下透出来——玻璃文字依旧清晰，背景图提供氛围。
+ * v1.4.16：标记「根级背景画布已经绘制」。
  *
- * 通过 [com.vps.qing.core.AppContainer.settings] 的 StateFlow 订阅 URI 与遮罩强度，
- * 主题页一改，全 App（含当前设置页）立即重绘，无需重建 Activity。
+ * 之前每个子页面都各自调用 [CartoonBackground]，会在 Scaffold 的状态栏让位之下
+ * 再画一遍背景图/光斑，两张图错位叠加 → 自定义背景时状态栏和内容区出现明显切割。
+ * 现在只在最外层绘制一次，内层 [CartoonBackground] 退化为纯透明容器，
+ * 背景图一气呵成铺到状态栏后面（配合 MainActivity 的 edge-to-edge）。
+ */
+val LocalBackgroundPainted = staticCompositionLocalOf { false }
+
+/**
+ * 把 [-1,1] 的归一化定位换算成像素平移。放大后允许自由拖动，
+ * 同时把位移限制在 (scale-1)/2 之内，保证 Crop 后始终满屏不露边。
+ * 设置页预览与全局背景共用此函数，所见即所得。
+ */
+fun bgTranslation(
+    offsetX: Float, offsetY: Float, scale: Float, w: Float, h: Float
+): Pair<Float, Float> {
+    val maxX = (scale - 1f).coerceAtLeast(0f) * w / 2f
+    val maxY = (scale - 1f).coerceAtLeast(0f) * h / 2f
+    return (offsetX.coerceIn(-1f, 1f) * maxX) to (offsetY.coerceIn(-1f, 1f) * maxY)
+}
+
+/**
+ * 全局背景画布（v1.4.14 / v1.4.16 重构）：默认「纯色底 + 几团半透明糖果色光斑」；
+ * 用户在主题设置里选了自定义背景图后，改为把该图铺满整屏（ContentScale.Crop），
+ * 支持缩放与定位，再叠一层可调节的柔化遮罩。此前所有卡片/顶栏/底栏都做成半透明
+ * 磨砂玻璃，正是为了让这张图从玻璃之下透出来。
+ *
+ * 通过 [com.vps.qing.core.AppContainer.settings] 的 StateFlow 订阅 URI / 遮罩 / 变换参数，
+ * 主题页一改，全 App 立即重绘，无需重建 Activity。
  */
 @Composable
 fun CartoonBackground(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val bgUri by com.vps.qing.core.AppContainer.settings.bgImageUri.collectAsState()
-    val bgDim by com.vps.qing.core.AppContainer.settings.bgDim.collectAsState()
+    // 已经由根级画过：这里只做透明容器，绝不重复铺背景，避免状态栏/内容区切割
+    if (LocalBackgroundPainted.current) {
+        Box(modifier.fillMaxSize()) { content() }
+        return
+    }
+
+    val settings = com.vps.qing.core.AppContainer.settings
+    val bgUri by settings.bgImageUri.collectAsState()
+    val bgDim by settings.bgDim.collectAsState()
+    val bgScale by settings.bgScale.collectAsState()
+    val bgOffsetX by settings.bgOffsetX.collectAsState()
+    val bgOffsetY by settings.bgOffsetY.collectAsState()
 
     Box(
         modifier
@@ -85,7 +121,7 @@ fun CartoonBackground(
             .background(CartoonColors.Background)
     ) {
         if (!bgUri.isNullOrBlank()) {
-            // 用户自定义背景图：铺满全屏，Crop 保证不变形
+            // 用户自定义背景图：铺满全屏，Crop 保证不变形；graphicsLayer 应用缩放/定位
             coil.compose.AsyncImage(
                 model = androidx.compose.ui.platform.LocalContext.current.let { ctx ->
                     coil.request.ImageRequest.Builder(ctx)
@@ -95,7 +131,17 @@ fun CartoonBackground(
                 },
                 contentDescription = null,
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = bgScale
+                        scaleY = bgScale
+                        val (tx, ty) = bgTranslation(
+                            bgOffsetX, bgOffsetY, bgScale, size.width, size.height
+                        )
+                        translationX = tx
+                        translationY = ty
+                    }
             )
             // 柔化遮罩：深色用黑、浅色用白，强度由主题页滑块控制，压住图片杂色保证玻璃文字可读
             Box(
@@ -142,7 +188,9 @@ fun CartoonBackground(
                     )
             )
         }
-        content()
+        CompositionLocalProvider(LocalBackgroundPainted provides true) {
+            content()
+        }
     }
 }
 

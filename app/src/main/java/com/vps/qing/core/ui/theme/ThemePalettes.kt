@@ -52,8 +52,82 @@ private fun nebulaDark() = CoreColors(
 
 object ThemePalettes {
 
+    /** v1.4.16 默认主题：晨曦微光 —— 干净的青蓝白底 + 柔和晨光主色，首次启动即用。 */
+    val AURORA = ThemePaletteSpec(
+        "aurora", "晨曦微光", "默认 · 清透青蓝晨光",
+        CoreColors(
+            background = Color(0xFFF7FBFF), card = Color(0xFFFFFFFF),
+            ink = Color(0xFF223247), inkSub = Color(0xFF8497AC), line = Color(0xFFE1ECF6),
+            brand = Color(0xFF2FA8C4), brandSoft = Color(0xFFDDF3F8), glassTint = Color(0xFFFFFFFF)
+        ),
+        CoreColors(
+            background = Color(0xFF0B1620), card = Color(0xFF152532),
+            ink = Color(0xFFE6F2FA), inkSub = Color(0xFF8FA9BC), line = Color(0x33FFFFFF),
+            brand = Color(0xFF57CBE4), brandSoft = Color(0x332FA8C4), glassTint = Color(0xFF152532),
+            accentSoftAlpha = 0.24f
+        )
+    )
+
+    // ---- v1.4.16 新增 4 套，进一步丰富内置主题 ----
+    val AMBER = ThemePaletteSpec(
+        "amber", "琥珀暖阳", "蜜糖琥珀 · 温暖明亮",
+        CoreColors(
+            background = Color(0xFFFFFAF1), card = Color(0xFFFFFFFF),
+            ink = Color(0xFF3B3022), inkSub = Color(0xFFA7947A), line = Color(0xFFF5E9D5),
+            brand = Color(0xFFE0972B), brandSoft = Color(0xFFFBECD0), glassTint = Color(0xFFFFFFFF)
+        ),
+        CoreColors(
+            background = Color(0xFF1A1309), card = Color(0xFF281F12),
+            ink = Color(0xFFFAF1E2), inkSub = Color(0xFFB7A588), line = Color(0x33FFFFFF),
+            brand = Color(0xFFF5B758), brandSoft = Color(0x33E0972B), glassTint = Color(0xFF281F12),
+            accentSoftAlpha = 0.24f
+        )
+    )
+    val INDIGO = ThemePaletteSpec(
+        "indigo", "靛蓝夜航", "深靛蓝调 · 沉静专注",
+        CoreColors(
+            background = Color(0xFFF4F6FE), card = Color(0xFFFFFFFF),
+            ink = Color(0xFF232A48), inkSub = Color(0xFF838FB4), line = Color(0xFFE2E7F7),
+            brand = Color(0xFF4A5BD6), brandSoft = Color(0xFFE3E8FC), glassTint = Color(0xFFFFFFFF)
+        ),
+        CoreColors(
+            background = Color(0xFF0D1122), card = Color(0xFF171D36),
+            ink = Color(0xFFE9ECFB), inkSub = Color(0xFF909BC2), line = Color(0x33FFFFFF),
+            brand = Color(0xFF7E8CF0), brandSoft = Color(0x334A5BD6), glassTint = Color(0xFF171D36),
+            accentSoftAlpha = 0.24f
+        )
+    )
+    val CYPRESS = ThemePaletteSpec(
+        "cypress", "松柏常青", "苍松黛绿 · 沉稳自然",
+        CoreColors(
+            background = Color(0xFFF3F9F5), card = Color(0xFFFFFFFF),
+            ink = Color(0xFF223329), inkSub = Color(0xFF829B88), line = Color(0xFFDFEEE3),
+            brand = Color(0xFF3C8C63), brandSoft = Color(0xFFDFF2E6), glassTint = Color(0xFFFFFFFF)
+        ),
+        CoreColors(
+            background = Color(0xFF0C1710), card = Color(0xFF152318),
+            ink = Color(0xFFE8F4EC), inkSub = Color(0xFF8FB39C), line = Color(0x33FFFFFF),
+            brand = Color(0xFF62C78E), brandSoft = Color(0x333C8C63), glassTint = Color(0xFF152318),
+            accentSoftAlpha = 0.24f
+        )
+    )
+    val LOTUS = ThemePaletteSpec(
+        "lotus", "藕荷初夏", "淡藕荷粉 · 清雅恬静",
+        CoreColors(
+            background = Color(0xFFFBF6FB), card = Color(0xFFFFFFFF),
+            ink = Color(0xFF3A2C3C), inkSub = Color(0xFFA28EA2), line = Color(0xFFF0E4F0),
+            brand = Color(0xFFB565A8), brandSoft = Color(0xFFF5E6F2), glassTint = Color(0xFFFFFFFF)
+        ),
+        CoreColors(
+            background = Color(0xFF170F18), card = Color(0xFF251828),
+            ink = Color(0xFFF6ECF6), inkSub = Color(0xFFB39EB3), line = Color(0x33FFFFFF),
+            brand = Color(0xFFD18CC5), brandSoft = Color(0x33B565A8), glassTint = Color(0xFF251828),
+            accentSoftAlpha = 0.24f
+        )
+    )
+
     val NEBULA = ThemePaletteSpec(
-        "nebula", "星云蓝紫", "默认经典 · 蓝紫渐变糖果",
+        "nebula", "星云蓝紫", "经典 · 蓝紫渐变糖果",
         nebulaLight(), nebulaDark()
     )
     val MINT = ThemePaletteSpec(
@@ -214,12 +288,17 @@ object ThemePalettes {
         )
     )
 
+    /** v1.4.16：默认主题排首位，新增 5 套（晨曦/琥珀/靛蓝/松柏/藕荷）合计 17 套。 */
     val entries: List<ThemePaletteSpec> = listOf(
-        NEBULA, MINT, SAKURA, SUNSET, OCEAN, GRAPE,
-        FOREST, PEACH, LIME, ROSE, GLACIER, SLATE
+        AURORA, NEBULA, MINT, SAKURA, SUNSET, OCEAN, GRAPE,
+        FOREST, PEACH, LIME, ROSE, GLACIER, SLATE,
+        AMBER, INDIGO, CYPRESS, LOTUS
     )
 
-    fun byId(id: String): ThemePaletteSpec = entries.firstOrNull { it.id == id } ?: NEBULA
+    /** 默认主题（首次启动 / id 失效时的兜底）。 */
+    val DEFAULT: ThemePaletteSpec get() = AURORA
+
+    fun byId(id: String): ThemePaletteSpec = entries.firstOrNull { it.id == id } ?: DEFAULT
 }
 
 /**
@@ -265,19 +344,28 @@ object CartoonColors {
         )
     fun accent(index: Int): Pair<Color, Color> = accents[((index % accents.size) + accents.size) % accents.size]
 
-    init { apply(ThemePalettes.NEBULA, dark = false) }
+    init { apply(ThemePalettes.DEFAULT, dark = false) }
 
-    /** 应用一套主题（在 QingVpsTheme 组合期调用，写入即触发全局重绘）。 */
-    fun apply(spec: ThemePaletteSpec, dark: Boolean) {
+    /**
+     * 应用一套主题（在 QingVpsTheme 组合期调用，写入即触发全局重绘）。
+     * v1.4.16：[customBrand] 非空时用主题自设主色覆盖色板自带主色（浅/深分别派生柔和底）。
+     */
+    fun apply(spec: ThemePaletteSpec, dark: Boolean, customBrand: Color? = null) {
         val core = if (dark) spec.dark else spec.light
         Background = core.background
         White = core.card
         Ink = core.ink
         InkSub = core.inkSub
         Line = core.line
-        Brand = core.brand
-        BrandSoft = core.brandSoft
         GlassTint = core.glassTint
+        if (customBrand != null) {
+            Brand = customBrand
+            BrandSoft = if (dark) customBrand.copy(alpha = 0.24f)
+            else customBrand.copy(alpha = 0.14f)
+        } else {
+            Brand = core.brand
+            BrandSoft = core.brandSoft
+        }
         isDark = dark
         if (dark) {
             val a = core.accentSoftAlpha

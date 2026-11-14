@@ -13,7 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 
-/** 消息 Tab：公告独立页面入口（v1.4.7），站内信仍走 WebView 兜底。 */
+/** 消息 Tab：公告独立页面入口（v1.4.7）。 */
 @Composable
 fun MessagesScreen(
     onOpenWeb: (String) -> Unit,
@@ -22,8 +22,7 @@ fun MessagesScreen(
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
             GlassTopBar(
-                title = Strings.MESSAGES_PLACEHOLDER,
-                subtitle = Strings.MESSAGE_TIP
+                title = Strings.MESSAGES_PLACEHOLDER
             )
             Column(
                 modifier = Modifier.fillMaxSize(),
@@ -32,7 +31,7 @@ fun MessagesScreen(
             ) {
                 EmptyHint(
                     icon = AppIcons.Message,
-                    text = Strings.COMING_SOON,
+                    text = Strings.NO_NEWS,
                     action = {
                         CartoonButton(
                             text = Strings.OPEN_ANNOUNCEMENTS,

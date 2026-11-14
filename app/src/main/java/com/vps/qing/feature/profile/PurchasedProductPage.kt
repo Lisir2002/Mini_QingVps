@@ -157,7 +157,7 @@ private fun ProductDetailBody(d: PurchasedDetail, onOpenOrder: (String) -> Unit)
                         Spacer(Modifier.width(8.dp))
                         powerBadge(d.powerStatus)
                     }
-                    if (d.ip.isNotBlank()) KeyValueRow("IP 地址", d.ip)
+                    if (d.ip.isNotBlank()) IpVisibilityRow("IP 地址", d.ip)
                     val region = listOf(d.country, d.city, d.area).filter { it.isNotBlank() }
                         .distinct().joinToString(" · ")
                     if (region.isNotBlank()) KeyValueRow("所在地区", region)

@@ -239,7 +239,12 @@ fun SecurityEditPage(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
-    /** 发码成功后的 60s 重发倒计时（对齐站点 countDownButton）。 */
+    /**
+     * v1.4.16：两步共享的单一 60s 发码冷却，切换步骤时不再清零。
+     * 站点 /email/code 是全局 60s 限频（不区分 verify/update、也不区分新旧邮箱），
+     * 之前「验证原邮箱 → 设置新邮箱」时把 countdown 重置为 0，用户立刻再点发码
+     * 就会撞上「一分钟只允许申请一次邮箱」。现在冷却跨步骤保留并给出等待提示。
+     */
     var countdown by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
@@ -278,7 +283,17 @@ fun SecurityEditPage(
         ) { err ->
             busy = false
             if (err != null) {
-                error = err
+                // v1.4.16：站点 /email/code 是全局 60s 限频。若从别处/重装后仍撞上，
+                // 把生硬的「一分钟只允许申请一次」转成明确等待提示并启动本地冷却，
+                // 不让用户面对一个看不出原因、也点不动的死状态。
+                val rateLimited = err.contains("一分钟") || err.contains("60") ||
+                    err.contains("频繁") || err.contains("稍后") || err.contains("重复")
+                if (rateLimited) {
+                    if (countdown <= 0) countdown = 60
+                    error = "站点限制每 60 秒只能发送一次验证码，请等待 ${countdown}s 后重试"
+                } else {
+                    error = err
+                }
             } else {
                 info = "验证码已发送，请查收"
                 countdown = 60
@@ -325,8 +340,14 @@ fun SecurityEditPage(
             else if (step == 0) {
                 step = 1
                 code = ""
-                countdown = 0
-                info = "验证通过，请设置新的${if (target == "email") "邮箱" else "手机号"}"
+                // v1.4.16：不再清零倒计时。站点发码冷却是全局的，原邮箱验证时发的码
+                // 会占住新邮箱的 60s 窗口；保留剩余秒数并明确告知，避免用户一进新邮箱
+                // 步骤就点发码撞上「一分钟只允许申请一次」。
+                info = if (countdown > 0) {
+                    "验证通过。站点每 60 秒只能发送一次验证码，请等待 ${countdown}s 后再获取新${if (target == "email") "邮箱" else "手机号"}验证码"
+                } else {
+                    "验证通过，请设置新的${if (target == "email") "邮箱" else "手机号"}"
+                }
             } else {
                 toast("已保存")
                 onBack()

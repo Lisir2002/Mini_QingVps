@@ -407,7 +407,7 @@ private fun PurchasePane(
             modifier = Modifier
                 .width(sidebarWidth)
                 .fillMaxHeight()
-                .padding(start = UiT.pagePad, bottom = 132.dp),
+                .padding(start = UiT.pagePad, bottom = UiT.bottomBarSpaceLg),
             shape = CartoonKit.GlassShape,
             alpha = UiT.glassFaint,
             elevation = UiT.shadowMd
@@ -927,7 +927,12 @@ private fun CartPane(
         return
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    // v1.4.16：让位磨砂玻璃底栏，结算栏不再沉底与底栏重合
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(bottom = UiT.bottomBarSpace)
+    ) {
         // v1.4.15：购物车同样支持统一的下拉刷新反馈
         GlassPullRefreshBox(
             isRefreshing = state.cartLoading,
@@ -951,17 +956,6 @@ private fun CartPane(
                     onQty = { delta -> vm.changeCartQty(item, delta) },
                     onRemove = { vm.removeCartItem(item) }
                 )
-            }
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(AppIcons.Cloud, null, tint = CartoonColors.Mint, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        Strings.CART_CLOUD_TIP,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = CartoonColors.InkSub
-                    )
-                }
             }
             } // LazyColumn
         } // GlassPullRefreshBox

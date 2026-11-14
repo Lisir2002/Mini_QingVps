@@ -24,6 +24,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import com.vps.qing.core.ui.GlassPullRefreshBox
+import com.vps.qing.core.ui.GlassRefreshStrip
+import com.vps.qing.core.ui.rememberGlassRefresh
 import com.vps.qing.core.ui.GlassRefreshChip
 import com.vps.qing.core.ui.LoadingSkeleton
 import androidx.compose.runtime.Composable
@@ -108,6 +110,9 @@ fun DashboardScreen(
         }
     )
     val state by vm.ui.collectAsState()
+    // v1.4.16：首页顶栏悬浮，刷新条放进顶栏 Column（顶栏正下方一行），
+    // 手势区不自带 strip，避免指示器被悬浮顶栏盖住。
+    val refresh = rememberGlassRefresh(state.loading) { vm.load(force = true) }
 
     CartoonBackground {
         // v1.4.10 透明画布：列表整幅铺满（顶部从顶栏玻璃卡下穿过，底部沉入底栏玻璃之下），
@@ -119,9 +124,9 @@ fun DashboardScreen(
             val headerSpace = with(density) { headerPx.toDp() } + 4.dp
 
             GlassPullRefreshBox(
-                isRefreshing = state.loading,
-                onRefresh = { vm.load(force = true) },
-                modifier = Modifier.fillMaxSize()
+                refresh = refresh,
+                modifier = Modifier.fillMaxSize(),
+                showStrip = false
             ) {
                 // v1.4.15：首屏取数用磨砂骨架等待态；后续刷新保留列表 + 下拉指示器，
                 // 不再出现「空白刷屏 / 干转圈」，等待本身也有与全局一致的玻璃质感。
@@ -235,38 +240,26 @@ fun DashboardScreen(
                         }
                     }
 
-                    item {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(AppIcons.Info, null, tint = CartoonColors.InkSub, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                Strings.WEB_FALLBACK_TIP,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = CartoonColors.InkSub
-                            )
-                        }
-                    }
                 } // LazyColumn
                 } // firstLoading else 分支
             }
 
             // 顶栏悬浮在列表之上（v1.4.10）：磨砂玻璃实时透出下方滚动内容
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onGloballyPositioned { headerPx = it.size.height }
-            ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 GlassTopBar(
+                    modifier = Modifier.onGloballyPositioned { headerPx = it.size.height },
                     title = Strings.DASHBOARD_TITLE,
                     subtitle = Strings.WELCOME_SUB,
                     actions = {
-                        // v1.4.15：刷新中持续旋转并禁用重复点击，给「点击刷新」明确回应
+                        // v1.4.16：点击刷新与下拉刷新共用同一控制器，反馈完全一致
                         GlassRefreshChip(
-                            refreshing = state.loading,
-                            onClick = { vm.load(force = true) }
+                            refreshing = refresh.internalRefreshing || state.loading,
+                            onClick = { refresh.trigger() }
                         )
                     }
                 )
+                // v1.4.16：刷新条固定在「顶栏下一行」，与所有页面起点一致
+                GlassRefreshStrip(refresh, Modifier.fillMaxWidth())
             }
         }
     }

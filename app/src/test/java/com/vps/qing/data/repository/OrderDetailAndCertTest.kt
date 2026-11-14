@@ -229,10 +229,10 @@ class OrderDetailAndCertTest {
     }
 
     @Test
-    fun `theme palettes expose twelve advanced themes`() {
-        // v1.4.14：预设主题由 6 套扩充到 12 套
-        assertEquals(12, ThemePalettes.entries.size)
-        assertEquals(12, ThemePalettes.entries.map { it.id }.toSet().size)
+    fun `theme palettes expose seventeen advanced themes`() {
+        // v1.4.16：预设主题扩充到 17 套（新增晨曦微光默认主题 + 5 套）
+        assertEquals(17, ThemePalettes.entries.size)
+        assertEquals(17, ThemePalettes.entries.map { it.id }.toSet().size)
         // 每个 id 唯一且可反查
         ThemePalettes.entries.forEach { spec ->
             assertEquals(spec, ThemePalettes.byId(spec.id))

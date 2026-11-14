@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,11 +39,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -70,8 +80,10 @@ import com.vps.qing.core.ui.ScrollGlassEffect
 import com.vps.qing.core.ui.FilterChipRow
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.UiT
+import com.vps.qing.core.ui.bgTranslation
 import com.vps.qing.core.ui.glassField
 import com.vps.qing.core.ui.glassFieldColors
+import com.vps.qing.core.ui.theme.AppFonts
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.theme.ThemePalettes
 import com.vps.qing.data.repository.CertPlugin
@@ -442,10 +454,18 @@ fun ThemeSettingsPage(
     onBack: () -> Unit
 ) {
     val ctx = LocalContext.current
-    val bgUri by AppContainer.settings.bgImageUri.collectAsState()
-    val bgDim by AppContainer.settings.bgDim.collectAsState()
+    val settings = AppContainer.settings
+    val bgUri by settings.bgImageUri.collectAsState()
+    val bgDim by settings.bgDim.collectAsState()
+    val bgScale by settings.bgScale.collectAsState()
+    val bgOffsetX by settings.bgOffsetX.collectAsState()
+    val bgOffsetY by settings.bgOffsetY.collectAsState()
+    val fontId by settings.fontId.collectAsState()
+    val customAccent by settings.customAccent.collectAsState()
 
-    // 相册选图：OpenDocument 可拿到可持久授权的 content:// URI
+    // 三 Tab：主题配色 / 自定义背景 / 字体，避免单页过长（v1.4.16）
+    var tab by remember { mutableIntStateOf(0) }
+
     val pickImage = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -455,7 +475,8 @@ fun ThemeSettingsPage(
                     uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             }
-            AppContainer.settings.setBgImageUri(uri.toString())
+            settings.setBgImageUri(uri.toString())
+            settings.resetBgTransform()
         }
     }
 
@@ -463,226 +484,453 @@ fun ThemeSettingsPage(
         Column(modifier = Modifier.fillMaxSize()) {
             GlassTopBar(
                 title = Strings.SETTINGS,
-                subtitle = "深浅模式 · 主题色板 · 自定义背景",
+                subtitle = "主题配色 · 自定义背景 · 字体",
                 navIcon = AppIcons.Back,
                 onNavClick = onBack
             )
-            Column(
+            SettingsTabRow(tab) { tab = it }
+            when (tab) {
+                0 -> ThemeColorTab(
+                    currentMode = currentMode,
+                    currentAccentId = currentAccentId,
+                    customAccent = customAccent,
+                    onSelectMode = onSelectMode,
+                    onSelectAccent = onSelectAccent,
+                    modifier = Modifier.weight(1f)
+                )
+                1 -> BackgroundTab(
+                    bgUri = bgUri,
+                    bgDim = bgDim,
+                    bgScale = bgScale,
+                    bgOffsetX = bgOffsetX,
+                    bgOffsetY = bgOffsetY,
+                    onPick = { runCatching { pickImage.launch(arrayOf("image/*")) } },
+                    modifier = Modifier.weight(1f)
+                )
+                else -> FontTab(
+                    fontId = fontId,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+/** 三段式磨砂玻璃 Tab，选中态使用当前主题主色，切换即时生效。 */
+@Composable
+private fun SettingsTabRow(selected: Int, onSelect: (Int) -> Unit) {
+    val labels = listOf("主题配色", "自定义背景", "字体")
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = UiT.pagePad, vertical = 8.dp)
+            .clip(CartoonKit.PillShape)
+            .background(CartoonColors.White.copy(alpha = 0.5f))
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        labels.forEachIndexed { idx, label ->
+            val on = selected == idx
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .weight(1f)
+                    .clip(CartoonKit.PillShape)
+                    .background(if (on) CartoonColors.Brand else Color.Transparent)
+                    .clickable { onSelect(idx) }
+                    .padding(vertical = 9.dp),
+                contentAlignment = Alignment.Center
             ) {
-                // ---- 自定义背景（重点）----
-                SectionTitle(Strings.THEME_BG_GROUP, CartoonColors.Lilac)
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // 实时预览：把当前全局背景（图片或默认渐变）缩到一张小卡里，
-                        // 上面叠一块半透明玻璃示例，直观展示「玻璃透出背景」的效果。
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(150.dp)
-                                .clip(CartoonKit.ItemShape)
-                                .background(CartoonColors.Background)
-                                .border(UiT.strokeWidthHair, UiT.borderColor, CartoonKit.ItemShape)
-                        ) {
-                            if (!bgUri.isNullOrBlank()) {
-                                AsyncImage(
-                                    model = bgUri,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                                Box(
-                                    Modifier.fillMaxSize().background(
-                                        (if (CartoonColors.isDark) Color.Black else Color.White)
-                                            .copy(alpha = bgDim)
-                                    )
-                                )
-                            } else {
-                                // 默认糖果渐变（与 CartoonBackground 光斑呼应）
-                                Box(
-                                    Modifier.fillMaxSize().background(
-                                        androidx.compose.ui.graphics.Brush.linearGradient(
-                                            listOf(
-                                                CartoonColors.MintSoft,
-                                                CartoonColors.SkySoft,
-                                                CartoonColors.PeachSoft
-                                            )
-                                        )
-                                    )
-                                )
-                            }
-                            // 玻璃示例卡：证明半透明玻璃能透出背景
-                            Box(
-                                Modifier
-                                    .align(Alignment.Center)
-                                    .fillMaxWidth(0.68f)
-                                    .clip(CartoonKit.ItemShape)
-                                    .background(CartoonColors.GlassTint.copy(alpha = 0.72f))
-                                    .border(UiT.strokeWidthHair, Color.White.copy(alpha = 0.6f), CartoonKit.ItemShape)
-                                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(AppIcons.Sparkle, null, tint = CartoonColors.Brand, modifier = Modifier.size(20.dp))
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        "磨砂玻璃卡片",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = CartoonColors.Ink
-                                    )
-                                    Text(
-                                        if (bgUri.isNullOrBlank()) Strings.THEME_BG_NONE else "你的背景正在透出来",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.sp,
-                                        color = CartoonColors.InkSub
-                                    )
-                                }
-                            }
-                        }
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+                    color = if (on) Color.White else CartoonColors.InkSub,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
 
-                        Text(
-                            Strings.THEME_BG_TIP,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = CartoonColors.InkSub
-                        )
+/** 主题配色 Tab：深浅模式 + 主题自设主色 + 预设高级主题。 */
+@Composable
+private fun ThemeColorTab(
+    currentMode: Int,
+    currentAccentId: String,
+    customAccent: Long,
+    onSelectMode: (Int) -> Unit,
+    onSelectAccent: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val settings = AppContainer.settings
+    // 主题自设：RGB 三滑块，默认取当前自定义色或色板主色
+    val seed = if (customAccent != 0L) customAccent else CartoonColors.Brand.toArgb().toLong() and 0xFFFFFFL
+    var r by remember(seed) { mutableFloatStateOf(((seed shr 16) and 0xFF).toFloat() / 255f) }
+    var g by remember(seed) { mutableFloatStateOf(((seed shr 8) and 0xFF).toFloat() / 255f) }
+    var b by remember(seed) { mutableFloatStateOf((seed and 0xFF).toFloat() / 255f) }
+    val preview = Color(r, g, b)
 
-                        // 柔化强度滑块
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                Strings.THEME_BG_DIM,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = CartoonColors.Ink
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                "${(bgDim * 100).toInt()}%",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = CartoonColors.Brand
-                            )
-                        }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = UiT.pagePad, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        SectionTitle(Strings.THEME, CartoonColors.Lilac)
+        val options = listOf(
+            Triple(Strings.THEME_SYSTEM, SettingsStore.THEME_SYSTEM, "跟随手机系统的深浅色设置"),
+            Triple(Strings.THEME_LIGHT, SettingsStore.THEME_LIGHT, "始终使用亮色主题"),
+            Triple(Strings.THEME_DARK, SettingsStore.THEME_DARK, "始终使用深色主题")
+        )
+        options.forEach { (label, mode, desc) ->
+            val selected = currentMode == mode
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(CartoonKit.ItemShape)
+                    .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White.copy(alpha = 0.6f))
+                    .clickable { onSelectMode(mode) }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(
+                    selected = selected,
+                    onClick = null,
+                    colors = RadioButtonDefaults.colors(selectedColor = CartoonColors.Brand)
+                )
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                        color = if (selected) CartoonColors.Brand else CartoonColors.Ink)
+                    Text(desc, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+                }
+                if (selected) Icon(AppIcons.Check, null, tint = CartoonColors.Brand, modifier = Modifier.size(18.dp))
+            }
+        }
+
+        // ---- 主题自设：自定义主色（覆盖色板 Brand，全局即时生效）----
+        SectionTitle("主题自设 · 自定义主色", CartoonColors.Brand)
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(CartoonKit.ItemShape)
+                            .background(preview)
+                            .border(UiT.strokeWidthHair, Color.White.copy(alpha = 0.8f), CartoonKit.ItemShape)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("自定义主色", style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
+                        Text("拖动 RGB 调整，点击「应用」覆盖所选色板主色",
+                            style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+                    }
+                }
+                listOf(
+                    Triple("红", r) { v: Float -> r = v },
+                    Triple("绿", g) { v: Float -> g = v },
+                    Triple("蓝", b) { v: Float -> b = v }
+                ).forEach { (name, value, setter) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(name, style = MaterialTheme.typography.labelSmall,
+                            color = CartoonColors.InkSub, modifier = Modifier.width(22.dp))
                         Slider(
-                            value = bgDim,
-                            onValueChange = { AppContainer.settings.setBgDim(it) },
-                            valueRange = 0f..0.7f,
+                            value = value,
+                            onValueChange = setter,
+                            valueRange = 0f..1f,
                             colors = SliderDefaults.colors(
-                                thumbColor = CartoonColors.Brand,
-                                activeTrackColor = CartoonColors.Brand,
+                                thumbColor = preview,
+                                activeTrackColor = preview,
                                 inactiveTrackColor = CartoonColors.BrandSoft
                             ),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.weight(1f)
                         )
-                        Text(
-                            Strings.THEME_BG_DIM_HINT,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = CartoonColors.InkSub
-                        )
-
-                        // 选图 / 恢复默认
-                        CartoonButton(
-                            text = Strings.THEME_BG_PICK,
-                            onClick = { runCatching { pickImage.launch(arrayOf("image/*")) } },
-                            icon = AppIcons.Image,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        if (!bgUri.isNullOrBlank()) {
-                            CartoonButton(
-                                text = Strings.THEME_BG_CLEAR,
-                                onClick = { AppContainer.settings.setBgImageUri(null) },
-                                icon = AppIcons.Refresh,
-                                containerColor = CartoonColors.Peach,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
                     }
                 }
-
-                // ---- 深浅模式 ----
-                SectionTitle(Strings.THEME, CartoonColors.Lilac)
-                val options = listOf(
-                    Triple(Strings.THEME_SYSTEM, SettingsStore.THEME_SYSTEM, "跟随手机系统的深浅色设置"),
-                    Triple(Strings.THEME_LIGHT, SettingsStore.THEME_LIGHT, "始终使用亮色主题"),
-                    Triple(Strings.THEME_DARK, SettingsStore.THEME_DARK, "始终使用深色主题")
-                )
-                options.forEach { (label, mode, desc) ->
-                    val selected = currentMode == mode
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(CartoonKit.ItemShape)
-                            .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White.copy(alpha = 0.6f))
-                            .clickable { onSelectMode(mode) }
-                            .padding(horizontal = 14.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = selected,
-                            onClick = null,
-                            colors = RadioButtonDefaults.colors(selectedColor = CartoonColors.Brand)
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (selected) CartoonColors.Brand else CartoonColors.Ink
-                            )
-                            Text(desc, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
-                        }
-                        if (selected) {
-                            Icon(AppIcons.Check, null, tint = CartoonColors.Brand, modifier = Modifier.size(18.dp))
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(4.dp))
-                SectionTitle("高级主题 · ${ThemePalettes.entries.size} 套", CartoonColors.Brand)
-                ThemePalettes.entries.forEach { spec ->
-                    val selected = currentAccentId == spec.id
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(CartoonKit.ItemShape)
-                            .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White.copy(alpha = 0.6f))
-                            .clickable { onSelectAccent(spec.id) }
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // 双色预览卡：浅色/深色主色各半
-                        Row(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CartoonKit.ItemShape),
-                        ) {
-                            Box(Modifier.weight(1f).fillMaxSize().background(spec.light.brand))
-                            Box(Modifier.weight(1f).fillMaxSize().background(spec.dark.brand))
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                spec.title,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (selected) CartoonColors.Brand else CartoonColors.Ink
-                            )
-                            Text(spec.desc, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
-                        }
-                        if (selected) {
-                            Icon(AppIcons.Check, null, tint = CartoonColors.Brand, modifier = Modifier.size(18.dp))
-                        }
-                    }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CartoonButton(
+                        text = "应用主色",
+                        onClick = {
+                            val argb = 0xFF000000L or
+                                ((r * 255).toLong() shl 16) or
+                                ((g * 255).toLong() shl 8) or
+                                (b * 255).toLong()
+                            settings.setCustomAccent(argb)
+                        },
+                        icon = AppIcons.Check,
+                        modifier = Modifier.weight(1f)
+                    )
+                    CartoonButton(
+                        text = "恢复色板",
+                        onClick = { settings.setCustomAccent(0L) },
+                        icon = AppIcons.Refresh,
+                        containerColor = CartoonColors.Peach,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
+
+        SectionTitle("高级主题 · ${ThemePalettes.entries.size} 套", CartoonColors.Brand)
+        ThemePalettes.entries.forEach { spec ->
+            val selected = currentAccentId == spec.id
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(CartoonKit.ItemShape)
+                    .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White.copy(alpha = 0.6f))
+                    .clickable { onSelectAccent(spec.id) }
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(modifier = Modifier.size(42.dp).clip(CartoonKit.ItemShape)) {
+                    Box(Modifier.weight(1f).fillMaxSize().background(spec.light.brand))
+                    Box(Modifier.weight(1f).fillMaxSize().background(spec.dark.brand))
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(spec.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold,
+                        color = if (selected) CartoonColors.Brand else CartoonColors.Ink)
+                    Text(spec.desc, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+                }
+                if (selected) Icon(AppIcons.Check, null, tint = CartoonColors.Brand, modifier = Modifier.size(18.dp))
+            }
+        }
+        Spacer(Modifier.height(UiT.bottomBarSpace))
+    }
+}
+
+/** 自定义背景 Tab：可缩放 / 平移的实时编辑器 + 柔化强度 + 选图。 */
+@Composable
+private fun BackgroundTab(
+    bgUri: String?,
+    bgDim: Float,
+    bgScale: Float,
+    bgOffsetX: Float,
+    bgOffsetY: Float,
+    onPick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val settings = AppContainer.settings
+    // 编辑态本地镜像：拖动时只更新本地，松手后写回设置，避免每帧全局重绘
+    var scale by remember(bgScale) { mutableFloatStateOf(bgScale) }
+    var offX by remember(bgOffsetX) { mutableFloatStateOf(bgOffsetX) }
+    var offY by remember(bgOffsetY) { mutableFloatStateOf(bgOffsetY) }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = UiT.pagePad, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        SectionTitle(Strings.THEME_BG_GROUP, CartoonColors.Lilac)
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // 可交互预览：双指缩放 + 单指拖移定位（所见即所得，与全局背景同一变换函数）
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(210.dp)
+                        .clip(CartoonKit.ItemShape)
+                        .background(CartoonColors.Background)
+                        .border(UiT.strokeWidthHair, UiT.borderColor, CartoonKit.ItemShape)
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                val nextScale = (scale * zoom).coerceIn(1f, 4f)
+                                // 把像素位移换算成 [-1,1] 归一化定位，限制在放大后不露边的范围内
+                                val w = size.width.toFloat()
+                                val h = size.height.toFloat()
+                                val maxX = (nextScale - 1f) * w / 2f
+                                val maxY = (nextScale - 1f) * h / 2f
+                                val (tx, ty) = bgTranslation(offX, offY, scale, w, h)
+                                offX = if (maxX > 0f) ((tx + pan.x) / maxX).coerceIn(-1f, 1f) else 0f
+                                offY = if (maxY > 0f) ((ty + pan.y) / maxY).coerceIn(-1f, 1f) else 0f
+                                scale = nextScale
+                            }
+                        }
+                ) {
+                    if (!bgUri.isNullOrBlank()) {
+                        AsyncImage(
+                            model = bgUri,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
+                                    val (tx, ty) = bgTranslation(
+                                        offX, offY, scale, size.width.toFloat(), size.height.toFloat()
+                                    )
+                                    translationX = tx
+                                    translationY = ty
+                                }
+                        )
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                (if (CartoonColors.isDark) Color.Black else Color.White).copy(alpha = bgDim)
+                            )
+                        )
+                    } else {
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.linearGradient(
+                                    listOf(CartoonColors.MintSoft, CartoonColors.SkySoft, CartoonColors.PeachSoft)
+                                )
+                            )
+                        )
+                    }
+                    // 玻璃示例卡：直观验证「半透明玻璃透出背景」
+                    Box(
+                        Modifier
+                            .align(Alignment.Center)
+                            .fillMaxWidth(0.62f)
+                            .clip(CartoonKit.ItemShape)
+                            .background(CartoonColors.GlassTint.copy(alpha = 0.72f))
+                            .border(UiT.strokeWidthHair, Color.White.copy(alpha = 0.6f), CartoonKit.ItemShape)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("磨砂玻璃卡片", style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
+                    }
+                }
+                Text("在预览中双指缩放、单指拖动定位", style = MaterialTheme.typography.labelSmall,
+                    color = CartoonColors.InkSub)
+
+                // 缩放滑块
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("缩放", style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
+                    Spacer(Modifier.width(8.dp))
+                    Text("${String.format("%.1f", scale)}×", style = MaterialTheme.typography.labelSmall,
+                        color = CartoonColors.Brand)
+                }
+                Slider(
+                    value = scale, onValueChange = { scale = it }, valueRange = 1f..4f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = CartoonColors.Brand, activeTrackColor = CartoonColors.Brand,
+                        inactiveTrackColor = CartoonColors.BrandSoft
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CartoonButton(
+                        text = "保存变换",
+                        onClick = {
+                            settings.setBgScale(scale)
+                            settings.setBgOffset(offX, offY)
+                        },
+                        icon = AppIcons.Check,
+                        modifier = Modifier.weight(1f)
+                    )
+                    CartoonButton(
+                        text = "重置位置",
+                        onClick = {
+                            scale = 1f; offX = 0f; offY = 0f
+                            settings.resetBgTransform()
+                        },
+                        icon = AppIcons.Refresh,
+                        containerColor = CartoonColors.Peach,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        // 柔化强度
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(Strings.THEME_BG_DIM, style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
+                    Spacer(Modifier.width(8.dp))
+                    Text("${(bgDim * 100).toInt()}%", style = MaterialTheme.typography.labelSmall,
+                        color = CartoonColors.Brand)
+                }
+                Slider(
+                    value = bgDim, onValueChange = { settings.setBgDim(it) }, valueRange = 0f..0.7f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = CartoonColors.Brand, activeTrackColor = CartoonColors.Brand,
+                        inactiveTrackColor = CartoonColors.BrandSoft
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(Strings.THEME_BG_DIM_HINT, style = MaterialTheme.typography.labelSmall,
+                    color = CartoonColors.InkSub)
+            }
+        }
+
+        CartoonButton(
+            text = Strings.THEME_BG_PICK,
+            onClick = onPick,
+            icon = AppIcons.Image,
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (!bgUri.isNullOrBlank()) {
+            CartoonButton(
+                text = Strings.THEME_BG_CLEAR,
+                onClick = {
+                    settings.setBgImageUri(null)
+                    settings.resetBgTransform()
+                },
+                icon = AppIcons.Refresh,
+                containerColor = CartoonColors.Peach,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        Spacer(Modifier.height(UiT.bottomBarSpace))
+    }
+}
+
+/** 字体 Tab：内置字体族即时切换，示例文字用所选字体渲染。 */
+@Composable
+private fun FontTab(
+    fontId: String,
+    modifier: Modifier = Modifier
+) {
+    val settings = AppContainer.settings
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = UiT.pagePad, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        SectionTitle("内置字体", CartoonColors.Lilac)
+        Text("切换后全局文字立即生效，中文自动回退到设备字形。",
+            style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+        AppFonts.entries.forEach { spec ->
+            val selected = fontId == spec.id
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(CartoonKit.ItemShape)
+                    .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White.copy(alpha = 0.6f))
+                    .clickable { settings.setFontId(spec.id) }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(spec.title, style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (selected) CartoonColors.Brand else CartoonColors.Ink)
+                    Text(spec.desc, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "青云 VPS · 0123 ABC",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontFamily = spec.family),
+                        color = CartoonColors.Ink
+                    )
+                }
+                if (selected) Icon(AppIcons.Check, null, tint = CartoonColors.Brand, modifier = Modifier.size(18.dp))
+            }
+        }
+        Spacer(Modifier.height(UiT.bottomBarSpace))
     }
 }
 
@@ -867,8 +1115,14 @@ private fun CertBody(
                             fontWeight = FontWeight.Bold,
                             color = CartoonColors.Ink
                         )
-                        // 插件同时支持个人与企业时可切换
-                        if (form.selectedPluginTypes.size > 1) {
+                        // v1.4.16 新增企业认证入口：站点 /certification/info 的
+                        // certification_company_open 开关决定是否提供企业认证；
+                        // 插件 /certification/plugin 实测只返回 person，若仍按插件 types
+                        // 判断会把企业入口隐藏。改为「站点开关 OR 插件同时支持」即可稳定显示。
+                        val companyAvailable = data.cert?.companyOpen == true ||
+                            form.selectedPluginTypes.size > 1 ||
+                            form.selectedPluginTypes.contains("company")
+                        if (companyAvailable) {
                             Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
                                 listOf(false to "个人认证", true to "企业认证").forEach { (company, label) ->
                                     val selected = form.companyMode == company
@@ -1281,6 +1535,57 @@ internal fun KeyValueRow(label: String, value: String) {
     }
 }
 
+/**
+ * v1.4.16：机器 IP 行默认打码，右侧「显示/隐藏」眼睛按钮一键切换。
+ * 方便用户截图时保护服务器 IP 隐私；状态按 IP 记忆，进出页面不丢。
+ */
+@Composable
+internal fun IpVisibilityRow(label: String, ip: String) {
+    var visible by remember(ip) { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            label, style = MaterialTheme.typography.labelMedium,
+            color = CartoonColors.InkSub, modifier = Modifier.width(72.dp)
+        )
+        Text(
+            if (visible) ip else maskIp(ip),
+            style = MaterialTheme.typography.bodySmall,
+            color = CartoonColors.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Row(
+            modifier = Modifier
+                .clip(CartoonKit.PillShape)
+                .clickable { visible = !visible }
+                .padding(horizontal = 7.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                if (visible) AppIcons.EyeClosed else AppIcons.Eye,
+                contentDescription = if (visible) "隐藏 IP" else "显示 IP",
+                tint = CartoonColors.Brand,
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(Modifier.width(3.dp))
+            Text(
+                if (visible) "隐藏" else "显示",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = CartoonColors.Brand
+            )
+        }
+    }
+}
+
+/** 保留 IPv4/IPv6 分隔符的轮廓，其余字符打码，隐藏态也能看出是几段地址。 */
+internal fun maskIp(ip: String): String = buildString {
+    ip.forEach { ch ->
+        append(
+            if (ch == '.' || ch == ':' || ch == ',' || ch == ' ' || ch == '/' || ch == '-') ch else '•'
+        )
+    }
+}
+
 @Composable
 internal fun HostLineRow(host: HostLine) {
     GlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -1307,7 +1612,7 @@ internal fun HostLineRow(host: HostLine) {
                 color = CartoonColors.InkSub, maxLines = 1, overflow = TextOverflow.Ellipsis
             )
             if (host.baseInfo.isNotBlank()) KeyValueRow("配置", host.baseInfo)
-            if (host.ip.isNotBlank()) KeyValueRow("IP", host.ip)
+            if (host.ip.isNotBlank()) IpVisibilityRow("IP", host.ip)
             if (host.imageName.isNotBlank()) KeyValueRow("系统", host.imageName)
             KeyValueRow("到期", host.dueTime.ifBlank { "--" })
             Spacer(Modifier.height(2.dp))
