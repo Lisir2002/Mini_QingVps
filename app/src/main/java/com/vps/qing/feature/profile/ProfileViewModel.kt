@@ -4,10 +4,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonObject
 import com.vps.qing.core.AppContainer
+import com.vps.qing.core.CaptchaScenario
+import com.vps.qing.core.CaptchaSession
 import com.vps.qing.core.network.ApiResult
 import com.vps.qing.core.network.HtmlFallbackException
 import com.vps.qing.data.repository.AccountInfo
 import com.vps.qing.data.repository.AuthNode
+import com.vps.qing.data.repository.AuthRepository
+import com.vps.qing.data.repository.SecurityBodies
+import com.vps.qing.data.repository.SiteConfigRepository
 import com.vps.qing.data.repository.CertCustomField
 import com.vps.qing.data.repository.CertInfo
 import com.vps.qing.data.repository.CertPlugin
@@ -170,7 +175,17 @@ data class ProductDetailUi(
  * v1.4.3 补全工单中心（统计/类型/状态/部门/详情/回复/创建/关闭/催单）与
  * 子账户管理（权限树/模块/产品/区号/详情/创建/编辑/启停/删除）的完整交互。
  */
-class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
+class ProfileViewModel(
+    private val repo: ProfileRepository,
+    auth: AuthRepository,
+    site: SiteConfigRepository
+) : ViewModel() {
+
+    /**
+     * 全 App 统一的图形验证码会话（v1.4.13）：安全中心换绑手机/邮箱发码必须走这里，
+     * 由 /common 的 captcha_client_verify / captcha_client_update 开关决定是否弹窗。
+     */
+    val captcha = CaptchaSession(auth, site, viewModelScope)
 
     private val _ui = MutableStateFlow(ProfileUiState())
     val ui: StateFlow<ProfileUiState> = _ui.asStateFlow()
@@ -455,10 +470,42 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
         is ApiResult.Error -> friendly(throwable)
     }
 
+    /**
+     * 安全中心点击「获取验证码」的入口：先按站点开关做图形验证，通过后再发码。
+     * 凭证一次性使用，发码请求体由 [SecurityBodies] 带上 captcha/token。
+     */
+    fun requestSecurityCode(
+        target: String,
+        action: String,
+        value: String,
+        phoneCode: String = "86",
+        onResult: (String?) -> Unit
+    ) {
+        val scenario = if (action == SecurityBodies.ACTION_VERIFY) {
+            CaptchaScenario.VERIFY_OLD_CODE
+        } else {
+            CaptchaScenario.UPDATE_NEW_CODE
+        }
+        captcha.request(scenario) { ticket ->
+            viewModelScope.launch {
+                onResult(
+                    repo.sendSecurityCode(
+                        target, action, value, phoneCode, ticket.captcha, ticket.token
+                    ).errorText()
+                )
+            }
+        }
+    }
+
     /** 返回 null 表示成功，非 null 为错误信息；UI 据此决定下一步与提示。 */
     suspend fun sendSecurityCode(
-        target: String, action: String, value: String, phoneCode: String = "86"
-    ): String? = repo.sendSecurityCode(target, action, value, phoneCode).errorText()
+        target: String,
+        action: String,
+        value: String,
+        phoneCode: String = "86",
+        captcha: String = "",
+        captchaToken: String = ""
+    ): String? = repo.sendSecurityCode(target, action, value, phoneCode, captcha, captchaToken).errorText()
 
     suspend fun verifyOldContact(target: String, code: String): String? =
         repo.verifyOldContact(target, code).errorText()

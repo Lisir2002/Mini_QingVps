@@ -38,8 +38,23 @@ class AuthRepository(
         }
     }
 
-    suspend fun loginByPassword(account: String, password: String): ApiResult<Unit> =
-        loginWith(AuthBodies.login(account = account, password = password))
+    /**
+     * 密码登录。站点 captcha_client_login_error=1 时，连续失败后服务端返回
+     * data.captcha==1，需要在重试请求里带上图形验证码校验后的 (captcha, token)。
+     */
+    suspend fun loginByPassword(
+        account: String,
+        password: String,
+        captcha: String = "",
+        captchaToken: String = ""
+    ): ApiResult<Unit> = loginWith(
+        AuthBodies.login(
+            account = account,
+            password = password,
+            captcha = captcha,
+            captchaToken = captchaToken
+        )
+    )
 
     suspend fun loginByCode(account: String, code: String): ApiResult<Unit> =
         loginWith(AuthBodies.login(account = account, code = code))

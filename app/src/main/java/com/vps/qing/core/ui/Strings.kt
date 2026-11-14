@@ -3,7 +3,7 @@ package com.vps.qing.core.ui
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.4.12"
+    const val APP_VERSION = "1.4.13"
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"
@@ -26,7 +26,7 @@ object Strings {
     const val RETRY = "重试"
     const val WEBSITE_REGISTER = "验证码加载不出来？用网页注册"
     const val WEBSITE_LOGIN = "用网页登录"
-    const val CAPTCHA_HINT = "点击按钮后会弹出图形验证码，验证通过即自动继续"
+    const val CAPTCHA_HINT = "若站点开启图形验证，验证通过后会自动继续"
     const val BACK = "返回"
     const val REFRESH = "刷新"
     const val NOT_LOGGED_IN = "登录已失效，请重新登录"

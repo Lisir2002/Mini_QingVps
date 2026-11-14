@@ -220,22 +220,20 @@ class ProfileRepository(
 
     // ---- v1.4.12：安全中心可编辑项 ----
 
-    /** 发送安全验证码：verify=验证原绑定，update=验证新绑定。 */
+    /**
+     * 发送安全验证码：verify=验证原绑定，update=验证新绑定。
+     * v1.4.13：站点 captcha_client_verify / captcha_client_update=1，
+     * 必须把图形验证码校验通过后的 (captcha, token) 一并提交，否则 400「请输入图形验证码」。
+     */
     suspend fun sendSecurityCode(
         target: String,
         action: String,
         value: String,
-        phoneCode: String = "86"
+        phoneCode: String = "86",
+        captcha: String = "",
+        captchaToken: String = ""
     ): ApiResult<Unit> {
-        val body = JsonObject().apply {
-            addProperty("action", action)
-            if (target == "phone") {
-                addProperty("phone_code", phoneCode)
-                addProperty("phone", value)
-            } else {
-                addProperty("email", value)
-            }
-        }
+        val body = SecurityBodies.code(target, action, value, phoneCode, captcha, captchaToken)
         return safeApiCall({
             if (target == "phone") api.phoneCode(body) else api.emailCode(body)
         }) { Unit }

@@ -83,7 +83,13 @@ fun ProfileScreen(
     onContinuePay: (String, String, List<String>) -> Unit = { _, _, _ -> }
 ) {
     val vm: ProfileViewModel = viewModel(
-        factory = simpleViewModelFactory { ProfileViewModel(AppContainer.profileRepository) }
+        factory = simpleViewModelFactory {
+            ProfileViewModel(
+                AppContainer.profileRepository,
+                AppContainer.authRepository,
+                AppContainer.siteConfigRepository
+            )
+        }
     )
     val state by vm.ui.collectAsState()
     val themeMode by AppContainer.settings.themeMode.collectAsState()

@@ -179,6 +179,18 @@ fun LoginScreen(
             }
         }
     }
+
+    // v1.4.13：站点 captcha_client_login_error=1，连续登录失败后服务端要求图形验证
+    if (state.captchaDialog) {
+        CaptchaDialog(
+            challenge = state.captcha,
+            loading = state.captchaLoading,
+            error = state.captchaError,
+            onSubmit = { vm.submitCaptcha(it) },
+            onRefresh = { vm.refreshCaptcha() },
+            onDismiss = { vm.dismissCaptcha() }
+        )
+    }
 }
 
 /** 认证页通用输入框（磨砂玻璃背景 + 自绘图标）。 */

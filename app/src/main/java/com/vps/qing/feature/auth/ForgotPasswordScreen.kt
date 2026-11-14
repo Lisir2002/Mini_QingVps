@@ -131,14 +131,11 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
                         CartoonButton(
                             text = Strings.SUBMIT,
                             onClick = {
-                                vm.openCaptcha(
-                                    CaptchaRequest(
-                                        purpose = CaptchaPurpose.RESET,
-                                        email = email.trim(),
-                                        emailCode = code.trim(),
-                                        newPassword = newPassword
-                                    )
-                                )
+                                if (code.isBlank()) {
+                                    vm.showInfo("请先获取并填写邮箱验证码")
+                                } else {
+                                    vm.submitReset(email.trim(), code.trim(), newPassword)
+                                }
                             },
                             enabled = !state.loading && !state.captchaDialog && email.isNotBlank() && newPassword.isNotBlank(),
                             icon = AppIcons.Check,

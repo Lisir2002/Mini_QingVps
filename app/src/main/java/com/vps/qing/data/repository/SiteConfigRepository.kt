@@ -8,18 +8,23 @@ import com.vps.qing.data.api.QingVpsApiService
 
 /**
  * GET /common 的站点开关。2026-11 实测值：
- * captcha_client_login=0、captcha_client_register=1、captcha_client_verify=1、
- * captcha_client_password_reset=1、register_email=1、register_phone=0、
- * login_email_password=1、login_phone_password=0、code_client_email_register=1。
- * 即：本站只开放邮箱注册/登录，注册、找回密码、发送验证码都要图形验证码。
+ * captcha_client_login=0、captcha_client_login_error=1、captcha_client_register=1、
+ * captcha_client_verify=1、captcha_client_update=1、captcha_client_password_reset=1、
+ * register_email=1、register_phone=0、login_email_password=1、login_phone_password=0、
+ * code_client_email_register=1。
+ * 即：本站只开放邮箱注册/登录；注册与找回密码的「发码」、安全中心验证原绑定与换绑
+ * 都要图形验证码，登录失败若干次后也要（服务端返回 data.captcha==1）。
  */
 data class SiteConfig(
     val websiteName: String = "QingVPS",
     val currencyPrefix: String = "￥",
     val currencyCode: String = "CNY",
     val captchaOnLogin: Boolean = false,
+    val captchaOnLoginError: Boolean = true,
     val captchaOnRegister: Boolean = true,
     val captchaOnVerifyCode: Boolean = true,
+    /** captcha_client_update：安全中心换绑新手机号/邮箱时发码要图形验证码。 */
+    val captchaOnUpdate: Boolean = true,
     val captchaOnPasswordReset: Boolean = true,
     val loginEmailPassword: Boolean = true,
     val loginPhonePassword: Boolean = false,
@@ -48,8 +53,10 @@ object SiteConfigParser {
         currencyPrefix = data.string("currency_prefix", "currency") ?: "￥",
         currencyCode = data.string("currency_code") ?: "CNY",
         captchaOnLogin = data.flag("captcha_client_login", false),
+        captchaOnLoginError = data.flag("captcha_client_login_error", true),
         captchaOnRegister = data.flag("captcha_client_register", true),
         captchaOnVerifyCode = data.flag("captcha_client_verify", true),
+        captchaOnUpdate = data.flag("captcha_client_update", true),
         captchaOnPasswordReset = data.flag("captcha_client_password_reset", true),
         loginEmailPassword = data.flag("login_email_password", true),
         loginPhonePassword = data.flag("login_phone_password", false),

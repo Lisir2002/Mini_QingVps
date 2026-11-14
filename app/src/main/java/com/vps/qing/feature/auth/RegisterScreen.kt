@@ -94,7 +94,7 @@ fun RegisterScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            "本站仅开放邮箱注册，提交时会弹出图形验证码",
+                            "本站仅开放邮箱注册，获取邮箱验证码时需完成图形验证",
                             style = MaterialTheme.typography.bodySmall,
                             color = CartoonColors.InkSub
                         )
@@ -155,14 +155,9 @@ fun RegisterScreen(
                                 when {
                                     email.isBlank() -> vm.showInfo("请先填写邮箱")
                                     password != confirm -> vm.showInfo("两次输入的密码不一致")
-                                    else -> vm.openCaptcha(
-                                        CaptchaRequest(
-                                            purpose = CaptchaPurpose.REGISTER,
-                                            email = email.trim(),
-                                            password = password,
-                                            confirmPassword = confirm,
-                                            emailCode = code.trim()
-                                        )
+                                    code.isBlank() -> vm.showInfo("请先获取并填写邮箱验证码")
+                                    else -> vm.submitRegister(
+                                        email.trim(), password, confirm, code.trim()
                                     )
                                 }
                             },
