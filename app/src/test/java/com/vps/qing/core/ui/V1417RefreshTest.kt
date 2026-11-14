@@ -20,7 +20,12 @@ class V1417RefreshTest {
     }
 
     @Test
-    fun `版本号已推进到 1_4_17`() {
-        assertEquals("1.4.17", Strings.APP_VERSION)
+    fun `版本号已推进到 1_4_18 或更高`() {
+        // 断言「不低于当前发布版本」而不是写死等值，避免每次发版都因升版本号失败
+        val v = Strings.APP_VERSION
+        assertTrue("$v 应为三段数字", v.matches(Regex("""\d+\.\d+\.\d+""")))
+        val (major, minor, patch) = v.split(".").map { it.toInt() }
+        val numeric = major * 1_000_000 + minor * 1_000 + patch
+        assertTrue("$v 应不低于 1.4.18", numeric >= 1_004_018)
     }
 }

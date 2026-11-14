@@ -63,6 +63,13 @@ object CartoonKit {
     val GlassShape = RoundedCornerShape(UiT.radiusXl)
     val SheetShape = RoundedCornerShape(UiT.radiusSheet)
     val ItemShape = RoundedCornerShape(UiT.radiusMd)
+    /**
+     * v1.4.18：认证页输入框专用圆角。此前用 [PillShape]（50% 全圆角）+ Material3
+     * OutlinedTextField 的浮动 label，label 上浮时会溢出到圆弧之外、被裁到框外，
+     * 且输入文字左侧贴着圆弧。改为 18dp 圆角 + placeholder + 自绘内边距，
+     * 文字与图标始终留在框内，圆角不再裁字。
+     */
+    val FieldShape = RoundedCornerShape(18.dp)
 }
 
 /**
@@ -355,6 +362,8 @@ fun CartoonButton(
     enabled: Boolean = true,
     icon: ImageVector? = null,
     containerColor: Color = CartoonColors.Brand,
+    /** v1.4.18：允许与相邻输入框等高对齐；默认沿用全局紧凑按钮高度。 */
+    height: androidx.compose.ui.unit.Dp = UiT.button,
     /** 文本右侧的自定义内容（如加载指示器）；传入时与文本之间自动留间距。 */
     trailingContent: (@Composable RowScope.() -> Unit)? = null
 ) {
@@ -364,7 +373,7 @@ fun CartoonButton(
         // v1.4.12：去掉 Material 默认生硬投影，改用与玻璃卡片一致的柔和彩色阴影
         modifier = modifier
             .softShadow(CartoonKit.PillShape, UiT.shadowButton)
-            .height(UiT.button),
+            .height(height),
         shape = CartoonKit.PillShape,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             horizontal = UiT.spaceLg, vertical = UiT.spaceXs

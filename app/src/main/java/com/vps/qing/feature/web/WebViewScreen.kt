@@ -1,7 +1,9 @@
 package com.vps.qing.feature.web
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -44,6 +46,9 @@ import java.io.ByteArrayInputStream
  *    重复打开时直接从磁盘命中，不再重复下载。
  *  - 页面 HTML 仍走 LOAD_DEFAULT（带 token 且内容动态，不能缓存）。
  *  - 加载期间显示进度指示，消除白屏等待感。
+ *
+ * v1.4.18：支付收银台里的 `alipays://` / `weixin://` 等深链在 shouldOverrideUrlLoading
+ * 里交给系统应用拉起，否则内置 WebView 报 ERR_UNKNOWN_URL_SCHEME，支付按钮点了没反应。
  */
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -105,6 +110,38 @@ fun WebViewScreen(url: String, onBack: () -> Unit) {
                                     view: WebView,
                                     request: WebResourceRequest
                                 ): WebResourceResponse? = interceptStatic(request)
+
+                                /**
+                                 * v1.4.18：支付收银台会拉起 `alipays://` / `weixin://` 等自定义
+                                 * scheme，WebView 默认无法识别会直接报 ERR_UNKNOWN_URL_SCHEME，
+                                 * 表现就是用户反馈的「点击打开支付宝不可用 / 没反应」。
+                                 * 这里把非 http(s) 的支付深链交给系统应用处理，并给出明确反馈。
+                                 */
+                                override fun shouldOverrideUrlLoading(
+                                    view: WebView,
+                                    request: WebResourceRequest
+                                ): Boolean {
+                                    val uri = request.url ?: return false
+                                    val scheme = uri.scheme.orEmpty()
+                                    if (scheme.equals("http", true) || scheme.equals("https", true)) {
+                                        return false
+                                    }
+                                    val launched = runCatching {
+                                        view.context.startActivity(
+                                            Intent(Intent.ACTION_VIEW, uri)
+                                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        )
+                                        true
+                                    }.getOrDefault(false)
+                                    if (!launched) {
+                                        Toast.makeText(
+                                            view.context,
+                                            "未找到可处理支付的应用，请在浏览器中打开收银台",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                    return true
+                                }
                             }
                             webView = this
                         }

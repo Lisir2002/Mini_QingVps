@@ -13,6 +13,7 @@ import com.vps.qing.data.repository.CatalogRepository
 import com.vps.qing.data.repository.CheckoutParser
 import com.vps.qing.data.repository.ConfigOption
 import com.vps.qing.data.repository.GatewayOption
+import com.vps.qing.data.repository.PayDeadline
 import com.vps.qing.data.repository.MfCloudCart
 import com.vps.qing.data.repository.MfSelection
 import com.vps.qing.data.repository.OptionType
@@ -80,15 +81,38 @@ data class CheckoutState(
     /** 「我已完成支付」查询中：按钮进入禁用+加载态，给出回应式反馈。 */
     val checking: Boolean = false,
     val payUrl: String? = null,
+    /** v1.4.18：站点返回的原始支付 HTML（网页端 `#payBox` 同款内容）。 */
+    val payHtml: String = "",
+    /** v1.4.18：站点支付按钮文案（如「立即支付」），与网页端保持一致。 */
+    val payButtonLabel: String = "立即支付",
+    /** v1.4.18：站点 HTML 里真实存在的二维码内容；null 表示站点没给二维码，App 绝不伪造。 */
+    val qrContent: String? = null,
+    /** v1.4.18：站点 HTML 里真实存在的二维码图片（data:image / http）。 */
+    val qrImageUrl: String? = null,
+    /** v1.4.18：订单真实支付有效期，来自 GET /order/{id}。 */
+    val deadline: PayDeadline? = null,
+    /** v1.4.18：「我已完成支付」校验后的明确反馈（成功 / 未支付 / 查询失败）。 */
+    val checkMessage: String? = null,
+    /** 反馈是否为成功态，决定提示条颜色与图标。 */
+    val checkSuccess: Boolean = false,
+    /** 支付有效期已耗尽。 */
+    val expired: Boolean = false,
     val paid: Boolean = false,
     val error: String? = null
 ) {
     val stage: String
         get() = when {
             paid -> "SUCCESS"
-            payUrl != null -> "PAYING"
+            payUrl != null || payHtml.isNotBlank() -> "PAYING"
             else -> "GATEWAY"
         }
+}
+
+/** 「我已完成支付」单次校验结果：三态，未支付与查询失败必须区分提示。 */
+private sealed interface PayCheck {
+    object Paid : PayCheck
+    object Unpaid : PayCheck
+    data class Failed(val msg: String) : PayCheck
 }
 
 data class ShopUiState(
@@ -182,9 +206,14 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         private const val CATALOG_TTL_MS = 60_000L
         /** 配置变化后的算价防抖，避免连续点选产生请求风暴。 */
         private const val QUOTE_DEBOUNCE_MS = 120L
-        /** 支付状态轮询间隔与最长时长。 */
+        /**
+         * 官方 payDialog.js：轮询间隔 2000ms、`time = 300000`（5 分钟）后停止。
+         * 这是**轮询上限**，不是订单有效期；订单真实有效期来自
+         * GET /order/{id} 的 unpaid_timeout / remain_pay_time。
+         * v1.4.18 修正旧版写死的「最长等待 10 分钟」。
+         */
         private const val PAY_POLL_INTERVAL_MS = 2_000L
-        private const val PAY_POLL_MAX_MS = 10 * 60_000L
+        private const val PAY_POLL_MAX_MS = 5 * 60_000L
     }
 
     init {
@@ -760,7 +789,13 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         }
     }
 
-    /** 选择支付方式并拉起支付（余额支付直接到账，网关支付返回跳转链接）。 */
+    /**
+     * 选择支付方式并拉起支付（v1.4.18 全链路真实性修复）：
+     *  - 余额全额抵扣：响应体顶层 code=Paid，直接成功；
+     *  - 网关支付：保留站点原始 data.html、真实二维码内容/图片、收银台链接；
+     *  - 有效期：立即回源拉 GET /order/{id}，不再写死「10 分钟」。
+     * gateway.name 原样来自站点 GET /gateway，不做任何映射或白名单。
+     */
     fun payWith(gateway: GatewayOption) {
         val checkout = _ui.value.checkout ?: return
         val orderId = checkout.orderId ?: return
@@ -768,23 +803,37 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         viewModelScope.launch {
             _ui.update {
                 it.copy(checkout = it.checkout?.copy(
-                    paying = true, error = null, selectedGateway = gateway
+                    paying = true, error = null, selectedGateway = gateway,
+                    checkMessage = null, expired = false
                 ))
             }
-            // gateway.name 原样来自站点 GET /gateway，不做任何映射或白名单
             when (val r = catalog.payOrder(orderId, gateway.name)) {
                 is ApiResult.Success -> {
-                    if (r.data.paid) {
-                        markPaid(orderId)
-                    } else if (r.data.payUrl != null) {
-                        startPayPolling(orderId)
-                        _ui.update {
-                            it.copy(checkout = it.checkout?.copy(paying = false, payUrl = r.data.payUrl))
+                    val outcome = r.data
+                    when {
+                        outcome.paid -> markPaid(orderId)
+                        outcome.payUrl != null || outcome.payHtml.isNotBlank() -> {
+                            // order/{id} 默认有 5 分钟详情缓存，有效期必须强制回源
+                            AppContainer.invalidateCache("order")
+                            val deadline = (catalog.payDeadline(orderId) as? ApiResult.Success)?.data
+                            _ui.update {
+                                it.copy(checkout = it.checkout?.copy(
+                                    paying = false,
+                                    payUrl = outcome.payUrl,
+                                    payHtml = outcome.payHtml,
+                                    payButtonLabel = outcome.payButtonLabel,
+                                    qrContent = outcome.qrContent,
+                                    qrImageUrl = outcome.qrImageUrl,
+                                    deadline = deadline,
+                                    checkMessage = null
+                                ))
+                            }
+                            startPayPolling(orderId, deadline ?: PayDeadline())
                         }
-                    } else {
-                        _ui.update {
+                        else -> _ui.update {
                             it.copy(checkout = it.checkout?.copy(
-                                paying = false, error = "站点未返回支付链接，请改用其他支付方式"
+                                paying = false,
+                                error = "站点未返回支付入口（data.html 为空），请改用其他支付方式或联系客服"
                             ))
                         }
                     }
@@ -799,15 +848,36 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         }
     }
 
-    /** 「我已完成支付」：立即查一次状态，按钮进入加载/禁用态给出回应式反馈。 */
+    /**
+     * 「我已完成支付」：立即回源查一次顶层 code，并给出明确反馈。
+     * 旧版只静默 checkOnce 后解除 loading，成功读不到 Paid、失败也没有任何提示，
+     * 用户点了完全没反应（v1.4.18 用户实测反馈）。
+     */
     fun checkPayNow() {
         val checkout = _ui.value.checkout ?: return
         val orderId = checkout.orderId ?: return
         if (checkout.checking) return
         viewModelScope.launch {
-            _ui.update { it.copy(checkout = it.checkout?.copy(checking = true)) }
-            checkOnce(orderId)
-            _ui.update { it.copy(checkout = it.checkout?.copy(checking = false)) }
+            _ui.update {
+                it.copy(checkout = it.checkout?.copy(checking = true, checkMessage = null))
+            }
+            // 状态查询不能被缓存命中，保证时效
+            AppContainer.invalidateCache("pay")
+            when (val result = checkOnce(orderId)) {
+                is PayCheck.Paid -> Unit // 已切到 SUCCESS 态，无需额外提示
+                is PayCheck.Unpaid -> _ui.update {
+                    it.copy(checkout = it.checkout?.copy(
+                        checking = false, checkSuccess = false,
+                        checkMessage = "暂未检测到支付成功，请确认已在收银台完成付款后再试"
+                    ))
+                }
+                is PayCheck.Failed -> _ui.update {
+                    it.copy(checkout = it.checkout?.copy(
+                        checking = false, checkSuccess = false,
+                        checkMessage = "支付状态查询失败：${result.msg}，请稍后重试"
+                    ))
+                }
+            }
         }
     }
 
@@ -818,25 +888,39 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         _ui.update { it.copy(checkout = null) }
     }
 
-    private fun startPayPolling(orderId: String) {
+    /**
+     * 轮询上限由**订单真实有效期**决定：站点启用 unpaid_timeout 时按剩余秒数，
+     * 否则用官方 payDialog 的 5 分钟轮询上限。到期仍未支付则明确标记超时。
+     */
+    private fun startPayPolling(orderId: String, deadline: PayDeadline) {
         payPollJob?.cancel()
         val startedAt = System.currentTimeMillis()
+        val maxMs = if (deadline.hasTimeout && deadline.remainSeconds > 0) {
+            deadline.remainSeconds * 1000L
+        } else PAY_POLL_MAX_MS
         payPollJob = viewModelScope.launch {
-            while (isActive && System.currentTimeMillis() - startedAt < PAY_POLL_MAX_MS) {
+            while (isActive && System.currentTimeMillis() - startedAt < maxMs) {
                 delay(PAY_POLL_INTERVAL_MS)
-                val paid = checkOnce(orderId)
-                if (paid) return@launch
+                // 轮询期间的单次失败静默重试，不打扰用户；手动点「我已完成支付」才提示
+                if (checkOnce(orderId) is PayCheck.Paid) return@launch
+            }
+            if (isActive && _ui.value.checkout?.paid != true) {
+                _ui.update { it.copy(checkout = it.checkout?.copy(expired = true)) }
             }
         }
     }
 
-    /** 查一次支付状态；Paid 时写回成功态并刷新购物车。返回是否已支付。 */
-    private suspend fun checkOnce(orderId: String): Boolean {
-        val status = (catalog.payStatus(orderId) as? ApiResult.Success)?.data ?: return false
-        return if (status == "PAID") {
+    /**
+     * 查一次支付状态（顶层 code）：Paid 写回成功态并刷新购物车；
+     * Unpaid 与查询失败分别返回，供「我已完成支付」给出不同提示。
+     */
+    private suspend fun checkOnce(orderId: String): PayCheck = when (val r = catalog.payStatus(orderId)) {
+        is ApiResult.Success -> if (r.data == "PAID") {
             markPaid(orderId)
-            true
-        } else false
+            PayCheck.Paid
+        } else PayCheck.Unpaid
+        is ApiResult.Failure -> PayCheck.Failed("[${r.code}] ${r.msg}")
+        is ApiResult.Error -> PayCheck.Failed(r.throwable.message ?: "网络异常")
     }
 
     private suspend fun markPaid(orderId: String) {

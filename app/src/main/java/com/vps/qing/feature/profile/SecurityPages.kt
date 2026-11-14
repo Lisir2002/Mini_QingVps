@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,7 +22,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,8 +38,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
+import com.vps.qing.core.EmailCodeCooldown
+import com.vps.qing.core.notify.QingNotifier
 import com.vps.qing.core.ui.AppIcons
 import com.vps.qing.feature.auth.CaptchaDialog
+import com.vps.qing.feature.auth.SendCodeButton
 import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonButton
 import com.vps.qing.core.ui.CartoonKit
@@ -52,7 +55,6 @@ import com.vps.qing.core.ui.UiT
 import com.vps.qing.core.ui.glassField
 import com.vps.qing.core.ui.glassFieldColors
 import com.vps.qing.core.ui.theme.CartoonColors
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -240,22 +242,16 @@ fun SecurityEditPage(
     var error by remember { mutableStateOf<String?>(null) }
     var info by remember { mutableStateOf<String?>(null) }
     /**
-     * v1.4.16：两步共享的单一 60s 发码冷却，切换步骤时不再清零。
-     * 站点 /email/code 是全局 60s 限频（不区分 verify/update、也不区分新旧邮箱），
-     * 之前「验证原邮箱 → 设置新邮箱」时把 countdown 重置为 0，用户立刻再点发码
-     * 就会撞上「一分钟只允许申请一次邮箱」。现在冷却跨步骤保留并给出等待提示。
+     * v1.4.18：发码冷却改为全 App 全局统一（[EmailCodeCooldown]）。
+     * 站点 /email/code 是全局 60s 限频（不区分 verify/update、不区分新旧邮箱、
+     * 也不区分页面），注册 / 找回 / 此处换绑共用同一份持久化窗口：
+     * 任意一处发码成功，所有「获取验证码」按钮同步禁用并倒计时，跨步骤 /
+     * 跨页面 / 跨重启保持，结束自动恢复可点。
      */
-    var countdown by remember { mutableStateOf(0) }
+    val remaining by EmailCodeCooldown.remaining.collectAsState()
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     val captchaState by vm.captcha.state.collectAsState()
-
-    LaunchedEffect(countdown) {
-        if (countdown > 0) {
-            delay(1000)
-            countdown -= 1
-        }
-    }
 
     fun toast(text: String) {
         android.widget.Toast.makeText(ctx, text, android.widget.Toast.LENGTH_SHORT).show()
@@ -289,14 +285,14 @@ fun SecurityEditPage(
                 val rateLimited = err.contains("一分钟") || err.contains("60") ||
                     err.contains("频繁") || err.contains("稍后") || err.contains("重复")
                 if (rateLimited) {
-                    if (countdown <= 0) countdown = 60
-                    error = "站点限制每 60 秒只能发送一次验证码，请等待 ${countdown}s 后重试"
+                    EmailCodeCooldown.markRateLimited()
+                    error = "站点限制每 60 秒只能发送一次验证码，请等待 ${EmailCodeCooldown.remainingSeconds()}s 后重试"
                 } else {
                     error = err
                 }
             } else {
-                info = "验证码已发送，请查收"
-                countdown = 60
+                EmailCodeCooldown.markSent()
+                info = "验证码已发送，请查收（60 秒内不能重复获取）"
             }
         }
     }
@@ -314,6 +310,8 @@ fun SecurityEditPage(
                 val err = vm.submitSecurityPassword(oldPwd, newPwd, repeatPwd)
                 busy = false
                 if (err != null) error = err else {
+                    // v1.4.18：账号安全类通知真正落地（此前定义了渠道却无任何触发点）
+                    QingNotifier.security(ctx, "登录密码已修改，如非本人操作请尽快联系客服")
                     toast("密码已修改，请重新登录")
                     onBack()
                 }
@@ -340,15 +338,17 @@ fun SecurityEditPage(
             else if (step == 0) {
                 step = 1
                 code = ""
-                // v1.4.16：不再清零倒计时。站点发码冷却是全局的，原邮箱验证时发的码
-                // 会占住新邮箱的 60s 窗口；保留剩余秒数并明确告知，避免用户一进新邮箱
-                // 步骤就点发码撞上「一分钟只允许申请一次」。
-                info = if (countdown > 0) {
-                    "验证通过。站点每 60 秒只能发送一次验证码，请等待 ${countdown}s 后再获取新${if (target == "email") "邮箱" else "手机号"}验证码"
+                // v1.4.18：全局冷却跨步骤保留，原邮箱验证时发的码会占住新邮箱的 60s 窗口。
+                info = if (remaining > 0) {
+                    "验证通过。站点每 60 秒只能发送一次验证码，请等待 ${remaining}s 后再获取新${if (target == "email") "邮箱" else "手机号"}验证码"
                 } else {
                     "验证通过，请设置新的${if (target == "email") "邮箱" else "手机号"}"
                 }
             } else {
+                QingNotifier.security(
+                    ctx,
+                    "${if (target == "email") "绑定邮箱" else "绑定手机"}已更新，如非本人操作请尽快联系客服"
+                )
                 toast("已保存")
                 onBack()
             }
@@ -356,7 +356,7 @@ fun SecurityEditPage(
     }
 
     CartoonBackground {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().statusBarsPadding()) {
             GlassTopBar(
                 title = title,
                 subtitle = if (target == "password") "修改后需重新登录" else "按站点安全流程验证后生效",
@@ -395,16 +395,11 @@ fun SecurityEditPage(
                                 color = CartoonColors.InkSub
                             )
                             SecurityField("验证码", code, { code = it.filter { c -> c.isDigit() }.take(6) }, "6 位数字验证码", enabled = !busy, keyboardType = KeyboardType.Number)
-                            CartoonButton(
-                                text = when {
-                                    countdown > 0 -> "重新获取 (${countdown}s)"
-                                    busy -> "处理中…"
-                                    else -> "获取验证码"
-                                },
+                            SendCodeButton(
                                 onClick = { sendCode() },
-                                enabled = !busy && countdown == 0,
-                                modifier = Modifier.fillMaxWidth(),
-                                containerColor = CartoonColors.Mint
+                                busy = busy || captchaState.visible,
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth()
                             )
                         } else {
                             SecurityField(
@@ -415,16 +410,11 @@ fun SecurityEditPage(
                                 keyboardType = if (target == "email") KeyboardType.Email else KeyboardType.Phone
                             )
                             SecurityField("验证码", code, { code = it.filter { c -> c.isDigit() }.take(6) }, "6 位数字验证码", enabled = !busy, keyboardType = KeyboardType.Number)
-                            CartoonButton(
-                                text = when {
-                                    countdown > 0 -> "重新获取 (${countdown}s)"
-                                    busy -> "处理中…"
-                                    else -> "获取验证码"
-                                },
+                            SendCodeButton(
                                 onClick = { sendCode() },
-                                enabled = !busy && countdown == 0,
-                                modifier = Modifier.fillMaxWidth(),
-                                containerColor = CartoonColors.Mint
+                                busy = busy || captchaState.visible,
+                                enabled = !busy,
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
 

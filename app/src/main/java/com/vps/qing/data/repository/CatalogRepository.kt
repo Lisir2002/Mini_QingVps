@@ -6,6 +6,7 @@ import com.vps.qing.core.network.ApiResult
 import com.vps.qing.core.network.arrayAt
 import com.vps.qing.core.network.number
 import com.vps.qing.core.network.safeApiCall
+import com.vps.qing.core.network.safeApiCallEnvelope
 import com.vps.qing.core.network.string
 import com.vps.qing.data.api.QingVpsApiService
 import kotlinx.coroutines.async
@@ -212,15 +213,32 @@ class CatalogRepository(private val api: QingVpsApiService) {
             CheckoutParser.settle(data) ?: throw IllegalStateException("结算响应缺少 order_id")
         }
 
-    /** 发起支付：余额支付 paid=true；网关支付返回跳转链接。 */
+    /**
+     * 发起支付（v1.4.18）：必须拿完整 [ApiEnvelope] 才能读响应体**顶层** code。
+     * 站点 pay_ctrl.php：`code==Paid` 表示余额全额抵扣已完成；`Unpaid` 才需要渲染
+     * data.html（站点真实样本是「立即支付」跳转型链接，不是二维码）。
+     */
     suspend fun payOrder(orderId: String, gateway: String): ApiResult<PayOutcome> =
-        safeApiCall({ api.payOrder(CheckoutBodies.pay(orderId, gateway)) }) {
-            CheckoutParser.payOutcome(it)
+        safeApiCallEnvelope({ api.payOrder(CheckoutBodies.pay(orderId, gateway)) }) {
+            CheckoutParser.payOutcomeEnvelope(it)
         }
 
-    /** 支付状态轮询："PAID" / "UNPAID"。 */
+    /**
+     * 支付状态轮询（v1.4.18）：官方 `GET /pay/{id}/status` 把 Paid / Upaid 放在
+     * 响应体**顶层** code，旧版读 data.code 永远检测不到支付成功。
+     * 返回 "PAID" / "UNPAID"；status!=200（含 400 超时）由 safeApiCallEnvelope
+     * 转成 Failure，调用方据此停止轮询并给出明确提示。
+     */
     suspend fun payStatus(orderId: String): ApiResult<String> =
-        safeApiCall({ api.payStatus(orderId) }) { CheckoutParser.payStatus(it) }
+        safeApiCallEnvelope({ api.payStatus(orderId) }) { CheckoutParser.payStatusEnvelope(it) }
+
+    /**
+     * 订单真实支付有效期：官方 payDialog 从 `GET /order/{id}` 的
+     * data.order.unpaid_timeout / remain_pay_time 读取并显示倒计时，
+     * 「5 分钟」只是轮询上限，不是订单有效期。
+     */
+    suspend fun payDeadline(orderId: String): ApiResult<PayDeadline> =
+        safeApiCall({ api.orderDetail(orderId) }) { CheckoutParser.deadline(it) }
 
     /**
      * 拉取站点云端购物车。先把列表里每个商品的配置定义补齐（用于把 configoption 的

@@ -18,6 +18,7 @@ import com.vps.qing.core.navigation.Routes
 import com.vps.qing.core.network.UnauthorizedBus
 import com.vps.qing.core.notify.DeepLinkBus
 import com.vps.qing.core.notify.QingNotifier
+import com.vps.qing.core.permissions.PermissionStatus
 import com.vps.qing.core.ui.theme.QingVpsTheme
 
 class MainActivity : ComponentActivity() {
@@ -67,6 +68,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /**
+     * v1.4.18：从系统设置 / 应用设置返回，或前后台切换时，立刻重读系统真实授权。
+     * 这是「在设置里开启通知，App 内状态实时同步」的关键：StateFlow 一更新，
+     * 权限管理页与通知管理页的开关、状态文案即刻重组，无需重启应用。
+     */
+    override fun onResume() {
+        super.onResume()
+        PermissionStatus.refresh(applicationContext)
     }
 
     /** 通知点击在应用已前台时走 onNewIntent（launchMode=singleTop）。 */

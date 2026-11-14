@@ -5,11 +5,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -33,15 +35,17 @@ import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.AppIcons
 import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonButton
-import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.Strings
-import com.vps.qing.data.repository.AuthBodies
 import com.vps.qing.core.ui.UiT
+import com.vps.qing.core.ui.theme.CartoonColors
+import com.vps.qing.data.repository.AuthBodies
 
-/** 找回密码：图形验证码改为提交时弹窗。 */
+/**
+ * 找回密码（v1.4.18 重构）：与注册页一致的输入框、全局发码冷却、加载内联与结构化提示。
+ */
 @Composable
 fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
     val vm: AuthViewModel = viewModel(
@@ -62,11 +66,18 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
         }
     }
 
+    val emailOk = email.trim().contains("@")
+
     CartoonBackground {
-        // 边到边（targetSdk 35）：内容避开状态栏
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .imePadding()
+        ) {
             GlassTopBar(
                 title = Strings.FORGOT_PASSWORD,
+                subtitle = "通过邮箱验证码重置登录密码",
                 navIcon = AppIcons.Back,
                 onNavClick = onBack
             )
@@ -82,7 +93,10 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
                     shape = CartoonKit.CardShape,
                     alpha = UiT.glassCard
                 ) {
-                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(
+                        Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                         Text(
                             Strings.CAPTCHA_HINT,
                             style = MaterialTheme.typography.bodySmall,
@@ -90,7 +104,9 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
                         )
                         AuthTextField(
                             value = email, onValueChange = { email = it; vm.clearMessages() },
-                            label = Strings.EMAIL, icon = AppIcons.Mail, keyboardType = KeyboardType.Email
+                            label = Strings.EMAIL, icon = AppIcons.Mail,
+                            keyboardType = KeyboardType.Email, imeAction = ImeAction.Next,
+                            enabled = !state.loading
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -98,52 +114,62 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             AuthTextField(
-                                value = code, onValueChange = { code = it; vm.clearMessages() },
+                                value = code, onValueChange = { code = it.filter { c -> c.isDigit() }.take(6); vm.clearMessages() },
                                 label = Strings.VERIFY_CODE, icon = AppIcons.Captcha,
                                 keyboardType = KeyboardType.Number,
-                                modifier = Modifier.weight(1f)
+                                imeAction = ImeAction.Next,
+                                modifier = Modifier.weight(1f),
+                                enabled = !state.loading
                             )
-                            CartoonButton(
-                                text = Strings.SEND_CODE,
+                            SendCodeButton(
                                 onClick = {
-                                    vm.openCaptcha(
-                                        CaptchaRequest(
-                                            purpose = CaptchaPurpose.SEND_CODE,
-                                            email = email.trim(),
-                                            action = AuthBodies.ACTION_PASSWORD_RESET
+                                    if (!emailOk) {
+                                        vm.showInfo("请先填写正确的邮箱地址")
+                                    } else {
+                                        vm.openCaptcha(
+                                            CaptchaRequest(
+                                                purpose = CaptchaPurpose.SEND_CODE,
+                                                email = email.trim(),
+                                                action = AuthBodies.ACTION_PASSWORD_RESET
+                                            )
                                         )
-                                    )
+                                    }
                                 },
-                                modifier = Modifier.height(52.dp)
+                                busy = state.sendingCode || state.captchaDialog,
+                                enabled = emailOk && !state.loading,
                             )
                         }
                         AuthTextField(
                             value = newPassword, onValueChange = { newPassword = it; vm.clearMessages() },
                             label = Strings.NEW_PASSWORD, icon = AppIcons.Lock,
-                            keyboardType = KeyboardType.Password, password = true
+                            keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, password = true,
+                            enabled = !state.loading
                         )
-                        state.error?.let {
-                            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                        }
-                        state.info?.let {
-                            Text(it, color = CartoonColors.Mint, style = MaterialTheme.typography.bodySmall)
-                        }
+                        state.error?.let { AuthMessage(it, isError = true) }
+                        state.info?.let { AuthMessage(it, isError = false) }
                         CartoonButton(
-                            text = Strings.SUBMIT,
+                            text = if (state.loading) "正在提交…" else Strings.SUBMIT,
                             onClick = {
-                                if (code.isBlank()) {
-                                    vm.showInfo("请先获取并填写邮箱验证码")
-                                } else {
-                                    vm.submitReset(email.trim(), code.trim(), newPassword)
+                                when {
+                                    !emailOk -> vm.showInfo("请先填写正确的邮箱地址")
+                                    code.isBlank() -> vm.showInfo("请先获取并填写邮箱验证码")
+                                    newPassword.length !in 6..32 -> vm.showInfo("新密码需 6–32 位")
+                                    else -> vm.submitReset(email.trim(), code.trim(), newPassword)
                                 }
                             },
-                            enabled = !state.loading && !state.captchaDialog && email.isNotBlank() && newPassword.isNotBlank(),
-                            icon = AppIcons.Check,
-                            modifier = Modifier.fillMaxWidth()
+                            enabled = !state.loading && !state.captchaDialog,
+                            icon = if (state.loading) null else AppIcons.Check,
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingContent = if (state.loading) {
+                                {
+                                    CircularProgressIndicator(
+                                        color = androidx.compose.ui.graphics.Color.White,
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                            } else null
                         )
-                        if (state.loading) {
-                            CircularProgressIndicator(modifier = Modifier.size(22.dp).align(Alignment.CenterHorizontally), color = CartoonColors.Brand)
-                        }
                     }
                 }
                 TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {

@@ -3,8 +3,11 @@ package com.vps.qing.feature.main
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,12 +32,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -294,23 +299,25 @@ fun MainScreen(
     }
 }
 
-/** 磨砂玻璃底栏：半透明玻璃面 + 选中胶囊高亮 + 自绘图标 + 购物车角标。 */
+/**
+ * 磨砂玻璃底栏（v1.4.18 收紧）：外/内 padding、图标胶囊、文字间距同步压缩，
+ * 整条底栏更矮更窄，把纵向空间还给内容区；[UiT.bottomBarSpace] 同步下调。
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GlassBottomBar(selected: Int, cartCount: Int, onSelect: (Int) -> Unit) {
     // v1.4.11 滚动感知玻璃：静置磨砂，滚动中磨砂感消失只留透明度
     val alpha = barGlassAlpha()
-    // v1.4.12：底栏与顶栏统一「最新设计」——同一圆角、留白、阴影、磨砂玻璃材质
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = UiT.pagePad, vertical = 10.dp)
+            .padding(horizontal = UiT.pagePad, vertical = 5.dp)
             .glass(shape = CartoonKit.GlassShape, alpha = alpha, elevation = UiT.shadowMd)
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = UiT.spaceMd, vertical = 8.dp),
+                .padding(horizontal = UiT.spaceMd, vertical = 2.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -334,12 +341,18 @@ private fun RowScope.NavItem(
     cartCount: Int,
     onClick: () -> Unit
 ) {
+    // v1.4.18：明确的按压反馈——按下时整项轻微缩放，选中态另有胶囊高亮
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.90f else 1f)
+
     Column(
         modifier = Modifier
             .weight(1f)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(CartoonKit.PillShape)
-            .clickable { onClick() }
-            .padding(vertical = 6.dp),
+            .clickable(interactionSource = interaction, indication = null) { onClick() }
+            .padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -357,7 +370,7 @@ private fun RowScope.NavItem(
         ) {
             Box(
                 Modifier
-                    .size(38.dp)
+                    .size(30.dp)
                     .clip(CartoonKit.PillShape)
                     .background(if (selected) accent else Color.Transparent),
                 contentAlignment = Alignment.Center
@@ -366,16 +379,17 @@ private fun RowScope.NavItem(
                     tab.icon,
                     contentDescription = tab.title,
                     tint = if (selected) Color.White else CartoonColors.InkSub,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(19.dp)
                 )
             }
         }
-        Spacer(Modifier.height(3.dp))
+        Spacer(Modifier.height(1.dp))
         Text(
             tab.title,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = if (selected) accent else CartoonColors.InkSub
+            color = if (selected) accent else CartoonColors.InkSub,
+            maxLines = 1
         )
     }
 }

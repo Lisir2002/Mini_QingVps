@@ -71,11 +71,15 @@ object UiT {
     val sidebarCollapsedWidth = 64.dp
     val cardPad = spaceLg      // 卡片内边距
 
-    // ---------- v1.4.16 底栏让位令牌（统一调度，页面不再散落魔法数字）----------
-    /** 悬浮玻璃底栏的占位高度：内容区底部必须留出这段，避免按钮/开关沉底重合。 */
-    val bottomBarSpace = 92.dp
+    // ---------- v1.4.16 建立 / v1.4.18 收紧：底栏让位令牌统一调度 ----------
+    /**
+     * 悬浮玻璃底栏的占位高度：内容区底部必须留出这段，避免按钮/开关沉底重合。
+     * v1.4.18 底栏整体收窄（外/内 padding、图标胶囊、文字间距同步压缩），
+     * 占位随之从 92dp 降到 72dp，把空间还给内容区。
+     */
+    val bottomBarSpace = 72.dp
     /** 侧边栏内嵌开关的额外让位（比底栏更高一档）。 */
-    val bottomBarSpaceLg = 132.dp
+    val bottomBarSpaceLg = 96.dp
     /** 刷新条固定行高：所有页面「顶栏下一行」的统一起点。 */
     val refreshStripHeight = 44.dp
 

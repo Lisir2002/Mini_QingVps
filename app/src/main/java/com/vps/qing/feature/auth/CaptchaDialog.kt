@@ -134,7 +134,8 @@ fun CaptchaDialog(
                     OutlinedTextField(
                         value = input,
                         onValueChange = { input = it },
-                        label = { Text(Strings.CAPTCHA_INPUT) },
+                        // v1.4.18：改用 placeholder，浮动 label 在透明玻璃描边上会溢出框外
+                        placeholder = { Text(Strings.CAPTCHA_INPUT) },
                         singleLine = true,
                         enabled = !loading,
                         shape = CartoonKit.ItemShape,

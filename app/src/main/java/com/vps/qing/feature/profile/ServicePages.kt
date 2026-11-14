@@ -252,7 +252,8 @@ fun ServicePageScreen(
                             onCompanyMode = onCertCompanyMode,
                             onFormChange = onCertFormChange,
                             onSubmit = onSubmitCert,
-                            onOpenWeb = onOpenWeb
+                            onOpenWeb = onOpenWeb,
+                            onRefreshCert = onRefresh
                         )
                     }
                     // v1.4.3：工单中心 = 统计条 + 状态筛选 + 可点进详情的列表 + 新建入口
@@ -949,7 +950,9 @@ private fun CertBody(
     onCompanyMode: (Boolean) -> Unit = {},
     onFormChange: (CertFormUi) -> Unit = {},
     onSubmit: () -> Unit = {},
-    onOpenWeb: (String) -> Unit = {}
+    onOpenWeb: (String) -> Unit = {},
+    /** v1.4.18：重新检测站点企业认证开关（强制回源 /certification/info）。 */
+    onRefreshCert: () -> Unit = {}
 ) {
     val cert = data.cert
     Column(
@@ -1116,32 +1119,70 @@ private fun CertBody(
                             fontWeight = FontWeight.Bold,
                             color = CartoonColors.Ink
                         )
-                        // v1.4.16 新增企业认证入口：站点 /certification/info 的
-                        // certification_company_open 开关决定是否提供企业认证；
-                        // 插件 /certification/plugin 实测只返回 person，若仍按插件 types
-                        // 判断会把企业入口隐藏。改为「站点开关 OR 插件同时支持」即可稳定显示。
+                        // v1.4.18：企业认证入口不再「悄悄消失」。
+                        // 结论：POST /certification/company 接口、企业表单字段、提交分发
+                        // App 已完整对接；本站 /certification/info 返回
+                        // certification_company_open=0、插件仅 person，所以旧版把整块入口
+                        // 隐藏了，用户误以为「没做这个功能」。现在显式呈现能力状态与原因，
+                        // 并提供「重新检测站点能力」——站点一旦开启，切换入口立即自动出现。
                         val companyAvailable = data.cert?.companyOpen == true ||
                             form.selectedPluginTypes.size > 1 ||
                             form.selectedPluginTypes.contains("company")
-                        if (companyAvailable) {
-                            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                                listOf(false to "个人认证", true to "企业认证").forEach { (company, label) ->
-                                    val selected = form.companyMode == company
-                                    Row(
-                                        modifier = Modifier
-                                            .clip(CartoonKit.ItemShape)
-                                            .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White)
-                                            .clickable { onCompanyMode(company) }
-                                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "认证主体",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CartoonColors.InkSub
+                            )
+                            if (companyAvailable) {
+                                Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                                    listOf(false to "个人认证", true to "企业认证").forEach { (company, label) ->
+                                        val selected = form.companyMode == company
+                                        Row(
+                                            modifier = Modifier
+                                                .clip(CartoonKit.ItemShape)
+                                                .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White)
+                                                .clickable { onCompanyMode(company) }
+                                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                label,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (selected) CartoonColors.Brand else CartoonColors.InkSub
+                                            )
+                                        }
+                                        Spacer(Modifier.width(8.dp))
+                                    }
+                                }
+                            } else {
+                                GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
+                                    Column(
+                                        Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Text(
-                                            label,
-                                            style = MaterialTheme.typography.labelSmall,
+                                            "企业认证 · 站点当前未开启",
+                                            style = MaterialTheme.typography.bodySmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (selected) CartoonColors.Brand else CartoonColors.InkSub
+                                            color = CartoonColors.Ink
+                                        )
+                                        Text(
+                                            "App 已完整对接企业认证接口（/certification/company：企业名称、" +
+                                                "统一社会信用代码、法人信息等）。当前只提供个人认证，是因为站点 " +
+                                                "certification_company_open=0。站点开启后此处会自动出现" +
+                                                "「个人 / 企业」切换，无需更新 App。",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = CartoonColors.InkSub
+                                        )
+                                        CartoonButton(
+                                            text = "重新检测站点能力",
+                                            onClick = onRefreshCert,
+                                            icon = AppIcons.Refresh,
+                                            containerColor = CartoonColors.Sky,
+                                            modifier = Modifier.fillMaxWidth()
                                         )
                                     }
-                                    Spacer(Modifier.width(8.dp))
                                 }
                             }
                         }
@@ -1302,7 +1343,8 @@ private fun CertTextField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label) },
+        // v1.4.18：placeholder 常驻框内，避免浮动 label 被玻璃圆角裁到框外
+        placeholder = { Text(label) },
         singleLine = true,
         enabled = enabled,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),

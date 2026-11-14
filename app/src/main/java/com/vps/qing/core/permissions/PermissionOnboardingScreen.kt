@@ -2,7 +2,6 @@ package com.vps.qing.core.permissions
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
@@ -20,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -29,6 +29,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,7 +43,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.ui.AppIcons
 import com.vps.qing.core.ui.CartoonBackground
@@ -73,15 +73,21 @@ fun PermissionOnboardingScreen(
     val context = LocalContext.current
     val prefs = AppContainer.permissionPrefs
     val enabled by prefs.enabled.collectAsState()
+    // v1.4.18：系统授权实时快照（MainActivity.onResume / 权限结果回调都会刷新）
+    val systemStatus by PermissionStatus.snapshot.collectAsState()
     var pendingId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) { PermissionStatus.ensureFresh(context) }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
         val id = pendingId ?: return@rememberLauncherForActivityResult
         pendingId = null
+        PermissionStatus.refresh(context)
         val spec = PermissionCatalog.byId(id)
-        val granted = spec?.let { systemGranted(context, it) } ?: result.values.all { it }
+        val granted = spec?.let { PermissionStatus.snapshot.value.isGranted(it) }
+            ?: result.values.all { it }
         if (granted) {
             prefs.setEnabled(id, true)
             toast(context, "已开启「${spec?.label ?: id}」")
@@ -97,7 +103,7 @@ fun PermissionOnboardingScreen(
             toast(context, "已关闭「${spec.label}」")
         } else {
             val runtime = PermissionCatalog.runtimePermissions(spec)
-            if (runtime.isNotEmpty() && !systemGranted(context, spec)) {
+            if (runtime.isNotEmpty() && !PermissionStatus.snapshot.value.isGranted(spec)) {
                 pendingId = spec.id
                 runCatching { launcher.launch(runtime.toTypedArray()) }
                     .onFailure { pendingId = null; toast(context, "无法发起权限申请") }
@@ -109,7 +115,9 @@ fun PermissionOnboardingScreen(
     }
 
     CartoonBackground {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // v1.4.18：顶层导航页没有 Scaffold 的 insets 让位，必须自行避开状态栏，
+        // 否则玻璃顶栏标题会与状态栏时间/图标堆叠（截图问题）。
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             GlassTopBar(
                 title = "权限管理",
                 subtitle = if (isOnboarding) "首次使用 · 由你决定是否开启" else "随时查看与调整权限",
@@ -154,7 +162,7 @@ fun PermissionOnboardingScreen(
                     PermissionCard(
                         spec = spec,
                         enabled = enabled[spec.id] ?: false,
-                        granted = systemGranted(context, spec),
+                        granted = systemStatus.isGranted(spec),
                         onToggle = { v -> toggle(spec, v) },
                         onOpenSystemSettings = { openAppSettings(context) }
                     )
@@ -165,7 +173,7 @@ fun PermissionOnboardingScreen(
                     PermissionCard(
                         spec = spec,
                         enabled = enabled[spec.id] ?: false,
-                        granted = systemGranted(context, spec),
+                        granted = systemStatus.isGranted(spec),
                         onToggle = { v -> toggle(spec, v) },
                         onOpenSystemSettings = { openAppSettings(context) }
                     )
@@ -307,15 +315,6 @@ private fun iconFor(id: String): ImageVector = when (id) {
     PermissionCatalog.CLIPBOARD -> AppIcons.Sliders
     PermissionCatalog.CAMERA -> AppIcons.Image
     else -> AppIcons.Shield
-}
-
-/** 安装期权限（INTERNET 等）永远视为已授予；运行时权限逐项检查。 */
-private fun systemGranted(context: Context, spec: PermissionSpec): Boolean {
-    val runtime = PermissionCatalog.runtimePermissions(spec)
-    if (runtime.isEmpty()) return true
-    return runtime.all {
-        ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-    }
 }
 
 private fun openAppSettings(context: Context) {

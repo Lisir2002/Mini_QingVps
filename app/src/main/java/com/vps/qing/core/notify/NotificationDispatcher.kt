@@ -63,10 +63,21 @@ object NotificationDispatcher {
             .apply()
     }
 
-    /** 供工单详情刷新时调用：有新回复才提醒，同一工单只提醒一次。 */
-    fun onTicketChanged(context: Context, ticketId: String, subject: String, hasNewReply: Boolean) {
+    /**
+     * v1.4.18：供工单详情刷新时调用。
+     * 旧版这个方法**没有任何调用点**，工单通知渠道形同虚设；现在由
+     * ProfileViewModel.fetchTicketDetail 对比本次与上次的回复列表，只有出现
+     * 新增的客服回复才触发，并用该回复 id 作为去重键（后续新回复仍能提醒）。
+     */
+    fun onTicketChanged(
+        context: Context,
+        ticketId: String,
+        subject: String,
+        hasNewReply: Boolean,
+        replyKey: String = ""
+    ) {
         if (hasNewReply && ticketId.isNotBlank()) {
-            QingNotifier.ticketReply(context, ticketId, subject)
+            QingNotifier.ticketReply(context, ticketId, subject, replyKey)
         }
     }
 

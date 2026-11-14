@@ -170,7 +170,15 @@ fun ProfileScreen(
                 // 以及权限管理 / 通知管理两个新菜单直达
                 "permissions" -> "permissions"
                 "notifications" -> "notifications"
-                else -> if (navRequest.startsWith("product:")) navRequest else null
+                // v1.4.18：通知深链不再被丢弃。旧版只放行 "product:"，
+                // 工单通知的 "ticket:<id>"、订单通知的 "order:<id>" 会落到 null →
+                // 点通知毫无反应，与「点击直达对应页面」的文案不对称。
+                else -> when {
+                    navRequest.startsWith("product:") -> navRequest
+                    navRequest.startsWith("order:") -> navRequest
+                    navRequest.startsWith("ticket:") -> navRequest
+                    else -> null
+                }
             }
             if (token != null) navStack = token
             onNavConsumed()

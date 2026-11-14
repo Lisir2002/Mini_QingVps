@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonElement
 import com.vps.qing.core.AppContainer
+import com.vps.qing.core.EmailCodeCooldown
 import com.vps.qing.core.CaptchaScenario
 import com.vps.qing.core.CaptchaSession
 import com.vps.qing.core.network.ApiResult
@@ -46,6 +47,8 @@ data class AuthUiState(
     val success: Boolean = false,
     val autoLogin: Boolean = false,
     val config: SiteConfig = SiteConfig(),
+    /** v1.4.18：从点击「获取验证码」到站点真正回包之间保持忙碌，避免重复弹窗/重复发码。 */
+    val sendingCode: Boolean = false,
     /** 以下四个字段由 [CaptchaSession] 同步，供 UI 驱动弹窗与按钮禁用态。 */
     val captchaDialog: Boolean = false,
     val captcha: CaptchaChallenge? = null,
@@ -161,10 +164,16 @@ class AuthViewModel(
             dispatch(request, CaptchaTicket("", ""))
             return
         }
+        // 弹窗期间保持忙碌：图形验证码尚未提交时不允许再点一次「获取验证码」
+        if (_ui.value.sendingCode) return
+        _ui.update { it.copy(sendingCode = true, error = null, info = null) }
         captchaSession.request(scenario) { ticket -> dispatch(request, ticket) }
     }
 
-    fun dismissCaptcha() = captchaSession.dismiss()
+    fun dismissCaptcha() {
+        captchaSession.dismiss()
+        _ui.update { it.copy(sendingCode = false) }
+    }
     fun refreshCaptcha() = captchaSession.refresh()
     fun submitCaptcha(input: String) = captchaSession.submit(input)
 
@@ -181,17 +190,37 @@ class AuthViewModel(
         }
     }
 
-    /** 图形验证码凭证是一次性的，发送后即丢弃，下次要重新验证。 */
+    /**
+     * 图形验证码凭证是一次性的，发送后即丢弃，下次要重新验证。
+     * v1.4.18：站点 /email/code 全局 60 秒限频，发码成功（或明确撞上限频）后
+     * 统一写入 [EmailCodeCooldown]，注册 / 找回 / 安全中心换绑所有按钮同步进入倒计时。
+     * 失败信息用 error 通道（红色），不再冒充绿色「成功」提示。
+     */
     private fun sendEmailCodeInternal(email: String, action: String, ticket: CaptchaTicket) {
         viewModelScope.launch {
-            _ui.update { it.copy(info = null, error = null) }
+            _ui.update { it.copy(sendingCode = true, info = null, error = null) }
             when (val r = auth.sendEmailCode(email, action, ticket.captcha, ticket.token)) {
-                is ApiResult.Success -> _ui.update { it.copy(info = "验证码已发送，请查收邮箱") }
-                is ApiResult.Failure -> _ui.update { it.copy(info = "[${r.code}] ${r.msg}") }
-                is ApiResult.Error -> _ui.update { it.copy(info = friendly(r.throwable)) }
+                is ApiResult.Success -> {
+                    EmailCodeCooldown.markSent()
+                    _ui.update {
+                        it.copy(sendingCode = false, info = "验证码已发送，请查收邮箱；60 秒内不能重复获取")
+                    }
+                }
+                is ApiResult.Failure -> {
+                    if (isRateLimited(r.msg)) EmailCodeCooldown.markRateLimited()
+                    _ui.update { it.copy(sendingCode = false, error = "[${r.code}] ${r.msg}") }
+                }
+                is ApiResult.Error -> _ui.update {
+                    it.copy(sendingCode = false, error = friendly(r.throwable))
+                }
             }
         }
     }
+
+    /** 站点限频文案的宽松匹配（不依赖具体措辞）。 */
+    private fun isRateLimited(msg: String): Boolean =
+        msg.contains("一分钟") || msg.contains("60") || msg.contains("频繁") ||
+            msg.contains("稍后") || msg.contains("重复") || msg.contains("too many", true)
 
     /** 注册提交：站点请求体不含 captcha/token，无需弹窗。 */
     fun submitRegister(email: String, password: String, confirmPassword: String, emailCode: String) =

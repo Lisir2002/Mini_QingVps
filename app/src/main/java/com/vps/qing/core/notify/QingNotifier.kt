@@ -147,7 +147,8 @@ object QingNotifier {
     fun unpaidOrder(context: Context, hostId: String, productName: String) = send(
         context, NotificationCatalog.ORDER,
         title = "有待支付订单",
-        text = "$productName 尚未支付，点击前往订单完成付款",
+        // v1.4.18：落点是订单列表（不是订单详情），文案按真实落点校准
+        text = "$productName 尚未支付，点击前往订单列表查看并继续付款",
         dedupeId = "unpaid-$hostId"
     )
 
@@ -159,12 +160,16 @@ object QingNotifier {
         dedupeId = "news-$id"
     )
 
-    fun ticketReply(context: Context, ticketId: String, subject: String) = send(
+    /**
+     * v1.4.18：去重键带上具体回复 id。旧版用 "ticket-<工单id>"，导致同一工单
+     * 只有第一条新回复会提醒，后续客服再回复永远静默——与「工单有新回复」的承诺不符。
+     */
+    fun ticketReply(context: Context, ticketId: String, subject: String, replyKey: String) = send(
         context, NotificationCatalog.TICKET,
         title = "工单有新回复",
         text = subject,
         deepLink = "ticket:$ticketId",
-        dedupeId = "ticket-$ticketId"
+        dedupeId = "ticket-$ticketId-$replyKey"
     )
 
     fun renewSoon(context: Context, hostId: String, productName: String, days: Int) = send(
@@ -174,11 +179,19 @@ object QingNotifier {
         dedupeId = "renew-$hostId-$days"
     )
 
-    fun security(context: Context, text: String) = send(
+    /**
+     * v1.4.18：旧版用「当前分钟数」做去重键，同一分钟内的两次安全事件只发一次，
+     * 且跨分钟又可能重复，语义混乱。改为按业务事件唯一 id 去重。
+     */
+    fun security(
+        context: Context,
+        text: String,
+        eventId: String = System.currentTimeMillis().toString()
+    ) = send(
         context, NotificationCatalog.SECURITY,
         title = "账号安全提醒",
         text = text,
-        dedupeId = "security-${System.currentTimeMillis() / 60_000L}"
+        dedupeId = "security-$eventId"
     )
 
     /** 通知管理页「发送测试通知」。 */

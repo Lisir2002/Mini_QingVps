@@ -5,11 +5,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,7 +26,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -35,15 +35,18 @@ import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.AppIcons
 import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonButton
-import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.Strings
-import com.vps.qing.data.repository.AuthBodies
 import com.vps.qing.core.ui.UiT
+import com.vps.qing.core.ui.theme.CartoonColors
+import com.vps.qing.data.repository.AuthBodies
 
-/** 注册页：提交时弹图形验证码，验证通过后自动继续注册/发码。 */
+/**
+ * 注册页（v1.4.18 重构）：输入框不再被圆角裁字、密码可显隐、
+ * 「获取验证码」接入全局 60s 冷却、加载态内联、错误/成功提示结构化。
+ */
 @Composable
 fun RegisterScreen(
     onSuccess: (Boolean) -> Unit,
@@ -69,11 +72,19 @@ fun RegisterScreen(
         }
     }
 
+    val emailOk = email.trim().contains("@")
+    val passwordMismatch = confirm.isNotBlank() && password != confirm
+
     CartoonBackground {
-        // 边到边（targetSdk 35）：内容避开状态栏
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .imePadding()
+        ) {
             GlassTopBar(
                 title = Strings.REGISTER,
+                subtitle = "创建账号，开启你的云服务",
                 navIcon = AppIcons.Back,
                 onNavClick = onBack
             )
@@ -90,7 +101,7 @@ fun RegisterScreen(
                     alpha = UiT.glassCard
                 ) {
                     Column(
-                        Modifier.padding(18.dp),
+                        Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
@@ -101,41 +112,58 @@ fun RegisterScreen(
                         AuthTextField(
                             value = email, onValueChange = { email = it; vm.clearMessages() },
                             label = Strings.EMAIL, icon = AppIcons.Mail,
-                            keyboardType = KeyboardType.Email, imeAction = ImeAction.Next
+                            keyboardType = KeyboardType.Email, imeAction = ImeAction.Next,
+                            enabled = !state.loading
                         )
                         AuthTextField(
                             value = password, onValueChange = { password = it; vm.clearMessages() },
                             label = Strings.PASSWORD, icon = AppIcons.Lock,
-                            keyboardType = KeyboardType.Password, imeAction = ImeAction.Next, password = true
+                            keyboardType = KeyboardType.Password, imeAction = ImeAction.Next, password = true,
+                            enabled = !state.loading
                         )
                         AuthTextField(
                             value = confirm, onValueChange = { confirm = it; vm.clearMessages() },
                             label = Strings.CONFIRM_PASSWORD, icon = AppIcons.Lock,
-                            keyboardType = KeyboardType.Password, imeAction = ImeAction.Next, password = true
+                            keyboardType = KeyboardType.Password, imeAction = ImeAction.Next, password = true,
+                            enabled = !state.loading,
+                            isError = passwordMismatch
                         )
+                        if (passwordMismatch) {
+                            Text(
+                                "两次输入的密码不一致",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CartoonColors.Coral
+                            )
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             AuthTextField(
-                                value = code, onValueChange = { code = it; vm.clearMessages() },
+                                value = code, onValueChange = { code = it.filter { c -> c.isDigit() }.take(6); vm.clearMessages() },
                                 label = Strings.VERIFY_CODE, icon = AppIcons.Captcha,
                                 keyboardType = KeyboardType.Number,
-                                modifier = Modifier.weight(1f)
+                                imeAction = ImeAction.Done,
+                                modifier = Modifier.weight(1f),
+                                enabled = !state.loading
                             )
-                            CartoonButton(
-                                text = Strings.SEND_CODE,
+                            SendCodeButton(
                                 onClick = {
-                                    vm.openCaptcha(
-                                        CaptchaRequest(
-                                            purpose = CaptchaPurpose.SEND_CODE,
-                                            email = email.trim(),
-                                            action = AuthBodies.ACTION_REGISTER
+                                    if (!emailOk) {
+                                        vm.showInfo("请先填写正确的邮箱地址")
+                                    } else {
+                                        vm.openCaptcha(
+                                            CaptchaRequest(
+                                                purpose = CaptchaPurpose.SEND_CODE,
+                                                email = email.trim(),
+                                                action = AuthBodies.ACTION_REGISTER
+                                            )
                                         )
-                                    )
+                                    }
                                 },
-                                modifier = Modifier.height(52.dp)
+                                busy = state.sendingCode || state.captchaDialog,
+                                enabled = emailOk && !state.loading,
                             )
                         }
                         Text(
@@ -143,31 +171,32 @@ fun RegisterScreen(
                             style = MaterialTheme.typography.labelSmall,
                             color = CartoonColors.InkSub
                         )
-                        state.error?.let {
-                            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                        }
-                        state.info?.let {
-                            Text(it, color = CartoonColors.Mint, style = MaterialTheme.typography.bodySmall)
-                        }
+                        state.error?.let { AuthMessage(it, isError = true) }
+                        state.info?.let { AuthMessage(it, isError = false) }
                         CartoonButton(
-                            text = Strings.REGISTER,
+                            text = if (state.loading) "正在提交…" else Strings.REGISTER,
                             onClick = {
                                 when {
-                                    email.isBlank() -> vm.showInfo("请先填写邮箱")
+                                    !emailOk -> vm.showInfo("请先填写正确的邮箱地址")
+                                    password.isBlank() -> vm.showInfo("请填写密码")
                                     password != confirm -> vm.showInfo("两次输入的密码不一致")
                                     code.isBlank() -> vm.showInfo("请先获取并填写邮箱验证码")
-                                    else -> vm.submitRegister(
-                                        email.trim(), password, confirm, code.trim()
-                                    )
+                                    else -> vm.submitRegister(email.trim(), password, confirm, code.trim())
                                 }
                             },
                             enabled = !state.loading && !state.captchaDialog,
-                            icon = AppIcons.Check,
-                            modifier = Modifier.fillMaxWidth()
+                            icon = if (state.loading) null else AppIcons.Check,
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingContent = if (state.loading) {
+                                {
+                                    CircularProgressIndicator(
+                                        color = androidx.compose.ui.graphics.Color.White,
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                            } else null
                         )
-                        if (state.loading) {
-                            CircularProgressIndicator(modifier = Modifier.size(22.dp).align(Alignment.CenterHorizontally), color = CartoonColors.Brand)
-                        }
                     }
                 }
                 TextButton(onClick = onWebRegister, modifier = Modifier.fillMaxWidth()) {

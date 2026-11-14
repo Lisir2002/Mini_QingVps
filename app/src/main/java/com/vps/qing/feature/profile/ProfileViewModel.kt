@@ -8,6 +8,7 @@ import com.vps.qing.core.CaptchaScenario
 import com.vps.qing.core.CaptchaSession
 import com.vps.qing.core.network.ApiResult
 import com.vps.qing.core.network.HtmlFallbackException
+import com.vps.qing.core.notify.NotificationDispatcher
 import com.vps.qing.data.repository.AccountInfo
 import com.vps.qing.data.repository.AuthNode
 import com.vps.qing.data.repository.AuthRepository
@@ -539,8 +540,32 @@ class ProfileViewModel(
         viewModelScope.launch {
             setTicketDetail(id) { it.copy(loading = true, error = null) }
             when (val r = repo.ticketDetail(id)) {
-                is ApiResult.Success -> setTicketDetail(id) {
-                    it.copy(loading = false, error = null, detail = r.data)
+                is ApiResult.Success -> {
+                    // v1.4.18：工单通知真正落地。首次打开只建立基线不提醒；
+                    // 之后每次刷新若出现「新增的客服回复」才发通知，且按回复 id 去重，
+                    // 保证后续新回复仍能提醒（此前 onTicketChanged 完全没有调用点）。
+                    val detail = r.data
+                    val prev = _ui.value.ticketDetails[id]?.detail
+                    if (detail != null && prev != null) {
+                        val prevReplies = prev.replies
+                        val added = detail.replies.filter { nr ->
+                            prevReplies.none { it.id == nr.id }
+                        }
+                        val lastAdmin = added.lastOrNull { it.isAdmin }
+                        if (lastAdmin != null) {
+                            runCatching {
+                                NotificationDispatcher.onTicketChanged(
+                                    AppContainer.appContext(), id,
+                                    detail.title.ifBlank { "工单 #$id" },
+                                    hasNewReply = true,
+                                    replyKey = lastAdmin.id.ifBlank { detail.replies.size.toString() }
+                                )
+                            }
+                        }
+                    }
+                    setTicketDetail(id) {
+                        it.copy(loading = false, error = null, detail = detail)
+                    }
                 }
                 is ApiResult.Failure -> setTicketDetail(id) {
                     it.copy(loading = false, error = "[${r.code}] ${r.msg}")
@@ -802,6 +827,9 @@ class ProfileViewModel(
                     setPanel(panel) { it.copy(loading = false, loaded = true, security = rows, error = null) }
                 }
                 ServicePanel.CERTIFICATION -> coroutineScope {
+                    // v1.4.18：「重新检测站点能力」必须回源，不能命中旧的
+                    // certification/info 缓存，否则站点刚开启企业认证时 App 仍显示关闭。
+                    AppContainer.invalidateCache("certification")
                     val infoCall = async { repo.certInfo() }
                     val pluginCall = async { repo.certPlugins() }
                     val infoResult = infoCall.await()
