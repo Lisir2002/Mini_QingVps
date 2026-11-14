@@ -218,7 +218,8 @@ fun ServicePageScreen(
             GlassPullRefreshBox(
                 isRefreshing = data?.loading == true && data?.loaded == true,
                 onRefresh = onRefresh,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                error = data?.error
             ) {
                 when {
                     data == null || (data.loading && !data.loaded) -> {
@@ -1354,7 +1355,8 @@ fun OrderDetailPage(
             GlassPullRefreshBox(
                 isRefreshing = state.loading && state.detail != null,
                 onRefresh = onRefresh,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                error = state.error
             ) {
                 when {
                     state.loading && state.detail == null -> {

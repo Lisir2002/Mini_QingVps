@@ -123,6 +123,10 @@ fun AnnouncementPage(
     }
     BackHandler(enabled = detailId != null) { detailId = null }
 
+    // v1.4.17：列表与详情互斥渲染。此前两者都是透明玻璃容器叠放，
+    // 列表文字会从详情背后透出，与「确认支付 / 选配页」是同一类页面叠加问题。
+    val currentDetailId = detailId
+    if (currentDetailId == null) {
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
             GlassTopBar(
@@ -144,7 +148,8 @@ fun AnnouncementPage(
             GlassPullRefreshBox(
                 isRefreshing = state.refreshing,
                 onRefresh = { vm.load(force = true) },
-                modifier = Modifier.weight(1f).fillMaxWidth()
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                error = state.error
             ) {
                 val newsListState = rememberLazyListState()
                 ScrollGlassEffect(newsListState)
@@ -183,10 +188,8 @@ fun AnnouncementPage(
             } // GlassPullRefreshBox
         }
     }
-
-    // 公告内容详情（原生，v1.4.10）：覆盖在列表页之上
-    detailId?.let { id ->
-        AnnouncementDetailPage(newsId = id, onBack = { detailId = null })
+    } else {
+        AnnouncementDetailPage(newsId = currentDetailId, onBack = { detailId = null })
     }
 }
 
@@ -267,7 +270,8 @@ fun AnnouncementDetailPage(
             GlassPullRefreshBox(
                 isRefreshing = state.loading && detail != null,
                 onRefresh = { vm.load(force = true) },
-                modifier = Modifier.weight(1f).fillMaxWidth()
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                error = state.error
             ) {
                 when {
                 state.loading && detail == null -> LoadingSkeleton(

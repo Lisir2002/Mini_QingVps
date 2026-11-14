@@ -1,5 +1,6 @@
 package com.vps.qing
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -15,6 +16,8 @@ import androidx.navigation.compose.rememberNavController
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.navigation.Routes
 import com.vps.qing.core.network.UnauthorizedBus
+import com.vps.qing.core.notify.DeepLinkBus
+import com.vps.qing.core.notify.QingNotifier
 import com.vps.qing.core.ui.theme.QingVpsTheme
 
 class MainActivity : ComponentActivity() {
@@ -24,6 +27,11 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         AppContainer.init(applicationContext)
+
+        // v1.4.17：通知点击带来的应用内落点，先暂存；StateFlow 保证 MainScreen
+        // 稍后订阅时仍能收到（冷启动也不会丢）。
+        val initialRoute = intent?.getStringExtra(QingNotifier.EXTRA_ROUTE)
+
         setContent {
             // 应用设置里的主题 / 字体 / 主题自设主色写入 SettingsStore，这里收集后即时全局生效
             val themeMode by AppContainer.settings.themeMode.collectAsState()
@@ -41,15 +49,30 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     UnauthorizedBus.events.collect { sessionEpoch++ }
                 }
+                LaunchedEffect(Unit) {
+                    initialRoute?.let { DeepLinkBus.emit(it) }
+                }
 
                 key(sessionEpoch) {
                     val navController = rememberNavController()
                     AppNavHost(
                         navController = navController,
-                        startDestination = if (AppContainer.isLoggedIn()) Routes.MAIN else Routes.LOGIN
+                        // v1.4.17：首次启动必须先经过独立权限管理页（所有权限默认关闭）
+                        startDestination = when {
+                            !AppContainer.permissionPrefs.onboardingDone.value -> Routes.PERMISSIONS
+                            AppContainer.isLoggedIn() -> Routes.MAIN
+                            else -> Routes.LOGIN
+                        }
                     )
                 }
             }
         }
+    }
+
+    /** 通知点击在应用已前台时走 onNewIntent（launchMode=singleTop）。 */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(QingNotifier.EXTRA_ROUTE)?.let { DeepLinkBus.emit(it) }
     }
 }

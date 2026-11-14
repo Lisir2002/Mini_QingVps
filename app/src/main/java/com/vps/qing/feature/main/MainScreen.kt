@@ -1,5 +1,7 @@
 package com.vps.qing.feature.main
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,6 +40,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vps.qing.core.AppContainer
+import com.vps.qing.core.notify.DeepLinkBus
+import com.vps.qing.core.permissions.PermissionCatalog
 import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.AppIcons
 import com.vps.qing.core.ui.theme.CartoonColors
@@ -107,6 +111,24 @@ fun MainScreen(
     var announcementFocus by rememberSaveable { mutableStateOf<String?>(null) }
     BackHandler(enabled = showAnnouncements) { showAnnouncements = false }
 
+    // v1.4.17：通知点击 → App 内原生页。公告落到独立公告页（可直达某条详情），
+    // 订单 / 工单 / 安全 / 已购 / 权限 / 通知管理统一走个人中心子页导航栈。
+    LaunchedEffect(Unit) {
+        DeepLinkBus.pending.collect { pending ->
+            if (pending == null) return@collect
+            when (val target = DeepLinkBus.consume()) {
+                null -> Unit
+                "announcements" -> showAnnouncements = true
+                else -> if (target.startsWith("announcement:")) {
+                    announcementFocus = target.removePrefix("announcement:")
+                    showAnnouncements = true
+                } else {
+                    openProfileNav(target)
+                }
+            }
+        }
+    }
+
     // v1.4.15：外部 Tab 直达的个人中心子页，逐级返回到栈空时回到来源 Tab
     LaunchedEffect(profileSubOpen) {
         if (!profileSubOpen && profileNavOrigin != null && profileNavOrigin != 3) {
@@ -119,6 +141,9 @@ fun MainScreen(
         factory = simpleViewModelFactory { ShopViewModel(AppContainer.catalogRepository) }
     )
     val shopState by shopVm.ui.collectAsState()
+    // v1.4.17：支付页「用外部应用打开 / 复制支付链接」受权限开关控制（默认全部关闭）
+    val permissionEnabled by AppContainer.permissionPrefs.enabled.collectAsState()
+    val appContext = androidx.compose.ui.platform.LocalContext.current
 
     // 商品配置页打开（任意 Tab 发起）时同样隐藏底栏；系统返回键 = 返回来源列表
     val configOpen = shopState.configSheet != null
@@ -154,6 +179,12 @@ fun MainScreen(
                         bottom = if (bottomBarVisible) 0.dp else padding.calculateBottomPadding()
                     )
             ) {
+                // v1.4.17 页面叠加修复：任何全屏 overlay（选配页 / 确认支付 / 公告详情）
+                // 打开时，底层 Tab 内容一律不再渲染。此前底层页面仍在组合中，而 overlay
+                // 是半透明玻璃 → 上一页文字与卡片从背后透出，形成「确认支付叠在订单详情」
+                // 「选配页叠在采购页」的重影。根级背景仍由最外层 CartoonBackground 绘制，
+                // 透明画布风格完全不受影响。
+                if (!checkoutOpen && !configOpen) {
                 // 网站公告独立页面：整页覆盖并隐藏底栏（v1.4.7）
                 if (showAnnouncements) {
                     AnnouncementPage(
@@ -187,6 +218,7 @@ fun MainScreen(
                     onNavConsumed = { profileNavRequest = null },
                     onContinuePay = { orderId, amount, names -> shopVm.startPayOrder(orderId, amount, names) }
                 )
+                } // if (!checkoutOpen && !configOpen)
             }
 
             // 商品配置页（选购页自定义配置）在主容器层渲染，打开时隐藏底栏
@@ -211,7 +243,18 @@ fun MainScreen(
                     onDismiss = shopVm::closeCheckout,
                     onPayWith = shopVm::payWith,
                     onOpenPayUrl = onOpenWeb,
-                    onCheckPayNow = shopVm::checkPayNow
+                    onCheckPayNow = shopVm::checkPayNow,
+                    onRefreshGateways = shopVm::refreshGateways,
+                    externalAppsEnabled = permissionEnabled[PermissionCatalog.EXTERNAL_APPS] ?: false,
+                    clipboardEnabled = permissionEnabled[PermissionCatalog.CLIPBOARD] ?: false,
+                    onOpenExternal = { url ->
+                        runCatching {
+                            appContext.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                    }
                 )
             }
 

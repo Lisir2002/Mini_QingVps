@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <!-- 通知栏小图标：纯白云朵（系统按通知栏背景自动着色） -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7.2,18.5h9.6a3.9,3.9 0 0,0 0.4,-7.78A5.6,5.6 0 0,0 6.7,9.6A4.05,4.05 0 0,0 7.2,18.5zM12,3.5c-0.55,0 -1,0.45 -1,1v0.7c-2.1,0.3 -3.75,1.9 -4.15,3.95A5.4,5.4 0 0,1 8.2,8.7c0.6,-1.1 1.75,-1.85 3.05,-1.95c1.3,-0.1 2.55,0.5 3.3,1.55a5.35,5.35 0 0,1 1.4,0.6A5.6,5.6 0 0,0 13,4.2V4.5C13,3.95 12.55,3.5 12,3.5z" />
+</vector>

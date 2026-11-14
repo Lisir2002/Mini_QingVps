@@ -53,6 +53,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
+ * v1.4.17：刷新结果提示（成功 / 失败）显示时长 3.5 秒，之后自动隐藏并等待下一次唤醒。
+ * 落在用户要求的 3–5 秒区间内，作为可调令牌供测试与后续统一调整。
+ */
+const val REFRESH_DONE_VISIBLE_MS = 3500L
+
+/**
  * 全局统一的下拉刷新 / 等待反馈组件库（v1.4.16 重写）。
  *
  * v1.4.16 两处关键改动：
@@ -87,14 +93,41 @@ class GlassRefreshController internal constructor(
     var showDone by mutableStateOf(false)
         internal set
 
+    /** v1.4.17：结果反馈文案与成败（成功「已刷新」/ 失败「刷新失败，请稍后重试」）。 */
+    var doneText by mutableStateOf(Strings.REFRESH_DONE)
+        internal set
+    var doneOk by mutableStateOf(true)
+        internal set
+
+    /**
+     * v1.4.17：每次刷新自增的序号。刷新生命周期的 LaunchedEffect 以它为 key，
+     * 在一次刷新过程中恒定 —— 写 internalRefreshing=false 不会重启/取消自身协程。
+     * 旧实现以 internalRefreshing 为 key，写 false 时协程被取消，导致
+     * `showDone=false` 永远执行不到，「已刷新」一直挂在顶栏下方。
+     */
+    var refreshSeq by mutableStateOf(0)
+        internal set
+
     /** 组合期由 rememberGlassRefresh 更新为最新的外部刷新回调。 */
     var request: () -> Unit = {}
+
+    private fun begin() {
+        showDone = false
+        internalRefreshing = true
+        refreshSeq++
+    }
 
     /** 松手达到阈值时由 PullToRefreshBox 调用：立刻进入刷新态并触发业务刷新。 */
     fun trigger() {
         if (internalRefreshing) return
-        internalRefreshing = true
+        begin()
         request()
+    }
+
+    /** 外部（顶栏刷新按钮）自行进入刷新态：纳入同一生命周期，但不重复发请求。 */
+    fun beginExternal() {
+        if (internalRefreshing) return
+        begin()
     }
 
     /** 是否显示刷新条：下拉中 / 刷新中 / 完成反馈。空闲完全收起，不占空间。 */
@@ -106,27 +139,30 @@ class GlassRefreshController internal constructor(
 @Composable
 fun rememberGlassRefresh(
     isRefreshing: Boolean,
-    onRefresh: () -> Unit
+    onRefresh: () -> Unit,
+    /** v1.4.17：页面错误态。刷新结束时非空 → 提示「刷新失败」，成功/失败都 3.5s 自动隐藏。 */
+    error: String? = null
 ): GlassRefreshController {
     val pullState = rememberPullToRefreshState()
     val controller = remember { GlassRefreshController(pullState) }
     val currentOnRefresh by rememberUpdatedState(onRefresh)
     val currentRefreshing by rememberUpdatedState(isRefreshing)
+    val currentError by rememberUpdatedState(error)
     controller.request = currentOnRefresh
 
     // 外部状态若自行进入刷新（例如顶栏刷新按钮），也纳入内部生命周期，
     // 但绝不依赖它来结束——结束一律由下面的超时/等待逻辑兜底。
     LaunchedEffect(isRefreshing) {
-        if (isRefreshing && !controller.internalRefreshing) {
-            controller.internalRefreshing = true
-        }
+        if (isRefreshing && !controller.internalRefreshing) controller.beginExternal()
     }
 
-    // 每次进入刷新态：等待业务刷新结束（最多 4s 兜底）→ 复位 → 「已更新」轻反馈。
-    // 由于传给 PullToRefreshBox 的是 internalRefreshing，它必然经历 true→false，
+    // v1.4.17：key 用「刷新序号」而不是 internalRefreshing。
+    // 一次刷新内序号恒定，写 internalRefreshing=false 不会取消本协程，
+    // 于是复位 → 结果反馈 → 自动隐藏这条链路一定能走完。
+    // 传给 PullToRefreshBox 的 internalRefreshing 仍必然经历 true→false，
     // 手势 state 一定 animateToHidden，根除「松开立即刷新」卡住。
-    LaunchedEffect(controller.internalRefreshing) {
-        if (!controller.internalRefreshing) return@LaunchedEffect
+    LaunchedEffect(controller.refreshSeq) {
+        if (controller.refreshSeq == 0) return@LaunchedEffect
         withTimeoutOrNull(4000L) {
             var waited = 0L
             // 给业务至少 320ms 的反应时间，再等它把外部 loading 落回 false
@@ -137,9 +173,20 @@ fun rememberGlassRefresh(
             }
         }
         controller.internalRefreshing = false
+        val failed = !currentError.isNullOrBlank()
+        controller.doneOk = !failed
+        controller.doneText = if (failed) Strings.REFRESH_FAILED else Strings.REFRESH_DONE
         controller.showDone = true
-        delay(1000L)
-        controller.showDone = false
+    }
+
+    // v1.4.17：结果提示 3.5 秒后自动隐藏并等待下一次唤醒。
+    // 独立的计时器 effect（key=showDone），即便期间发生重组 / 新刷新也不会失效：
+    // 新一轮 trigger() 会先把 showDone 置 false 取消旧计时，再重新显示反馈。
+    LaunchedEffect(controller.showDone) {
+        if (controller.showDone) {
+            delay(REFRESH_DONE_VISIBLE_MS)
+            controller.showDone = false
+        }
     }
 
     return controller
@@ -186,9 +233,11 @@ fun GlassPullRefreshBox(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
     showStrip: Boolean = true,
+    /** v1.4.17：页面错误态，供刷新失败反馈使用；不传则一律按成功提示。 */
+    error: String? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val refresh = rememberGlassRefresh(isRefreshing, onRefresh)
+    val refresh = rememberGlassRefresh(isRefreshing, onRefresh, error)
     GlassPullRefreshBox(
         refresh = refresh,
         modifier = modifier,
@@ -222,7 +271,7 @@ fun GlassRefreshStrip(
         if (visible) {
             val fraction = refresh.pullState.distanceFraction.coerceIn(0f, 1f)
             val label = when {
-                refresh.showDone -> Strings.REFRESH_DONE
+                refresh.showDone -> refresh.doneText
                 refresh.internalRefreshing -> Strings.REFRESHING
                 fraction >= 1f -> Strings.RELEASE_TO_REFRESH
                 else -> Strings.PULL_TO_REFRESH
@@ -238,8 +287,8 @@ fun GlassRefreshStrip(
             ) {
                 if (refresh.showDone) {
                     Icon(
-                        AppIcons.Check, null,
-                        tint = CartoonColors.Mint,
+                        if (refresh.doneOk) AppIcons.Check else AppIcons.Close, null,
+                        tint = if (refresh.doneOk) CartoonColors.Mint else CartoonColors.Peach,
                         modifier = Modifier.size(16.dp)
                     )
                 } else if (refresh.internalRefreshing) {

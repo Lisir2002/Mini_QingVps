@@ -18,6 +18,8 @@ import com.vps.qing.core.network.TokenManager
 import com.vps.qing.core.network.TokenProvider
 import com.vps.qing.core.network.UnauthorizedBus
 import com.vps.qing.core.network.WebAssetCacheInterceptor
+import com.vps.qing.core.notify.NotificationPrefs
+import com.vps.qing.core.permissions.PermissionPrefs
 import com.vps.qing.data.api.QingVpsApiService
 import com.vps.qing.data.repository.AuthRepository
 import com.vps.qing.data.repository.CatalogRepository
@@ -179,12 +181,20 @@ object AppContainer {
     }
 
     val settings: SettingsStore by lazy { SettingsStore(appContext) }
+
+    /** v1.4.17：权限开关（默认全关）与通知偏好，独立于主题设置，全局单例可观察。 */
+    val permissionPrefs: PermissionPrefs by lazy { PermissionPrefs(appContext) }
+    val notificationPrefs: NotificationPrefs by lazy { NotificationPrefs(appContext) }
+
     val authRepository: AuthRepository by lazy { AuthRepository(api, tokenManager) }
     val profileRepository: ProfileRepository by lazy { ProfileRepository(api, tokenManager) }
     val siteConfigRepository: SiteConfigRepository by lazy { SiteConfigRepository(api) }
     val catalogRepository: CatalogRepository by lazy { CatalogRepository(api) }
 
     fun isLoggedIn(): Boolean = !tokenManager.cachedToken.isNullOrBlank()
+
+    /** v1.4.17：供通知调度、拉起外部应用等纯业务组件使用的应用上下文。 */
+    fun appContext(): Context = appContext
 
     /**
      * 供下拉刷新/手动刷新使用：绕过 L1 与 L2 强制回源。

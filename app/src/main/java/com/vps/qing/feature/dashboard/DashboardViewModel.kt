@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.network.ApiResult
+import com.vps.qing.core.notify.NotificationDispatcher
 import com.vps.qing.data.repository.AccountInfo
 import com.vps.qing.data.repository.CatalogRepository
 import com.vps.qing.data.repository.CertInfo
@@ -28,7 +29,9 @@ data class DashboardUiState(
     val cert: CertInfo? = null,
     val hosts: List<HostSummary> = emptyList(),
     val news: List<NewsItem> = emptyList(),
-    val notice: String? = null
+    val notice: String? = null,
+    /** v1.4.17：刷新失败提示（交给统一刷新条展示 3.5 秒后自动隐藏）。 */
+    val error: String? = null
 )
 
 /**
@@ -67,7 +70,7 @@ class DashboardViewModel(
 
             supervisorScope {
                 // 三个 Deferred 同时启动，共用 HTTP/2 连接多路复用
-                val newsCall = async { catalog.news().orEmpty() }
+                val newsCall = async { catalog.news() }
                 val hostsCall = async {
                     if (loggedIn) catalog.hosts().orEmpty() else emptyList()
                 }
@@ -79,7 +82,13 @@ class DashboardViewModel(
                     if (loggedIn) (profile.certInfo() as? ApiResult.Success)?.data else null
                 }
 
-                val newsList = newsCall.await()
+                val newsResult = newsCall.await()
+                val newsList = (newsResult as? ApiResult.Success)?.data.orEmpty()
+                val newsError = when (newsResult) {
+                    is ApiResult.Failure -> "[${newsResult.code}] ${newsResult.msg}"
+                    is ApiResult.Error -> newsResult.throwable.message ?: "数据加载失败"
+                    else -> null
+                }
                 val hostsList = hostsCall.await()
                 val accountInfo = accountCall.await()
                 val certInfo = certCall.await()
@@ -93,7 +102,14 @@ class DashboardViewModel(
                         // v1.4.11：已购服务只展示已支付的机器，待支付的不进首页列表
                         hosts = hostsList.filter { host -> !isUnpaidHostStatus(host.status) },
                         news = newsList,
-                        notice = if (loggedIn) null else Strings.LOGIN_PROMPT
+                        notice = if (loggedIn) null else Strings.LOGIN_PROMPT,
+                        error = newsError
+                    )
+                }
+                // v1.4.17：首页快照差异检测 → 新公告 / 待支付订单 / 即将到期续费提醒
+                runCatching {
+                    NotificationDispatcher.onDashboardSnapshot(
+                        AppContainer.appContext(), newsList, hostsList
                     )
                 }
             }

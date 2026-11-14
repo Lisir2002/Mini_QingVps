@@ -9,6 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.navigation.Routes
+import com.vps.qing.core.permissions.PermissionOnboardingScreen
 import com.vps.qing.feature.auth.ForgotPasswordScreen
 import com.vps.qing.feature.auth.LoginScreen
 import com.vps.qing.feature.auth.RegisterScreen
@@ -64,6 +65,18 @@ fun AppNavHost(
             ForgotPasswordScreen(
                 onDone = { navController.popBackStack() },
                 onBack = { navController.popBackStack() }
+            )
+        }
+
+        // v1.4.17：首次启动先进入独立权限管理页；完成后清栈进入主容器 / 登录页。
+        composable(Routes.PERMISSIONS) {
+            PermissionOnboardingScreen(
+                onDone = {
+                    val target = if (AppContainer.isLoggedIn()) Routes.MAIN else Routes.LOGIN
+                    navController.navigate(target) {
+                        popUpTo(Routes.PERMISSIONS) { inclusive = true }
+                    }
+                }
             )
         }
 

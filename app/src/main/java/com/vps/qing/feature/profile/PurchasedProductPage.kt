@@ -80,7 +80,8 @@ fun PurchasedProductPage(
             GlassPullRefreshBox(
                 isRefreshing = state.loading && state.detail != null,
                 onRefresh = onRefresh,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                error = state.error
             ) {
                 when {
                     state.loading && state.detail == null -> {

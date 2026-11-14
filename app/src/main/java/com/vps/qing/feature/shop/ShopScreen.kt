@@ -335,8 +335,9 @@ private fun TopTabRow(state: ShopUiState, vm: ShopViewModel) {
                 .fillMaxWidth()
                 .padding(5.dp)
         ) {
+            // v1.4.17：采购页 Tab 也显示站点商品总数，与购物车数量角标口径一致
             listOf(
-                Strings.SHOP_PURCHASE to AppIcons.Shop,
+                "${Strings.SHOP_PURCHASE} (${state.allProducts.size})" to AppIcons.Shop,
                 "${Strings.SHOP_CART} (${state.cartCount})" to AppIcons.Cart
             ).forEachIndexed { index, (label, icon) ->
                 val selected = state.tab == index
@@ -481,7 +482,8 @@ private fun PurchasePane(
             GlassPullRefreshBox(
                 isRefreshing = state.refreshing,
                 onRefresh = { vm.refresh() },
-                modifier = Modifier.weight(1f).fillMaxWidth()
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                error = state.error
             ) {
                 when {
                     state.productsLoading && state.visibleProducts.isEmpty() && state.error == null -> {
@@ -937,7 +939,8 @@ private fun CartPane(
         GlassPullRefreshBox(
             isRefreshing = state.cartLoading,
             onRefresh = { vm.refresh() },
-            modifier = Modifier.weight(1f).fillMaxWidth()
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            error = state.error
         ) {
             val cartListState = rememberLazyListState()
             ScrollGlassEffect(cartListState)

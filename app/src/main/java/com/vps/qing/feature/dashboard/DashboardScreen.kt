@@ -112,7 +112,12 @@ fun DashboardScreen(
     val state by vm.ui.collectAsState()
     // v1.4.16：首页顶栏悬浮，刷新条放进顶栏 Column（顶栏正下方一行），
     // 手势区不自带 strip，避免指示器被悬浮顶栏盖住。
-    val refresh = rememberGlassRefresh(state.loading) { vm.load(force = true) }
+    // v1.4.17：刷新结束按成功 / 失败给 3.5 秒反馈后自动隐藏
+    val refresh = rememberGlassRefresh(
+        isRefreshing = state.loading,
+        onRefresh = { vm.load(force = true) },
+        error = state.error
+    )
 
     CartoonBackground {
         // v1.4.10 透明画布：列表整幅铺满（顶部从顶栏玻璃卡下穿过，底部沉入底栏玻璃之下），

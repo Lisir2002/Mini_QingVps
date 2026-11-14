@@ -3,7 +3,7 @@ package com.vps.qing.core.ui
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.4.16"
+    const val APP_VERSION = "1.4.17"
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"
@@ -35,7 +35,9 @@ object Strings {
     const val PULL_TO_REFRESH = "下拉刷新"
     const val RELEASE_TO_REFRESH = "松开立即刷新"
     const val REFRESHING = "正在获取最新数据…"
-    const val REFRESH_DONE = "已更新"
+    const val REFRESH_DONE = "已刷新"
+    /** v1.4.17：刷新失败也给出短提示，同样 3-5 秒自动隐藏。 */
+    const val REFRESH_FAILED = "刷新失败，请稍后重试"
     const val LOADING_DATA = "正在从站点获取最新数据…"
 
     // ---- 底栏 Tab ----

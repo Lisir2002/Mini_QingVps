@@ -89,7 +89,12 @@ object CachePolicy {
         // 显式排除：验证码、算价、购物车结算相关的动态 GET
         if (rel.contains("captcha", true) ||
             rel.endsWith("/config_option") ||
-            rel.endsWith("/duration")
+            rel.endsWith("/duration") ||
+            // v1.4.17：支付方式、支付发起结果与支付状态一律实时回源。
+            // 站点会随时增删网关（实测新增了微信支付），任何缓存都会导致
+            // 「站点有、App 里没有」或「选到已下线的方式」，因此绝不缓存。
+            rel == "gateway" || rel.startsWith("gateway/") || rel.endsWith("/gateway") ||
+            rel == "pay" || rel.startsWith("pay/")
         ) return NONE
 
         return when {

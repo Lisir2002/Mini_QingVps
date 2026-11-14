@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonObject
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.network.ApiResult
+import com.vps.qing.core.notify.QingNotifier
 import com.vps.qing.data.repository.CartBodies
 import com.vps.qing.data.repository.CartCalculator
 import com.vps.qing.data.repository.CatalogParser
@@ -71,6 +72,10 @@ data class CheckoutState(
     val positions: List<Int> = emptyList(),
     val gateways: List<GatewayOption> = emptyList(),
     val gatewaysLoading: Boolean = false,
+    /** v1.4.17：实时拉取 GET /gateway 失败时的提示，可手动重试。 */
+    val gatewayError: String? = null,
+    /** 当前选中的网关（站点原始对象）：等待支付页文案与图标全部由它驱动，禁止硬编码。 */
+    val selectedGateway: GatewayOption? = null,
     val paying: Boolean = false,
     /** 「我已完成支付」查询中：按钮进入禁用+加载态，给出回应式反馈。 */
     val checking: Boolean = false,
@@ -677,14 +682,17 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
                     // 服务端已删除购物车行：失效缓存并回源同步，保证 UI 与云端一致
                     AppContainer.invalidateCache("cart")
                     syncCart()
-                    val gws = (catalog.gateways() as? ApiResult.Success)?.data.orEmpty()
+                    // v1.4.17：结算完成后实时回源拉站点可用网关（清 gateway 缓存），
+                    // 列表、名称、图标、提交参数全部来自站点，App 不写死任何一项。
+                    val (gws, gwError) = loadGateways()
                     _ui.update {
                         it.copy(checkout = it.checkout?.copy(
                             orderId = r.data.orderId,
                             amount = r.data.amount,
                             hostIds = r.data.hostIds,
                             gateways = gws,
-                            gatewaysLoading = false
+                            gatewaysLoading = false,
+                            gatewayError = gwError
                         ))
                     }
                 }
@@ -712,9 +720,42 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
                     gatewaysLoading = true
                 ))
             }
-            val gws = (catalog.gateways() as? ApiResult.Success)?.data.orEmpty()
+            val (gws, gwError) = loadGateways()
             _ui.update {
-                it.copy(checkout = it.checkout?.copy(gateways = gws, gatewaysLoading = false))
+                it.copy(checkout = it.checkout?.copy(
+                    gateways = gws, gatewaysLoading = false, gatewayError = gwError
+                ))
+            }
+        }
+    }
+
+    /**
+     * v1.4.17：实时拉取站点支付方式。先失效 gateway 的 L1/L2 缓存，
+     * 站点新增 / 下线网关时，每次进入支付或点「重新获取」都看到最新选项。
+     */
+    private suspend fun loadGateways(): Pair<List<GatewayOption>, String?> {
+        AppContainer.invalidateCache("gateway")
+        return when (val r = catalog.gateways()) {
+            is ApiResult.Success -> r.data to null
+            is ApiResult.Failure -> emptyList<GatewayOption>() to "[${r.code}] ${r.msg}"
+            is ApiResult.Error -> emptyList<GatewayOption>() to
+                (r.throwable.message ?: "支付方式加载失败")
+        }
+    }
+
+    /** 用户主动刷新支付方式（站点刚上线新通道时无需退出支付页）。 */
+    fun refreshGateways() {
+        val checkout = _ui.value.checkout ?: return
+        if (checkout.gatewaysLoading || checkout.paying) return
+        viewModelScope.launch {
+            _ui.update {
+                it.copy(checkout = it.checkout?.copy(gatewaysLoading = true, gatewayError = null))
+            }
+            val (gws, err) = loadGateways()
+            _ui.update {
+                it.copy(checkout = it.checkout?.copy(
+                    gateways = gws, gatewaysLoading = false, gatewayError = err
+                ))
             }
         }
     }
@@ -726,12 +767,15 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         if (checkout.paying) return
         viewModelScope.launch {
             _ui.update {
-                it.copy(checkout = it.checkout?.copy(paying = true, error = null))
+                it.copy(checkout = it.checkout?.copy(
+                    paying = true, error = null, selectedGateway = gateway
+                ))
             }
+            // gateway.name 原样来自站点 GET /gateway，不做任何映射或白名单
             when (val r = catalog.payOrder(orderId, gateway.name)) {
                 is ApiResult.Success -> {
                     if (r.data.paid) {
-                        markPaid()
+                        markPaid(orderId)
                     } else if (r.data.payUrl != null) {
                         startPayPolling(orderId)
                         _ui.update {
@@ -790,16 +834,22 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
     private suspend fun checkOnce(orderId: String): Boolean {
         val status = (catalog.payStatus(orderId) as? ApiResult.Success)?.data ?: return false
         return if (status == "PAID") {
-            markPaid()
+            markPaid(orderId)
             true
         } else false
     }
 
-    private suspend fun markPaid() {
+    private suspend fun markPaid(orderId: String) {
         payPollJob?.cancel()
         payPollJob = null
         _ui.update {
             it.copy(checkout = it.checkout?.copy(paid = true, payUrl = null, paying = false, error = null))
+        }
+        // v1.4.17：支付成功即时通知（是否真正发出由权限 / 开关 / 免打扰四道闸决定）
+        runCatching {
+            QingNotifier.orderPaid(
+                AppContainer.appContext(), orderId, _ui.value.checkout?.amount.orEmpty()
+            )
         }
         syncCart()
         AppContainer.invalidateCache("host")

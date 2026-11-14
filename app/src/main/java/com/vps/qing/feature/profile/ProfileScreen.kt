@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vps.qing.core.AppContainer
+import com.vps.qing.core.notify.NotificationSettingsPage
+import com.vps.qing.core.permissions.PermissionOnboardingScreen
 import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.AppIcons
 import com.vps.qing.core.ui.accountDisplay
@@ -164,6 +166,10 @@ fun ProfileScreen(
                 "subaccounts" -> "panel:${ServicePanel.SUB_ACCOUNTS.name}"
                 "security" -> "panel:${ServicePanel.SECURITY.name}"
                 "cert" -> "panel:${ServicePanel.CERTIFICATION.name}"
+                // v1.4.17：通知深链（orders/tickets/hosts/security 已在上方映射）
+                // 以及权限管理 / 通知管理两个新菜单直达
+                "permissions" -> "permissions"
+                "notifications" -> "notifications"
                 else -> if (navRequest.startsWith("product:")) navRequest else null
             }
             if (token != null) navStack = token
@@ -276,6 +282,20 @@ fun ProfileScreen(
                     onSelectMode = { AppContainer.settings.setThemeMode(it) },
                     onSelectAccent = { AppContainer.settings.setAccentId(it) },
                     onBack = popPage
+                )
+            }
+            // v1.4.17：应用设置下新增「权限管理」「通知管理」两个独立菜单页
+            token == "permissions" -> {
+                PermissionOnboardingScreen(
+                    onDone = popPage,
+                    isOnboarding = false,
+                    onBack = popPage
+                )
+            }
+            token == "notifications" -> {
+                NotificationSettingsPage(
+                    onBack = popPage,
+                    onOpenPermissions = { pushPage("permissions") }
                 )
             }
             token == "about" -> {
@@ -391,6 +411,13 @@ fun ProfileScreen(
                         MenuRow(
                             ServiceMenu(Strings.SETTINGS, Strings.THEME, AppIcons.Settings, 4)
                         ) { pushPage("settings") }
+                        // v1.4.17：权限与通知合规入口
+                        MenuRow(
+                            ServiceMenu("权限管理", "必要 + 可选权限 · 默认全部关闭", AppIcons.Shield, 2)
+                        ) { pushPage("permissions") }
+                        MenuRow(
+                            ServiceMenu("通知管理", "分类开关 · 免打扰 · 链路自检", AppIcons.Bell, 3)
+                        ) { pushPage("notifications") }
                         MenuRow(
                             ServiceMenu(Strings.ABOUT, "", AppIcons.Info, 1),
                             subtitle = "版本 ${Strings.APP_VERSION}"
