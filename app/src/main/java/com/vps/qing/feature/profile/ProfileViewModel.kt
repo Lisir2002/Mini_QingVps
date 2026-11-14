@@ -11,6 +11,7 @@ import com.vps.qing.data.repository.AuthNode
 import com.vps.qing.data.repository.CertCustomField
 import com.vps.qing.data.repository.CertInfo
 import com.vps.qing.data.repository.CertPlugin
+import com.vps.qing.data.repository.isUnpaidHostStatus
 import com.vps.qing.data.repository.CertPluginConfig
 import com.vps.qing.data.repository.CountryOption
 import com.vps.qing.data.repository.HostLine
@@ -436,6 +437,20 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
 
     fun refreshTicketDetail(id: String) = fetchTicketDetail(id)
 
+    /**
+     * 工单页展示用户实名（v1.4.11）：按需拉取认证信息，只填充 CERTIFICATION 面板的
+     * cert 字段（不动 loaded 状态），供实名显隐眼睛开关取姓名。
+     */
+    fun ensureCertName() {
+        if (_ui.value.panels[ServicePanel.CERTIFICATION]?.cert != null) return
+        viewModelScope.launch {
+            when (val r = repo.certInfo()) {
+                is ApiResult.Success -> setPanel(ServicePanel.CERTIFICATION) { it.copy(cert = r.data) }
+                else -> Unit
+            }
+        }
+    }
+
     private fun fetchTicketDetail(id: String) {
         viewModelScope.launch {
             setTicketDetail(id) { it.copy(loading = true, error = null) }
@@ -688,7 +703,10 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
         viewModelScope.launch {
             setPanel(panel) { it.copy(loading = true, error = null) }
             when (panel) {
-                ServicePanel.HOSTS -> settle(panel, repo.hosts()) { s, d -> s.copy(hosts = d) }
+                ServicePanel.HOSTS -> settle(panel, repo.hosts()) { s, d ->
+                    // v1.4.11：已购产品面板只展示已支付的机器，待支付的不进列表
+                    s.copy(hosts = d.filter { host -> !isUnpaidHostStatus(host.status) })
+                }
                 ServicePanel.ORDERS -> settle(panel, repo.orders()) { s, d -> s.copy(orders = d) }
                 ServicePanel.TRANSACTIONS -> settle(panel, repo.transactions()) { s, d -> s.copy(txns = d) }
                 ServicePanel.TICKETS -> loadTicketsPanel(panel)

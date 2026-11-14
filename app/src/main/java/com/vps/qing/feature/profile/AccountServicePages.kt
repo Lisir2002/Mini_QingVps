@@ -177,6 +177,8 @@ private fun ChipGroup(
                 )
             }
         }
+        // v1.4.11：尾部留白，滚动到最右时最后一个胶囊不贴边被裁
+        Spacer(Modifier.width(6.dp))
     }
 }
 
@@ -267,15 +269,18 @@ private fun TicketStatisticBar(statistic: TicketStatistic, statuses: List<Ticket
                 Text("共 ${statistic.total} 单", style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
             }
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // v1.4.11：状态格子横向滚动 + 固定宽度，避免 5 个以上状态时文字挤压省略
+                    .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val itemsToShow = if (statuses.isNotEmpty()) statuses.take(5)
+                val itemsToShow = if (statuses.isNotEmpty()) statuses.take(8)
                 else statistic.counts.entries.map { TicketOption(it.key, it.key) }
                 itemsToShow.forEach { opt ->
                     Column(
                         Modifier
-                            .weight(1f)
+                            .width(76.dp)
                             .clip(RoundedCornerShape(14.dp))
                             .background(CartoonColors.White.copy(alpha = 0.6f))
                             .padding(vertical = 8.dp),
@@ -364,7 +369,13 @@ fun TicketDetailPage(
 ) {
     val state by vm.ui.collectAsState()
     val ui = state.ticketDetails[ticketId] ?: TicketDetailUi()
-    LaunchedEffect(ticketId) { vm.ensureTicketDetail(ticketId) }
+    LaunchedEffect(ticketId) {
+        vm.ensureTicketDetail(ticketId)
+        // v1.4.11：实名显隐需要用户认证姓名，按需拉取一次
+        vm.ensureCertName()
+    }
+    // 用户实名（v1.4.11）：来自认证信息 person.name
+    val realName = state.panels[ServicePanel.CERTIFICATION]?.cert?.person?.name.orEmpty()
     var replyText by remember { mutableStateOf("") }
 
     CartoonBackground {
@@ -405,7 +416,7 @@ fun TicketDetailPage(
                             contentPadding = PaddingValues(14.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            item { TicketDetailHeader(d) }
+                            item { TicketDetailHeader(d, realName) }
                             if (d.replies.isEmpty()) {
                                 item {
                                     EmptyHint(icon = AppIcons.Message, text = "暂无回复，来发第一条吧")
@@ -474,7 +485,9 @@ fun TicketDetailPage(
 }
 
 @Composable
-private fun TicketDetailHeader(d: TicketDetail) {
+private fun TicketDetailHeader(d: TicketDetail, realName: String) {
+    // v1.4.11：实名默认打码，眼睛开关切换显示 / 隐藏
+    var showRealName by remember { mutableStateOf(false) }
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -490,10 +503,41 @@ private fun TicketDetailHeader(d: TicketDetail) {
             }
             InfoLine("工单号", "#${d.displayNum}")
             InfoLine("创建时间", d.createTime)
+            // 用户实名（v1.4.11）：眼睛睁开/闭合双态切换，默认打码保护隐私
+            if (realName.isNotBlank()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "用户实名",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CartoonColors.InkSub,
+                        modifier = Modifier.width(64.dp)
+                    )
+                    Text(
+                        if (showRealName) realName else maskRealName(realName),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = CartoonColors.Ink
+                    )
+                    Spacer(Modifier.weight(1f))
+                    CartoonIconChip(
+                        icon = if (showRealName) AppIcons.Eye else AppIcons.EyeClosed,
+                        onClick = { showRealName = !showRealName },
+                        tint = CartoonColors.Brand,
+                        bg = CartoonColors.BrandSoft
+                    )
+                }
+            }
             if (d.hostIds.isNotEmpty()) InfoLine("关联产品", d.hostIds.joinToString("、"))
             InfoLine("回复数", d.replies.size.toString())
         }
     }
+}
+
+/** 实名姓名打码：首字保留，末字 3 字以上保留，其余以 * 遮蔽。 */
+private fun maskRealName(name: String): String = when {
+    name.length <= 1 -> "*"
+    name.length == 2 -> "${name.first()}*"
+    else -> "${name.first()}${"*".repeat(name.length - 2)}${name.last()}"
 }
 
 @Composable

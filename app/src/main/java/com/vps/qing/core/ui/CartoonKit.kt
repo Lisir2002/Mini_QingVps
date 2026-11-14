@@ -166,12 +166,14 @@ fun GlassTopBar(
     subtitle: String? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
+    // v1.4.11 滚动感知玻璃：静置磨砂，滚动中磨砂感消失只留透明度
+    val alpha = barGlassAlpha()
     GlassSurface(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = UiT.pagePad, vertical = 10.dp),
         shape = CartoonKit.GlassShape,
-        alpha = UiT.glassBar,
+        alpha = alpha,
         elevation = UiT.shadowMd
     ) {
         Row(

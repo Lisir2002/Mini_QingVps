@@ -33,6 +33,7 @@ object UiT {
     const val glass = 0.54f          // 常规玻璃容器
     const val glassStrong = 0.64f    // 卡片（内容区更实，便于阅读）
     const val glassBar = 0.46f       // 顶栏/底栏：透明画布，透出背景糖果光斑
+    const val glassBarScrolling = 0.14f // 顶栏/底栏滚动中：磨砂感消失只留透明度（v1.4.11）
     const val glassOverlay = 0.92f   // toast / 遮罩层
 
     // ---------- 边框 ----------

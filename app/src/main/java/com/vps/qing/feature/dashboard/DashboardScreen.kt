@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +49,7 @@ import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassCard
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.SectionTitle
+import com.vps.qing.core.ui.ScrollGlassEffect
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.data.repository.HostSummary
 import com.vps.qing.data.repository.NewsItem
@@ -112,7 +114,11 @@ fun DashboardScreen(
                 onRefresh = { vm.load(force = true) },
                 modifier = Modifier.fillMaxSize()
             ) {
+                // v1.4.11：滚动时玻璃顶/底栏磨砂感消失只留透明度
+                val listState = rememberLazyListState()
+                ScrollGlassEffect(listState)
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
                         start = 14.dp, end = 14.dp,

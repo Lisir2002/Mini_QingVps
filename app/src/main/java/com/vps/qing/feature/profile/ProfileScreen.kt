@@ -54,6 +54,7 @@ import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.SectionTitle
 import com.vps.qing.core.ui.Strings
+import com.vps.qing.core.ui.ScrollGlassEffect
 
 /** 实名认证：站点未暴露 API，保留网页兜底。 */
 private val certificationMenu = ServiceMenu(
@@ -278,6 +279,10 @@ fun ProfileScreen(
         return
     }
 
+    // v1.4.11：滚动时玻璃顶/底栏磨砂感消失只留透明度
+    val profileScroll = rememberScrollState()
+    ScrollGlassEffect(profileScroll)
+
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
             GlassTopBar(
@@ -296,7 +301,7 @@ fun ProfileScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(profileScroll)
                     .padding(horizontal = 14.dp)
                     .padding(top = 12.dp, bottom = 132.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)

@@ -450,6 +450,43 @@ object AppIcons {
         }
     }
 
+    // ---- 搜索（v1.4.11 选购页顶栏搜索按钮）----
+    val Search: ImageVector by lazy {
+        vector("Search") {
+            s {
+                oval(10.5f, 10.5f, 6.6f)
+                moveTo(15.4f, 15.4f); lineTo(20.6f, 20.6f)
+            }
+        }
+    }
+
+    // ---- 实名显隐（v1.4.11 工单页眼睛开关）----
+    val Eye: ImageVector by lazy {
+        vector("Eye") {
+            s {
+                moveTo(2.5f, 12f)
+                curveTo(4.8f, 7.4f, 8.2f, 5.2f, 12f, 5.2f)
+                curveTo(15.8f, 5.2f, 19.2f, 7.4f, 21.5f, 12f)
+                curveTo(19.2f, 16.6f, 15.8f, 18.8f, 12f, 18.8f)
+                curveTo(8.2f, 18.8f, 4.8f, 16.6f, 2.5f, 12f)
+                close()
+            }
+            f { oval(12f, 12f, 2.7f) }
+        }
+    }
+    val EyeClosed: ImageVector by lazy {
+        vector("EyeClosed") {
+            s {
+                moveTo(3f, 11.2f)
+                curveTo(5.5f, 15.2f, 8.5f, 16.9f, 12f, 16.9f)
+                curveTo(15.5f, 16.9f, 18.5f, 15.2f, 21f, 11.2f)
+                moveTo(6.2f, 15.8f); lineTo(5.1f, 18.4f)
+                moveTo(12f, 17.1f); lineTo(12f, 19.9f)
+                moveTo(17.8f, 15.8f); lineTo(18.9f, 18.4f)
+            }
+        }
+    }
+
     /**
      * 根据分类/菜单名的「字段大意」挑一个自绘图标，呼应需求里「按字段大意自绘图标」。
      * 关键字映射越具体越好，兜底用 Category（列表）而不是千篇一律的云图标。

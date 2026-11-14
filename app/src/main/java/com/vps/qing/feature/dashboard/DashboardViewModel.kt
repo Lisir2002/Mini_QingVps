@@ -9,6 +9,7 @@ import com.vps.qing.data.repository.CatalogRepository
 import com.vps.qing.data.repository.HostSummary
 import com.vps.qing.data.repository.NewsItem
 import com.vps.qing.data.repository.ProfileRepository
+import com.vps.qing.data.repository.isUnpaidHostStatus
 import com.vps.qing.core.ui.Strings
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,7 +81,8 @@ class DashboardViewModel(
                         loading = false,
                         loggedIn = loggedIn,
                         account = accountInfo,
-                        hosts = hostsList,
+                        // v1.4.11：已购服务只展示已支付的机器，待支付的不进首页列表
+                        hosts = hostsList.filter { host -> !isUnpaidHostStatus(host.status) },
                         news = newsList,
                         notice = if (loggedIn) null else Strings.LOGIN_PROMPT
                     )

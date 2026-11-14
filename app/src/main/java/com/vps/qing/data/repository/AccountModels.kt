@@ -373,6 +373,14 @@ object ServiceParser {
     }
 }
 
+/**
+ * 待支付/未支付主机状态判定（v1.4.11）：
+ * 已购机器列表（首页已购服务、我的-已购产品面板）统一隐藏未支付订单产生的机器，
+ * 这些机器尚未开通，不应出现在「已购」语义的列表里。
+ */
+fun isUnpaidHostStatus(status: String?): Boolean =
+    status != null && Regex("(?i)unpaid|待支付|待付款|未支付").containsMatchIn(status)
+
 data class HostLine(
     val id: String,
     /** 关联商品 id（/host 返回 product_id），用于跳转商品配置页。 */

@@ -46,6 +46,7 @@ import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.UiT
+import com.vps.qing.core.ui.barGlassAlpha
 import com.vps.qing.core.ui.glass
 import com.vps.qing.feature.dashboard.DashboardScreen
 import com.vps.qing.feature.message.AnnouncementPage
@@ -237,11 +238,13 @@ fun MainScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GlassBottomBar(selected: Int, cartCount: Int, onSelect: (Int) -> Unit) {
+    // v1.4.11 滚动感知玻璃：静置磨砂，滚动中磨砂感消失只留透明度
+    val alpha = barGlassAlpha()
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 12.dp)
-            .glass(shape = CartoonKit.PillShape, alpha = UiT.glassBar, elevation = UiT.shadowLg)
+            .glass(shape = CartoonKit.PillShape, alpha = alpha, elevation = UiT.shadowLg)
     ) {
         Row(
             Modifier

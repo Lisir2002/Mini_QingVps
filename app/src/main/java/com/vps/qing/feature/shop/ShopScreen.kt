@@ -1,7 +1,14 @@
 package com.vps.qing.feature.shop
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -21,8 +28,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,14 +45,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,12 +70,12 @@ import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonButton
 import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.CartoonKit
-import com.vps.qing.core.ui.CartoonRoundButton
 import com.vps.qing.core.ui.EmptyHint
 import com.vps.qing.core.ui.GlassCard
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.QuantityStepper
+import com.vps.qing.core.ui.ScrollGlassEffect
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.UiT
 import com.vps.qing.core.ui.theme.CartoonColors
@@ -82,13 +100,40 @@ import com.vps.qing.data.repository.ProductInfo
 fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
     val state by vm.ui.collectAsState()
 
+    // v1.4.11：搜索框改为顶栏搜索按钮触发，不再常驻商品列表上方
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    // 关闭规则（贴合普通用户习惯）：
+    //  - 输入框 X：有内容时先清空，已为空时收起搜索框；
+    //  - 返回键：有内容先清空，再按一次收起；
+    //  - 收起时自动清空搜索词，回到原分类列表。
+    BackHandler(enabled = searchOpen) {
+        if (state.searchQuery.isNotBlank()) {
+            vm.setSearchQuery("")
+        } else {
+            searchOpen = false
+        }
+    }
+
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
             GlassTopBar(
                 title = Strings.SHOP_TITLE,
                 subtitle = "挑选适合你的云服务器",
                 actions = {
-                    // 侧栏开关内嵌在侧边栏底部（v1.2.2），顶栏只保留刷新
+                    // 搜索按钮（v1.4.11）：点按展开/收起搜索框
+                    CartoonIconChip(
+                        icon = AppIcons.Search,
+                        onClick = {
+                            if (searchOpen) {
+                                vm.setSearchQuery("")
+                                searchOpen = false
+                            } else {
+                                searchOpen = true
+                            }
+                        },
+                        tint = if (searchOpen) CartoonColors.Brand else CartoonColors.Mint,
+                        bg = if (searchOpen) CartoonColors.BrandSoft else CartoonColors.MintSoft
+                    )
                     CartoonIconChip(
                         icon = AppIcons.Refresh,
                         onClick = { vm.refresh() },
@@ -97,6 +142,19 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
                     )
                 }
             )
+
+            // 搜索框：从顶栏按钮下方展开到顶栏与分类页签之间的合理位置
+            AnimatedVisibility(
+                visible = searchOpen,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                ProductSearchField(
+                    query = state.searchQuery,
+                    onChange = vm::setSearchQuery,
+                    onClose = { searchOpen = false }
+                )
+            }
 
             Spacer(Modifier.height(UiT.spaceSm + 2.dp))
 
@@ -198,15 +256,23 @@ private fun SidebarAllItem(
     }
 }
 
-/** 商品搜索框：匹配名称、分类名与配置指标，搜索态自动跨分类检索。 */
+/** 商品搜索框（v1.4.11）：由顶栏搜索按钮展开；匹配名称、分类名与配置指标，跨分类检索。 */
 @Composable
-private fun ProductSearchField(query: String, onChange: (String) -> Unit) {
+private fun ProductSearchField(
+    query: String,
+    onChange: (String) -> Unit,
+    onClose: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
     OutlinedTextField(
         value = query,
         onValueChange = onChange,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = UiT.spaceMd, vertical = UiT.spaceXs),
+            .padding(horizontal = UiT.spaceMd, vertical = UiT.spaceXs)
+            .focusRequester(focusRequester),
         placeholder = {
             Text(
                 "搜索商品名称 / 配置指标",
@@ -215,18 +281,19 @@ private fun ProductSearchField(query: String, onChange: (String) -> Unit) {
             )
         },
         leadingIcon = {
-            Icon(AppIcons.Shop, null, tint = CartoonColors.Brand, modifier = Modifier.size(18.dp))
+            Icon(AppIcons.Search, null, tint = CartoonColors.Brand, modifier = Modifier.size(18.dp))
         },
         trailingIcon = {
-            if (query.isNotBlank()) {
-                IconButton(onClick = { onChange("") }) {
-                    Icon(AppIcons.Close, null, tint = CartoonColors.InkSub, modifier = Modifier.size(16.dp))
-                }
+            // 关闭规则：有内容先清空；已为空则收起搜索框
+            IconButton(onClick = { if (query.isNotBlank()) onChange("") else onClose() }) {
+                Icon(AppIcons.Close, null, tint = CartoonColors.InkSub, modifier = Modifier.size(16.dp))
             }
         },
         singleLine = true,
         shape = CartoonKit.PillShape,
-        textStyle = MaterialTheme.typography.bodyMedium
+        textStyle = MaterialTheme.typography.bodyMedium,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() })
     )
 }
 
@@ -347,12 +414,13 @@ private fun PurchasePane(
     )
 
     Row(modifier = modifier.fillMaxSize()) {
-        // 常驻侧边栏（开关内嵌在底部，v1.2.2）
+        // 常驻侧边栏（开关内嵌在底部，v1.2.2）；
+        // v1.4.11 底部让位 132dp：侧栏与内嵌开关不再沉到玻璃底栏后面
         GlassSurface(
             modifier = Modifier
                 .width(sidebarWidth)
                 .fillMaxHeight()
-                .padding(start = UiT.pagePad, bottom = UiT.spaceMd),
+                .padding(start = UiT.pagePad, bottom = 132.dp),
             shape = CartoonKit.GlassShape,
             alpha = UiT.glassFaint,
             elevation = UiT.shadowMd
@@ -421,13 +489,12 @@ private fun PurchasePane(
             }
         }
 
-        // 右侧：搜索框 + 商品列表
+        // 右侧：商品列表（搜索框已提升到顶栏下方，v1.4.11）
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
         ) {
-            ProductSearchField(state.searchQuery, vm::setSearchQuery)
             if (state.productsLoading || state.refreshing) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = CartoonColors.Brand)
             }
@@ -452,7 +519,10 @@ private fun PurchasePane(
                         )
                     }
                     else -> {
+                        val listState = rememberLazyListState()
+                        ScrollGlassEffect(listState)
                         LazyColumn(
+                            state = listState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(
                                 start = UiT.spaceMd, end = UiT.pagePad, bottom = 132.dp
@@ -682,9 +752,9 @@ private fun abbreviate(name: String): String {
 }
 
 /**
- * 商品卡片。侧栏展开时（[compact]=true）标题/规格/价格以 0.85× 统一缩放适配窄栏；
- * 加购按钮固定尺寸不缩放：展开态为圆形购物车图标按钮（图标与顶栏 tab 等大，
- * 修复「有的图标大有的图标小」），收起态为「加入购物车」文字按钮（v1.2.4）。
+ * 商品卡片。侧栏展开时（[compact]=true）标题/规格/价格以 0.85× 统一缩放适配窄栏。
+ * v1.4.11：加购按钮统一为「图标 + 加入购物车文字」整体按钮，固定放在价格下面一行；
+ * 侧栏开合时的布局位移由 animateContentSize 平滑过渡，不再用悬浮圆形图标按钮。
  */
 @Composable
 private fun ProductCard(
@@ -698,6 +768,7 @@ private fun ProductCard(
         Column(
             modifier = Modifier
                 .padding(UiT.cardPad)
+                .animateContentSize()
                 .graphicsLayer {
                     scaleX = scale
                     scaleY = scale
@@ -795,61 +866,34 @@ private fun ProductCard(
                 }
             }
 
-            // 价格随卡片整体缩放；加购按钮不参与缩放（固定尺寸），
-            // 避免展开侧栏时按钮图标与顶栏购物车图标一大一小（v1.2.4）
-            if (compact) {
-                Column(verticalArrangement = Arrangement.spacedBy(UiT.spaceXs)) {
-                    Row(
-                        modifier = Modifier.graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                            transformOrigin = TransformOrigin(0f, 0.5f)
-                        }
-                    ) {
-                        Text(
-                            "￥${product.price}",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = CartoonColors.Coral
-                        )
-                        Text(
-                            " / ${product.cycle}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = CartoonColors.InkSub
-                        )
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        CartoonRoundButton(
-                            icon = AppIcons.Cart,
-                            contentDescription = Strings.ADD_TO_CART,
-                            onClick = onCustomize
-                        )
-                    }
-                }
-            } else {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "￥${product.price}",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = CartoonColors.Coral
-                    )
-                    Text(
-                        " / ${product.cycle}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = CartoonColors.InkSub
-                    )
-                    Spacer(Modifier.weight(1f))
-                    CartoonButton(
-                        text = Strings.ADD_TO_CART,
-                        onClick = onCustomize,
-                        icon = AppIcons.Cart
-                    )
-                }
+            // 价格随卡片整体缩放；加购按钮固定尺寸（图标+文字整体），
+            // 统一放在价格下面一行，侧栏开合时由 animateContentSize 平滑位移（v1.4.11）
+            Row(
+                modifier = Modifier.graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    transformOrigin = TransformOrigin(0f, 0.5f)
+                },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "￥${product.price}",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = CartoonColors.Coral
+                )
+                Text(
+                    " / ${product.cycle}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = CartoonColors.InkSub
+                )
             }
+            CartoonButton(
+                text = Strings.ADD_TO_CART,
+                onClick = onCustomize,
+                icon = AppIcons.Cart,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -875,7 +919,10 @@ private fun CartPane(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
+        val cartListState = rememberLazyListState()
+        ScrollGlassEffect(cartListState)
         LazyColumn(
+            state = cartListState,
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(
                 start = UiT.pagePad, end = UiT.pagePad,
