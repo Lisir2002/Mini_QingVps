@@ -33,4 +33,27 @@ class SettingsStore(context: Context) {
         sp.edit().putString("accent_id", id).apply()
         _accentId.value = id
     }
+
+    // ---- v1.4.14 自定义背景图 ----
+    // 之前所有玻璃卡片都做成半透明磨砂，正是为了在根级画布铺一张用户自己的图片，
+    // 让玻璃层透出背景。这里持久化 SAF 授权的 content:// URI（可跨重启读取）。
+
+    /** 自定义背景图的 content:// URI；null = 使用默认糖果渐变背景。 */
+    private val _bgImageUri = MutableStateFlow(sp.getString("bg_image_uri", null))
+    val bgImageUri: StateFlow<String?> = _bgImageUri.asStateFlow()
+
+    fun setBgImageUri(uri: String?) {
+        sp.edit().putString("bg_image_uri", uri).apply()
+        _bgImageUri.value = uri
+    }
+
+    /** 背景图之上叠加的柔化遮罩强度 0f~0.7f：越大越朦胧、玻璃文字越清晰。默认 0.28f。 */
+    private val _bgDim = MutableStateFlow(sp.getFloat("bg_dim", 0.28f).coerceIn(0f, 0.7f))
+    val bgDim: StateFlow<Float> = _bgDim.asStateFlow()
+
+    fun setBgDim(value: Float) {
+        val v = value.coerceIn(0f, 0.7f)
+        sp.edit().putFloat("bg_dim", v).apply()
+        _bgDim.value = v
+    }
 }

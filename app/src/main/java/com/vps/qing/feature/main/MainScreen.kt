@@ -84,7 +84,8 @@ fun MainScreen(
     var profileSubOpen by rememberSaveable { mutableStateOf(false) }
     /**
      * 首页发起的原生导航请求（v1.4.6）：
-     *  - "hosts"/"orders"/"finance"/"tickets"/"cert"/"security"/"subaccounts" → 对应服务面板；
+     *  - "hosts"/"orders"/"finance"/"tickets"/"security"/"subaccounts" → 对应服务面板；
+     *  - "cert" → 实名认证整页（v1.4.14 起从安全中心内的实名卡进入，首页不再直接发起）；
      *  - "product:{hostId}" → 已购产品详情。
      * 由 ProfileScreen 消费后回调置空；发起时切到「我的」Tab。
      */

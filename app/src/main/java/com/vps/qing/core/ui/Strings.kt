@@ -3,7 +3,7 @@ package com.vps.qing.core.ui
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.4.13"
+    const val APP_VERSION = "1.4.14"
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"
@@ -121,7 +121,9 @@ object Strings {
     const val FINANCE = "财务记录"
     const val TICKETS = "工单"
     const val CERTIFICATION = "实名认证"
-    const val SECURITY = "安全设置"
+    /** v1.4.14：实名认证已并入安全中心，首页快捷入口不再单列实名。 */
+    const val SECURITY = "安全中心"
+    const val SUB_ACCOUNTS = "子账户管理"
     const val MESSAGES = "站内信"
     const val ACCOUNT_SERVICES = "账号与服务"
     const val APP_GROUP = "应用"
@@ -129,13 +131,15 @@ object Strings {
     const val ABOUT = "关于 QingVPS"
     const val ABOUT_SUBTITLE = "关于我们与应用信息"
     const val ABOUT_SITE = "官方网站"
-    const val ABOUT_OWNER = "官方站长"
-    const val ABOUT_ADMIN = "官方管理"
+    const val ABOUT_SITE_VALUE = "vps.qingyayun.cn"
+    const val ABOUT_SITE_URL = "https://vps.qingyayun.cn/"
     const val ABOUT_GROUP = "官方群聊"
-    const val ABOUT_DEV = "APP开发"
-    const val ABOUT_PLACEHOLDER = "待补充"
-    const val ABOUT_PLACEHOLDER_HINT = "该信息正在整理，后续逐一补充"
+    const val ABOUT_GROUP_VALUE = "点击加入官方 QQ 群"
+    const val ABOUT_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=85sIUtWe21jcA0J93jJvZllkJJTNujkr1TEMvtAHzr3shY2ZVQZnGIlVoUgjyrC2&busi_data=eyJncm91cENvZGUiOiIxMTI0NTQ5OTQzIiwidG9rZW4iOiJuNk1HSHdDazdVdkJaK2Q1bURhd2VLTWltc1RGN04rRDFUQklxK1VZYkIzQXJnQlA2MStxaUZYdkI4blJrekpPIiwidWluIjoiMTgwMTQyMTgxIn0%3D&data=vfL86IJ9Iw_a2exl8uPjU0VxZMkcMudR0YIkQZ9wQuM4Rd1bHCMkJRG5GV0ux44laycnxC1xtfaKh3uzhMIysw&svctype=4&tempid=h5_group_info"
+    const val ABOUT_UPDATE = "软件更新"
+    const val ABOUT_UPDATE_VALUE = "检查 GitHub 最新版本"
     const val ABOUT_INFO_GROUP = "官方信息"
+    const val ABOUT_APP_GROUP = "应用"
     const val THEME = "主题配色"
     const val THEME_SYSTEM = "跟随系统"
     const val THEME_LIGHT = "纯白卡通"
@@ -146,6 +150,26 @@ object Strings {
     const val CONFIRM = "确定"
     const val CANCEL = "取消"
     const val WEB_ENTRY_HINT = "站点网页承载"
+
+    // ---- v1.4.14 主题自定义背景 ----
+    const val THEME_BG_GROUP = "自定义背景"
+    const val THEME_BG_TITLE = "背景图"
+    const val THEME_BG_NONE = "使用默认糖果渐变背景"
+    const val THEME_BG_PICK = "从相册选择图片"
+    const val THEME_BG_CLEAR = "恢复默认背景"
+    const val THEME_BG_DIM = "背景柔化"
+    const val THEME_BG_DIM_HINT = "数值越大越朦胧，玻璃卡片上的文字越清晰"
+    const val THEME_BG_TIP = "所有卡片都是半透明磨砂玻璃，铺上背景图后会自动透出。建议选颜色柔和的图片，并适当提高柔化强度。"
+    const val THEME_BG_PREVIEW = "实时预览（下方就是当前全局背景）"
+
+    // ---- v1.4.14 软件更新 ----
+    const val UPDATE_CHECKING = "正在检查更新…"
+    const val UPDATE_LATEST = "已是最新版本"
+    const val UPDATE_FOUND = "发现新版本"
+    const val UPDATE_CURRENT = "当前版本"
+    const val UPDATE_GOTO = "前往 GitHub 下载"
+    const val UPDATE_FAIL = "暂时无法连接 GitHub，点此打开 Releases 页面"
+    const val UPDATE_RETRY = "重新检查"
 
     // ---- 图形验证码弹窗 ----
     const val CAPTCHA_DIALOG_TITLE = "安全验证"

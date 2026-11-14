@@ -25,6 +25,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,51 +60,86 @@ object CartoonKit {
     val ItemShape = RoundedCornerShape(UiT.radiusMd)
 }
 
-/** 全局卡通背景：纯白底 + 几团半透明糖果色光斑。所有页面都叠在它上面。 */
+/**
+ * 全局背景画布（v1.4.14）：默认「纯色底 + 几团半透明糖果色光斑」；
+ * 用户在主题设置里选了自定义背景图后，改为把该图铺满整屏（ContentScale.Crop），
+ * 再叠一层可调节的柔化遮罩。此前所有卡片/顶栏/底栏都做成半透明磨砂玻璃，
+ * 正是为了让这张图从玻璃之下透出来——玻璃文字依旧清晰，背景图提供氛围。
+ *
+ * 通过 [com.vps.qing.core.AppContainer.settings] 的 StateFlow 订阅 URI 与遮罩强度，
+ * 主题页一改，全 App（含当前设置页）立即重绘，无需重建 Activity。
+ */
 @Composable
 fun CartoonBackground(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit
 ) {
+    val bgUri by com.vps.qing.core.AppContainer.settings.bgImageUri.collectAsState()
+    val bgDim by com.vps.qing.core.AppContainer.settings.bgDim.collectAsState()
+
     Box(
         modifier
             .fillMaxSize()
             .background(CartoonColors.Background)
     ) {
-        // 光斑用大尺寸半透明圆 + 径向渐变，画布不拦截点击
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(CartoonColors.Mint.copy(alpha = 0.20f), Color.Transparent),
-                        center = Offset(0.92f, 0.06f),
-                        radius = 900f
+        if (!bgUri.isNullOrBlank()) {
+            // 用户自定义背景图：铺满全屏，Crop 保证不变形
+            coil.compose.AsyncImage(
+                model = androidx.compose.ui.platform.LocalContext.current.let { ctx ->
+                    coil.request.ImageRequest.Builder(ctx)
+                        .data(android.net.Uri.parse(bgUri))
+                        .crossfade(280)
+                        .build()
+                },
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            // 柔化遮罩：深色用黑、浅色用白，强度由主题页滑块控制，压住图片杂色保证玻璃文字可读
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        (if (CartoonColors.isDark) Color.Black else Color.White)
+                            .copy(alpha = bgDim)
                     )
-                )
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(CartoonColors.Sky.copy(alpha = 0.16f), Color.Transparent),
-                        center = Offset(0.05f, 0.42f),
-                        radius = 800f
+            )
+        } else {
+            // 默认：光斑用大尺寸半透明圆 + 径向渐变，画布不拦截点击
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(CartoonColors.Mint.copy(alpha = 0.20f), Color.Transparent),
+                            center = Offset(0.92f, 0.06f),
+                            radius = 900f
+                        )
                     )
-                )
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(CartoonColors.Peach.copy(alpha = 0.14f), Color.Transparent),
-                        center = Offset(0.88f, 0.86f),
-                        radius = 820f
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(CartoonColors.Sky.copy(alpha = 0.16f), Color.Transparent),
+                            center = Offset(0.05f, 0.42f),
+                            radius = 800f
+                        )
                     )
-                )
-        )
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(CartoonColors.Peach.copy(alpha = 0.14f), Color.Transparent),
+                            center = Offset(0.88f, 0.86f),
+                            radius = 820f
+                        )
+                    )
+            )
+        }
         content()
     }
 }

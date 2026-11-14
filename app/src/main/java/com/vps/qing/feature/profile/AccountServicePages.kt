@@ -220,11 +220,21 @@ fun TicketsListBody(
         }
         if (shown.isEmpty()) {
             item {
-                EmptyHint(
-                    icon = AppIcons.Ticket,
-                    text = if (filterStatusId != null) "该状态下暂无工单" else "还没有工单，点右上角 + 提交第一个",
-                    action = { CartoonButton(text = "新建工单", onClick = onCreateTicket, icon = AppIcons.Plus) }
-                )
+                // v1.4.14：空态整组水平垂直居中。此前 EmptyHint 作为 LazyColumn 的 item
+                // 未撑满行宽，Column 贴左导致「新建工单」按钮偏左（子账户空态已用 Box 居中，
+                // 这里补齐）。fillMaxWidth 让 Column 占满整行，CenterHorizontally 才真正居中。
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    EmptyHint(
+                        icon = AppIcons.Ticket,
+                        text = if (filterStatusId != null) "该状态下暂无工单" else "还没有工单，点右上角 + 提交第一个",
+                        action = { CartoonButton(text = "新建工单", onClick = onCreateTicket, icon = AppIcons.Plus) }
+                    )
+                }
             }
         } else {
             items(shown, key = { "ticket-${it.id}" }) { ticket ->

@@ -127,7 +127,97 @@ object ThemePalettes {
         )
     )
 
-    val entries: List<ThemePaletteSpec> = listOf(NEBULA, MINT, SAKURA, SUNSET, OCEAN, GRAPE)
+    // ---- v1.4.14 新增 6 套预设主题（合计 12 套），浅/深两套配色都完整 ----
+
+    val FOREST = ThemePaletteSpec(
+        "forest", "森林墨绿", "苔绿松风 · 沉静护眼",
+        CoreColors(
+            background = Color(0xFFF1FBF3), card = Color(0xFFFFFFFF),
+            ink = Color(0xFF223329), inkSub = Color(0xFF7C9A86), line = Color(0xFFDCEEE1),
+            brand = Color(0xFF2E9E63), brandSoft = Color(0xFFDDF3E5), glassTint = Color(0xFFFFFFFF)
+        ),
+        CoreColors(
+            background = Color(0xFF0D1712), card = Color(0xFF16241C),
+            ink = Color(0xFFE7F4EC), inkSub = Color(0xFF8FB19C), line = Color(0x33FFFFFF),
+            brand = Color(0xFF58CE8E), brandSoft = Color(0x332E9E63), glassTint = Color(0xFF16241C),
+            accentSoftAlpha = 0.24f
+        )
+    )
+    val PEACH = ThemePaletteSpec(
+        "peach", "蜜桃奶霜", "奶油蜜桃 · 温柔暖调",
+        CoreColors(
+            background = Color(0xFFFFF6F1), card = Color(0xFFFFFFFF),
+            ink = Color(0xFF3B2C28), inkSub = Color(0xFFAC8C82), line = Color(0xFFF7E5DC),
+            brand = Color(0xFFFF7E66), brandSoft = Color(0xFFFFE6DE), glassTint = Color(0xFFFFFFFF)
+        ),
+        CoreColors(
+            background = Color(0xFF1B1210), card = Color(0xFF2A1C19),
+            ink = Color(0xFFF8ECE7), inkSub = Color(0xFFBBA096), line = Color(0x33FFFFFF),
+            brand = Color(0xFFFF9E88), brandSoft = Color(0x33FF7E66), glassTint = Color(0xFF2A1C19),
+            accentSoftAlpha = 0.24f
+        )
+    )
+    val LIME = ThemePaletteSpec(
+        "lime", "青柠气泡", "鲜柠黄绿 · 清爽元气",
+        CoreColors(
+            background = Color(0xFFFAFEF0), card = Color(0xFFFFFFFF),
+            ink = Color(0xFF31351E), inkSub = Color(0xFF98A06E), line = Color(0xFFECF2D2),
+            brand = Color(0xFF8FBF2B), brandSoft = Color(0xFFEEF7D2), glassTint = Color(0xFFFFFFFF)
+        ),
+        CoreColors(
+            background = Color(0xFF15180B), card = Color(0xFF202613),
+            ink = Color(0xFFF1F6DE), inkSub = Color(0xFFAEB77A), line = Color(0x33FFFFFF),
+            brand = Color(0xFFB4DE55), brandSoft = Color(0x338FBF2B), glassTint = Color(0xFF202613),
+            accentSoftAlpha = 0.24f
+        )
+    )
+    val ROSE = ThemePaletteSpec(
+        "rose", "玫瑰鎏金", "低饱和玫瑰 · 轻奢质感",
+        CoreColors(
+            background = Color(0xFFFFF7F6), card = Color(0xFFFFFFFF),
+            ink = Color(0xFF3A2B30), inkSub = Color(0xFFAE8E95), line = Color(0xFFF4E4E7),
+            brand = Color(0xFFC77B86), brandSoft = Color(0xFFF8E6E9), glassTint = Color(0xFFFFFFFF)
+        ),
+        CoreColors(
+            background = Color(0xFF1A1114), card = Color(0xFF291B21),
+            ink = Color(0xFFF8EAEF), inkSub = Color(0xFFBCA0A8), line = Color(0x33FFFFFF),
+            brand = Color(0xFFE6A2AC), brandSoft = Color(0x33C77B86), glassTint = Color(0xFF291B21),
+            accentSoftAlpha = 0.24f
+        )
+    )
+    val GLACIER = ThemePaletteSpec(
+        "glacier", "冰川青蓝", "冰透青蓝 · 清亮通透",
+        CoreColors(
+            background = Color(0xFFF0FBFD), card = Color(0xFFFFFFFF),
+            ink = Color(0xFF20343A), inkSub = Color(0xFF7A9AA4), line = Color(0xFFDCEFF2),
+            brand = Color(0xFF2BA6C4), brandSoft = Color(0xFFD8F1F7), glassTint = Color(0xFFFFFFFF)
+        ),
+        CoreColors(
+            background = Color(0xFF0C171B), card = Color(0xFF15262C),
+            ink = Color(0xFFE4F5F9), inkSub = Color(0xFF8DB2BC), line = Color(0x33FFFFFF),
+            brand = Color(0xFF5CCBE4), brandSoft = Color(0x332BA6C4), glassTint = Color(0xFF15262C),
+            accentSoftAlpha = 0.24f
+        )
+    )
+    val SLATE = ThemePaletteSpec(
+        "slate", "曜石雾蓝", "灰蓝曜石 · 克制高级",
+        CoreColors(
+            background = Color(0xFFF5F7FB), card = Color(0xFFFFFFFF),
+            ink = Color(0xFF2A3140), inkSub = Color(0xFF8993A6), line = Color(0xFFE3E8F1),
+            brand = Color(0xFF5B6B8C), brandSoft = Color(0xFFE5EAF4), glassTint = Color(0xFFFFFFFF)
+        ),
+        CoreColors(
+            background = Color(0xFF10131A), card = Color(0xFF1B202B),
+            ink = Color(0xFFEDF0F7), inkSub = Color(0xFF97A1B6), line = Color(0x33FFFFFF),
+            brand = Color(0xFF8B9CC4), brandSoft = Color(0x335B6B8C), glassTint = Color(0xFF1B202B),
+            accentSoftAlpha = 0.24f
+        )
+    )
+
+    val entries: List<ThemePaletteSpec> = listOf(
+        NEBULA, MINT, SAKURA, SUNSET, OCEAN, GRAPE,
+        FOREST, PEACH, LIME, ROSE, GLACIER, SLATE
+    )
 
     fun byId(id: String): ThemePaletteSpec = entries.firstOrNull { it.id == id } ?: NEBULA
 }

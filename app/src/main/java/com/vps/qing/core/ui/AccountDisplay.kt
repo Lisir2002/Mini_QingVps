@@ -23,14 +23,15 @@ import com.vps.qing.data.repository.AccountInfo
 import com.vps.qing.data.repository.CertInfo
 
 /**
- * 账号在首页 / 个人中心「该怎么显示名字」（v1.4.12）。
+ * 账号在首页 / 个人中心「该怎么显示名字」（v1.4.14）。
  *
- * 规则（回答「未实名应该显示什么」）：
- *  - 未登录：显示应用名，不带实名徽标；
- *  - 已实名：显示站点返回的实名姓名，带绿色「已实名」徽标；
- *  - 未实名：绝不显示 / 编造实名姓名，改用账号用户名（无则邮箱、手机号脱敏），
- *    并带橙色「未实名」徽标，点击可直达实名认证；
- *  - 实名信息尚未拉取到：暂用账号用户名，不显示徽标（避免误判闪烁）。
+ * 隐私规则（v1.4.14 新）：名字区**只允许显示脱敏邮箱**，绝不显示实名姓名——
+ *  - 邮箱前 2 个字符显示，中间用星号隐藏，`@` 及之后（域名）完整显示；
+ *    例如 `180142181@qq.com` → `18******@qq.com`；
+ *  - 实名状态仍用徽标表达（绿=已实名 / 橙=未实名），点击引导到「安全中心」；
+ *  - 未登录：显示应用名，不带徽标；
+ *  - 实名信息尚未拉取到：只显示脱敏邮箱，不显示徽标（避免误判闪烁）。
+ *  - 账号无邮箱（异常态）时回退：手机号脱敏 → 用户名 → 占位。
  */
 enum class CertBadge { NONE, CERTIFIED, UNCERTIFIED }
 
@@ -39,6 +40,24 @@ data class AccountDisplay(
     val badge: CertBadge
 )
 
+/** 邮箱脱敏：前 2 字符 + 星号 + `@域名`（v1.4.14）。 */
+fun maskEmail(email: String?): String {
+    if (email.isNullOrBlank()) return Strings.UNKNOWN
+    val at = email.indexOf('@')
+    if (at < 0) {
+        // 无 @ 的异常值：只保留前 2 位，其余星号（不泄露完整串）
+        val head = email.take(2)
+        return head + "*".repeat((email.length - head.length).coerceAtLeast(3).coerceAtMost(6))
+    }
+    val local = email.substring(0, at)
+    val domain = email.substring(at) // 含 "@" 与域名，@后完整显示
+    val head = local.take(2)
+    // 中间长度按被隐藏的字符数，至少 3 个星号、最多 6 个，既不泄露长度也够清晰
+    val stars = "*".repeat((local.length - head.length).coerceAtLeast(3).coerceAtMost(6))
+    return head + stars + domain
+}
+
+/** 账号标识（名字区）一律优先用脱敏邮箱，绝不暴露实名姓名。 */
 fun accountDisplay(
     account: AccountInfo?,
     cert: CertInfo?,
@@ -46,22 +65,22 @@ fun accountDisplay(
 ): AccountDisplay {
     if (!loggedIn) return AccountDisplay(Strings.APP_NAME, CertBadge.NONE)
 
-    val realName = cert?.person?.name?.takeIf { it.isNotBlank() }
-    val certified = cert?.isCertified == true && realName != null
-    // 账号自身标识：用户名 → 邮箱前缀 → 手机号脱敏 → 占位
-    val accountLabel = account?.username?.takeIf { it.isNotBlank() }
-        ?: account?.email?.substringBefore("@")?.takeIf { it.isNotBlank() }
-        ?: account?.phone?.takeIf { it.length >= 7 }?.let { "${it.take(3)}****${it.takeLast(4)}" }
+    val emailLabel = account?.email?.takeIf { it.isNotBlank() }?.let { maskEmail(it) }
+    val phoneLabel = account?.phone?.takeIf { it.length >= 7 }?.let { "${it.take(3)}****${it.takeLast(4)}" }
+    val name = emailLabel
+        ?: phoneLabel
+        ?: account?.username?.takeIf { it.isNotBlank() }
         ?: Strings.UNKNOWN
 
-    return when {
-        certified -> AccountDisplay(realName!!, CertBadge.CERTIFIED)
-        cert == null -> AccountDisplay(accountLabel, CertBadge.NONE)
-        else -> AccountDisplay(accountLabel, CertBadge.UNCERTIFIED)
+    val badge = when {
+        cert == null -> CertBadge.NONE
+        cert.isCertified -> CertBadge.CERTIFIED
+        else -> CertBadge.UNCERTIFIED
     }
+    return AccountDisplay(name, badge)
 }
 
-/** 实名状态徽标：已实名绿色 / 未实名橙色可点击直达认证。 */
+/** 实名状态徽标：已实名绿色 / 未实名橙色可点击直达认证（安全中心）。 */
 @Composable
 fun CertBadgeChip(
     badge: CertBadge,

@@ -54,7 +54,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * 安全中心（v1.4.12）：明确区分「可编辑」与「只读」。
+ * 安全中心（v1.4.14）：实名认证已合并进来，明确区分「可编辑」与「只读」。
+ *  - 实名认证：状态卡 + 入口（点击进入原生认证整页，v1.4.14 从个人中心独立项移入）；
  *  - 可编辑：登录密码、邮箱绑定、手机绑定（点击进入原生编辑页，含验证码流程）；
  *  - 只读：余额、信用额度（站点不允许在客户端修改，明确标注）。
  */
@@ -62,6 +63,8 @@ import kotlinx.coroutines.launch
 fun SecurityBody(
     data: ServicePanelData,
     onEdit: (String) -> Unit,
+    certInfo: com.vps.qing.data.repository.CertInfo? = null,
+    onOpenCert: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val rows = data.security.associate { it.first to it.second }
@@ -69,6 +72,13 @@ fun SecurityBody(
     val phone = rows["手机绑定"].orEmpty()
     val balance = rows["余额"].orEmpty()
     val credit = rows["信用额度"].orEmpty()
+
+    val certStatus = when {
+        certInfo == null -> "状态加载中…"
+        certInfo.isCertified -> "已完成实名认证"
+        else -> "尚未完成实名认证"
+    }
+    val certAction = if (certInfo?.isCertified == true) "查看" else "去认证"
 
     val scroll = rememberScrollState()
     ScrollGlassEffect(scroll)
@@ -79,6 +89,22 @@ fun SecurityBody(
             .padding(top = 12.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // ---- 实名认证（v1.4.14 合入安全中心）----
+        SectionTitle("账号实名", CartoonColors.Mint)
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(vertical = 6.dp)) {
+                SecurityActionRow(
+                    icon = AppIcons.Shield,
+                    tint = CartoonColors.Mint,
+                    soft = CartoonColors.MintSoft,
+                    title = "实名认证",
+                    value = certStatus,
+                    action = certAction,
+                    onClick = onOpenCert
+                )
+            }
+        }
+
         SectionTitle("账号安全 · 可编辑", CartoonColors.Brand)
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(vertical = 6.dp)) {

@@ -796,6 +796,8 @@ class ProfileViewModel(
                 ServicePanel.TICKETS -> loadTicketsPanel(panel)
                 ServicePanel.SUB_ACCOUNTS -> loadSubAccountsPanel(panel)
                 ServicePanel.SECURITY -> {
+                    // v1.4.14：实名认证已并入安全中心，进入时补拉实名状态供顶部实名卡显示
+                    ensureCertName()
                     val rows = _ui.value.account?.let { ServiceParser.security(it) } ?: emptyList()
                     setPanel(panel) { it.copy(loading = false, loaded = true, security = rows, error = null) }
                 }

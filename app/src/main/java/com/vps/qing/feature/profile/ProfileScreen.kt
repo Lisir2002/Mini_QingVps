@@ -45,6 +45,7 @@ import com.vps.qing.core.AppContainer
 import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.AppIcons
 import com.vps.qing.core.ui.accountDisplay
+import com.vps.qing.core.ui.maskEmail
 import com.vps.qing.core.ui.CertBadge
 import com.vps.qing.core.ui.CertBadgeChip
 import com.vps.qing.core.ui.UiT
@@ -59,12 +60,6 @@ import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.SectionTitle
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.ScrollGlassEffect
-
-/** 实名认证：站点未暴露 API，保留网页兜底。 */
-private val certificationMenu = ServiceMenu(
-    Strings.CERTIFICATION, "实名状态与认证办理", AppIcons.Shield, 2,
-    panel = ServicePanel.CERTIFICATION
-)
 
 /**
  * 个人中心 v1.3.1：账号与服务每项独立子页面（点击进入整页，返回键/顶栏返回），
@@ -292,7 +287,10 @@ fun ProfileScreen(
             onOrderFilter = vm::setOrderFilter,
             txnFilter = state.txnFilter,
             onTxnFilter = vm::setTxnFilter,
-            onEditSecurity = { pushDetail("secedit:$it") }
+            onEditSecurity = { pushDetail("secedit:$it") },
+            // v1.4.14 实名认证合入安全中心：安全中心入口直接切到认证整页
+            certInfo = state.panels[ServicePanel.CERTIFICATION]?.cert,
+            onOpenCert = { servicePage = ServicePanel.CERTIFICATION }
         )
         return
     }
@@ -308,9 +306,12 @@ fun ProfileScreen(
         return
     }
 
-    // v1.4.12：关于改为独立整页（占位五项，后续逐项补充）
+    // v1.4.14：关于独立整页（官网在 App 内打开 / 官方 QQ 群 / GitHub 软件更新）
     if (showAboutPage) {
-        AboutPage(onBack = { showAboutPage = false })
+        AboutPage(
+            onBack = { showAboutPage = false },
+            onOpenWeb = onOpenWeb
+        )
         return
     }
 
@@ -357,7 +358,7 @@ fun ProfileScreen(
                             Spacer(Modifier.width(14.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(Strings.ACCOUNT, style = MaterialTheme.typography.labelMedium, color = CartoonColors.InkSub)
-                                // v1.4.12：未实名显示账号名 + 未实名徽标，不冒充实名姓名
+                                // v1.4.14：名字区只显示脱敏邮箱（绝不显示实名姓名），实名状态仅用徽标表达
                                 val display = accountDisplay(
                                     state.account,
                                     state.panels[ServicePanel.CERTIFICATION]?.cert,
@@ -375,15 +376,17 @@ fun ProfileScreen(
                                         Spacer(Modifier.width(8.dp))
                                         CertBadgeChip(
                                             badge = display.badge,
+                                            // v1.4.14：实名认证已合入安全中心，未实名徽标先进安全中心
                                             onClick = if (display.badge == CertBadge.UNCERTIFIED) {
-                                                { servicePage = ServicePanel.CERTIFICATION }
+                                                { servicePage = ServicePanel.SECURITY }
                                             } else null
                                         )
                                     }
                                 }
                             }
                         }
-                        InfoRow(AppIcons.Mail, "邮箱", state.account?.email ?: Strings.UNKNOWN)
+                        // v1.4.14：名字区与邮箱行一律脱敏，只显示前 2 位 + 星号 + @域名
+                        InfoRow(AppIcons.Mail, "邮箱", maskEmail(state.account?.email))
                         InfoRow(AppIcons.Profile, "手机", state.account?.phone?.takeIf { it.isNotBlank() } ?: "未绑定")
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             InfoInline(AppIcons.Wallet, Strings.BALANCE, state.account?.balance ?: Strings.UNKNOWN, Modifier.weight(1f))
@@ -401,12 +404,11 @@ fun ProfileScreen(
                 SectionTitle(Strings.ACCOUNT_SERVICES, CartoonColors.Brand)
                 GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
                     Column(Modifier.padding(vertical = 6.dp)) {
-                        // 账号与服务：每项点击进入独立子页面
+                        // 账号与服务：每项点击进入独立子页面。
+                        // v1.4.14：实名认证已合并进「安全中心」，不再单列独立菜单项。
                         ServicePanels.entries.forEach { menu ->
                             MenuRow(menu) { menu.panel?.let { servicePage = it } }
                         }
-                        // 实名认证：v1.4.0 原生认证页（深度适配 /certification/*）
-                        MenuRow(certificationMenu) { certificationMenu.panel?.let { servicePage = it } }
                     }
                 }
 

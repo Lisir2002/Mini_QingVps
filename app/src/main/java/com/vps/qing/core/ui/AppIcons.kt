@@ -487,6 +487,43 @@ object AppIcons {
         }
     }
 
+    // ---- v1.4.14 主题背景 / 关于页 ----
+    /** 图片/相册（自定义背景图）。 */
+    val Image: ImageVector by lazy {
+        vector("Image") {
+            s {
+                rrect(3f, 4.5f, 21f, 19.5f, 2.6f)
+                moveTo(3.6f, 16f); lineTo(8.5f, 11f); lineTo(12f, 14.2f)
+                lineTo(15.5f, 11f); lineTo(20.4f, 16f)
+            }
+            f { oval(8.2f, 8.8f, 1.5f) }
+        }
+    }
+    /** 软件更新（循环箭头 + 向下箭头）。 */
+    val Update: ImageVector by lazy {
+        vector("Update") {
+            s {
+                moveTo(12f, 4f)
+                curveTo(16.4f, 4f, 20f, 7.6f, 20f, 12f)
+                curveTo(20f, 16.4f, 16.4f, 20f, 12f, 20f)
+                curveTo(7.6f, 20f, 4f, 16.4f, 4f, 12f)
+                moveTo(4f, 8f); lineTo(4f, 12f); lineTo(8f, 12f)
+                moveTo(12f, 8f); lineTo(12f, 15.5f)
+                moveTo(9f, 12.5f); lineTo(12f, 15.5f); lineTo(15f, 12.5f)
+            }
+        }
+    }
+    /** 外部链接（新窗口打开）。 */
+    val ExternalLink: ImageVector by lazy {
+        vector("ExternalLink") {
+            s {
+                moveTo(13f, 5f); lineTo(19f, 5f); lineTo(19f, 11f)
+                moveTo(19f, 5f); lineTo(11f, 13f)
+                moveTo(18f, 14f); lineTo(18f, 19f); lineTo(5f, 19f); lineTo(5f, 6f); lineTo(10f, 6f)
+            }
+        }
+    }
+
     /**
      * 根据分类/菜单名的「字段大意」挑一个自绘图标，呼应需求里「按字段大意自绘图标」。
      * 关键字映射越具体越好，兜底用 Category（列表）而不是千篇一律的云图标。

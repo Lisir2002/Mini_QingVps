@@ -1,6 +1,10 @@
 package com.vps.qing.feature.profile
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -30,17 +34,25 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.SettingsStore
 import com.vps.qing.core.ui.AppIcons
@@ -62,6 +74,7 @@ import com.vps.qing.data.repository.CertPlugin
 import com.vps.qing.data.repository.CertRecord
 import com.vps.qing.data.repository.ServiceParser
 import com.vps.qing.data.repository.HostLine
+import com.vps.qing.data.repository.OrderCategories
 import com.vps.qing.data.repository.OrderLine
 import com.vps.qing.data.repository.SubAccountLine
 import com.vps.qing.data.repository.TicketLine
@@ -148,7 +161,10 @@ fun ServicePageScreen(
     txnFilter: String? = null,
     onTxnFilter: (String?) -> Unit = {},
     // ---- v1.4.12 安全中心可编辑项 ----
-    onEditSecurity: (String) -> Unit = {}
+    onEditSecurity: (String) -> Unit = {},
+    // ---- v1.4.14 实名认证合入安全中心 ----
+    certInfo: com.vps.qing.data.repository.CertInfo? = null,
+    onOpenCert: () -> Unit = {}
 ) {
     val menu = ServicePanels.entries.firstOrNull { it.panel == panel }
     val pageTitle = menu?.title
@@ -257,10 +273,12 @@ fun ServicePageScreen(
                         onOpenOrder = onOpenOrder,
                         modifier = Modifier.fillMaxSize()
                     )
-                    // v1.4.12：安全中心区分可编辑项与只读项
+                    // v1.4.14：安全中心区分可编辑项与只读项，并内嵌实名认证入口
                     panel == ServicePanel.SECURITY -> SecurityBody(
                         data = data,
                         onEdit = onEditSecurity,
+                        certInfo = certInfo,
+                        onOpenCert = onOpenCert,
                         modifier = Modifier.fillMaxSize()
                     )
                     else -> {
@@ -295,8 +313,9 @@ fun ServicePageScreen(
 }
 
 /**
- * 订单记录（v1.4.12 分类化）：全部 / 各订单类型 / 待支付，
- * 分类胶囊与工单中心统一材质，列表滚动时顶栏磨砂渐隐。
+ * 订单记录（v1.4.14 对齐网站分类字典）：
+ * 分类来自站点 finance.js 的 orderType（7 项）+ 订单状态下拉，
+ * 只显示当前数据里真实存在的分类并带计数；筛选走 [OrderCategories] 纯函数，保证命中。
  */
 @Composable
 private fun OrdersBody(
@@ -307,23 +326,8 @@ private fun OrdersBody(
     modifier: Modifier = Modifier
 ) {
     val orders = data.orders
-    val types = orders.map { it.type }.filter { it.isNotBlank() }.distinct()
-    val hasUnpaid = orders.any {
-        it.status.equals("Unpaid", true) || it.status.equals("Pending", true)
-    }
-    val options = buildList {
-        add(null to "全部 ${orders.size}")
-        types.forEach { t -> add("type:$t" to orderTypeText(t)) }
-        if (hasUnpaid) add("status:unpaid" to "待支付")
-    }
-    val shown = when {
-        filter == null -> orders
-        filter == "status:unpaid" -> orders.filter {
-            it.status.equals("Unpaid", true) || it.status.equals("Pending", true)
-        }
-        filter.startsWith("type:") -> orders.filter { it.type == filter.removePrefix("type:") }
-        else -> orders
-    }
+    val options = OrderCategories.orderOptions(orders)
+    val shown = OrderCategories.filterOrders(orders, filter)
     val listState = rememberLazyListState()
     ScrollGlassEffect(listState)
     Column(modifier = modifier) {
@@ -333,6 +337,10 @@ private fun OrdersBody(
             onSelect = onFilter,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
         )
+        // 选中的分类在当前数据中已不存在（如刷新后该类型订单消失）时收敛回「全部」
+        if (filter != null && options.none { it.first == filter }) {
+            androidx.compose.runtime.LaunchedEffect(filter) { onFilter(null) }
+        }
         if (shown.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 EmptyHint(
@@ -358,7 +366,9 @@ private fun OrdersBody(
 }
 
 /**
- * 交易记录（v1.4.12 分类化）：全部 / 各支付渠道 / 各流水类型。
+ * 交易记录（v1.4.14 对齐网站）：网站交易列表无专门分类下拉，
+ * 但 `type` 列用 orderTypeObj（订单类型字典）映射、`gateway` 列是支付渠道，
+ * 因此这里按「订单类型 + 支付渠道」两个网站已有维度分类，筛选走纯函数。
  */
 @Composable
 private fun TransactionsBody(
@@ -369,19 +379,8 @@ private fun TransactionsBody(
     modifier: Modifier = Modifier
 ) {
     val txns = data.txns
-    val gateways = txns.map { it.gateway }.filter { it.isNotBlank() }.distinct()
-    val types = txns.map { it.type }.filter { it.isNotBlank() }.distinct()
-    val options = buildList {
-        add(null to "全部 ${txns.size}")
-        gateways.forEach { g -> add("gw:$g" to g) }
-        types.forEach { t -> add("type:$t" to txnTypeText(t)) }
-    }
-    val shown = when {
-        filter == null -> txns
-        filter.startsWith("gw:") -> txns.filter { it.gateway == filter.removePrefix("gw:") }
-        filter.startsWith("type:") -> txns.filter { it.type == filter.removePrefix("type:") }
-        else -> txns
-    }
+    val options = OrderCategories.txnOptions(txns)
+    val shown = OrderCategories.filterTxns(txns, filter)
     val listState = rememberLazyListState()
     ScrollGlassEffect(listState)
     Column(modifier = modifier) {
@@ -391,6 +390,9 @@ private fun TransactionsBody(
             onSelect = onFilter,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
         )
+        if (filter != null && options.none { it.first == filter }) {
+            androidx.compose.runtime.LaunchedEffect(filter) { onFilter(null) }
+        }
         if (shown.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 EmptyHint(
@@ -417,17 +419,13 @@ private fun TransactionsBody(
     }
 }
 
-/** 交易流水类型中文映射（站点返回什么就兜底显示什么，不猜测）。 */
-private fun txnTypeText(type: String): String = when (type.lowercase()) {
-    "recharge", "recharge_order", "rechargeorder" -> "充值"
-    "consume", "order", "pay", "purchase" -> "消费"
-    "refund" -> "退款"
-    "withdraw", "cash" -> "提现"
-    "credit", "credit_add" -> "加款"
-    else -> type.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-}
-
-/** 应用设置子页面：主题配色独立整页 —— 深浅模式 + 六套高级主题色板（v1.4.0）。 */
+/**
+ * 应用设置子页面（v1.4.14）：深浅模式 + 12 套高级主题色板 + 自定义背景图。
+ *
+ * 自定义背景图是「透明玻璃设计」的落点：所有卡片/顶栏/底栏都是半透明磨砂玻璃，
+ * 铺一张用户自己的图片到根级画布后，玻璃层自然会透出这张图。这里用 SAF
+ * OpenDocument 选图并申请持久读权限，URI 存 SettingsStore，全 App 实时重绘。
+ */
 @Composable
 fun ThemeSettingsPage(
     currentMode: Int,
@@ -436,11 +434,29 @@ fun ThemeSettingsPage(
     onSelectAccent: (String) -> Unit,
     onBack: () -> Unit
 ) {
+    val ctx = LocalContext.current
+    val bgUri by AppContainer.settings.bgImageUri.collectAsState()
+    val bgDim by AppContainer.settings.bgDim.collectAsState()
+
+    // 相册选图：OpenDocument 可拿到可持久授权的 content:// URI
+    val pickImage = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                ctx.contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            AppContainer.settings.setBgImageUri(uri.toString())
+        }
+    }
+
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
             GlassTopBar(
                 title = Strings.SETTINGS,
-                subtitle = "深浅模式与主题色板",
+                subtitle = "深浅模式 · 主题色板 · 自定义背景",
                 navIcon = AppIcons.Back,
                 onNavClick = onBack
             )
@@ -451,6 +467,138 @@ fun ThemeSettingsPage(
                     .padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // ---- 自定义背景（重点）----
+                SectionTitle(Strings.THEME_BG_GROUP, CartoonColors.Lilac)
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // 实时预览：把当前全局背景（图片或默认渐变）缩到一张小卡里，
+                        // 上面叠一块半透明玻璃示例，直观展示「玻璃透出背景」的效果。
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(150.dp)
+                                .clip(CartoonKit.ItemShape)
+                                .background(CartoonColors.Background)
+                                .border(UiT.strokeWidthHair, UiT.borderColor, CartoonKit.ItemShape)
+                        ) {
+                            if (!bgUri.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = bgUri,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                Box(
+                                    Modifier.fillMaxSize().background(
+                                        (if (CartoonColors.isDark) Color.Black else Color.White)
+                                            .copy(alpha = bgDim)
+                                    )
+                                )
+                            } else {
+                                // 默认糖果渐变（与 CartoonBackground 光斑呼应）
+                                Box(
+                                    Modifier.fillMaxSize().background(
+                                        androidx.compose.ui.graphics.Brush.linearGradient(
+                                            listOf(
+                                                CartoonColors.MintSoft,
+                                                CartoonColors.SkySoft,
+                                                CartoonColors.PeachSoft
+                                            )
+                                        )
+                                    )
+                                )
+                            }
+                            // 玻璃示例卡：证明半透明玻璃能透出背景
+                            Box(
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .fillMaxWidth(0.68f)
+                                    .clip(CartoonKit.ItemShape)
+                                    .background(CartoonColors.GlassTint.copy(alpha = 0.72f))
+                                    .border(UiT.strokeWidthHair, Color.White.copy(alpha = 0.6f), CartoonKit.ItemShape)
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(AppIcons.Sparkle, null, tint = CartoonColors.Brand, modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        "磨砂玻璃卡片",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = CartoonColors.Ink
+                                    )
+                                    Text(
+                                        if (bgUri.isNullOrBlank()) Strings.THEME_BG_NONE else "你的背景正在透出来",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        color = CartoonColors.InkSub
+                                    )
+                                }
+                            }
+                        }
+
+                        Text(
+                            Strings.THEME_BG_TIP,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CartoonColors.InkSub
+                        )
+
+                        // 柔化强度滑块
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                Strings.THEME_BG_DIM,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = CartoonColors.Ink
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "${(bgDim * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CartoonColors.Brand
+                            )
+                        }
+                        Slider(
+                            value = bgDim,
+                            onValueChange = { AppContainer.settings.setBgDim(it) },
+                            valueRange = 0f..0.7f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = CartoonColors.Brand,
+                                activeTrackColor = CartoonColors.Brand,
+                                inactiveTrackColor = CartoonColors.BrandSoft
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            Strings.THEME_BG_DIM_HINT,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = CartoonColors.InkSub
+                        )
+
+                        // 选图 / 恢复默认
+                        CartoonButton(
+                            text = Strings.THEME_BG_PICK,
+                            onClick = { runCatching { pickImage.launch(arrayOf("image/*")) } },
+                            icon = AppIcons.Image,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (!bgUri.isNullOrBlank()) {
+                            CartoonButton(
+                                text = Strings.THEME_BG_CLEAR,
+                                onClick = { AppContainer.settings.setBgImageUri(null) },
+                                icon = AppIcons.Refresh,
+                                containerColor = CartoonColors.Peach,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+
+                // ---- 深浅模式 ----
                 SectionTitle(Strings.THEME, CartoonColors.Lilac)
                 val options = listOf(
                     Triple(Strings.THEME_SYSTEM, SettingsStore.THEME_SYSTEM, "跟随手机系统的深浅色设置"),
@@ -463,7 +611,7 @@ fun ThemeSettingsPage(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(CartoonKit.ItemShape)
-                            .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White)
+                            .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White.copy(alpha = 0.6f))
                             .clickable { onSelectMode(mode) }
                             .padding(horizontal = 14.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -490,14 +638,14 @@ fun ThemeSettingsPage(
                 }
 
                 Spacer(Modifier.height(4.dp))
-                SectionTitle("高级主题", CartoonColors.Brand)
+                SectionTitle("高级主题 · ${ThemePalettes.entries.size} 套", CartoonColors.Brand)
                 ThemePalettes.entries.forEach { spec ->
                     val selected = currentAccentId == spec.id
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(CartoonKit.ItemShape)
-                            .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White)
+                            .background(if (selected) CartoonColors.BrandSoft else CartoonColors.White.copy(alpha = 0.6f))
                             .clickable { onSelectAccent(spec.id) }
                             .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -1087,12 +1235,7 @@ fun OrderDetailPage(
     }
 }
 
-private fun orderTypeText(type: String): String = when (type) {
-    "new" -> "新购"
-    "renew" -> "续费"
-    "upgrade" -> "升级配置"
-    else -> type.ifBlank { "--" }
-}
+private fun orderTypeText(type: String): String = OrderCategories.typeText(type)
 
 /** 状态徽章颜色：Active/Paid 绿色，Unpaid/Pending 珊瑚色，其余灰蓝。 */
 @Composable

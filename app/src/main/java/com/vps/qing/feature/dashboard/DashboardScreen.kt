@@ -69,7 +69,8 @@ private val QUICK_ENTRIES = listOf(
     QuickEntry(Strings.MY_HOSTS, "hosts", AppIcons.Server, CartoonColors.Mint, CartoonColors.MintSoft),
     QuickEntry(Strings.FINANCE, "finance", AppIcons.Wallet, CartoonColors.Lemon, CartoonColors.LemonSoft),
     QuickEntry(Strings.TICKETS, "tickets", AppIcons.Ticket, CartoonColors.Sky, CartoonColors.SkySoft),
-    QuickEntry(Strings.CERTIFICATION, "cert", AppIcons.Shield, CartoonColors.Peach, CartoonColors.PeachSoft),
+    // v1.4.14：实名认证已并入「安全中心」，此格改为直达子账户管理（原生面板）
+    QuickEntry(Strings.SUB_ACCOUNTS, "subaccounts", AppIcons.Users, CartoonColors.Peach, CartoonColors.PeachSoft),
     QuickEntry(Strings.SECURITY, "security", AppIcons.Lock, CartoonColors.Lilac, CartoonColors.LilacSoft)
 )
 
@@ -130,7 +131,8 @@ fun DashboardScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    item { WelcomeCard(state) { onOpenPanel("cert") } }
+                    // v1.4.14：未实名徽标引导到「安全中心」（实名认证已合入其中）
+                    item { WelcomeCard(state) { onOpenPanel("security") } }
 
                     item {
                         Row(
@@ -289,8 +291,9 @@ private fun TrailingAction(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun WelcomeCard(state: DashboardUiState, onGoCert: () -> Unit) {
-    // v1.4.12：未实名不冒充实名姓名，显示账号名 + 未实名徽标；已实名才显示实名姓名
+private fun WelcomeCard(state: DashboardUiState, onGoSecurity: () -> Unit) {
+    // v1.4.14：名字区只显示脱敏邮箱（绝不显示实名姓名），实名状态仅用徽标表达；
+    // 未实名徽标点击进入「安全中心」，再从其中的实名卡进入认证整页。
     val display = accountDisplay(state.account, state.cert, state.loggedIn)
     GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
         Row(
@@ -321,7 +324,7 @@ private fun WelcomeCard(state: DashboardUiState, onGoCert: () -> Unit) {
                         Spacer(Modifier.width(8.dp))
                         CertBadgeChip(
                             badge = display.badge,
-                            onClick = if (display.badge == CertBadge.UNCERTIFIED) onGoCert else null
+                            onClick = if (display.badge == CertBadge.UNCERTIFIED) onGoSecurity else null
                         )
                     }
                 }
