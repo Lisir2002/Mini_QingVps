@@ -55,6 +55,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.vps.qing.core.ui.UiT
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.vps.qing.core.ui.ScrollGlassEffect
 
 data class AnnouncementsUiState(
     val loading: Boolean = true,
@@ -137,6 +140,8 @@ fun AnnouncementPage(
                     }
                 }
             )
+            val newsListState = rememberLazyListState()
+            ScrollGlassEffect(newsListState)
             when {
                 state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = CartoonColors.Brand)
@@ -160,6 +165,7 @@ fun AnnouncementPage(
                     EmptyHint(icon = AppIcons.EmptyBox, text = Strings.NO_NEWS)
                 }
                 else -> LazyColumn(
+                    state = newsListState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -274,7 +280,7 @@ fun AnnouncementDetailPage(
                 ) {
                     // 标题卡：类型徽标 + 标题 + 时间
                     item {
-                        GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+                        GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
                             Column(
                                 Modifier.fillMaxWidth().padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -306,7 +312,7 @@ fun AnnouncementDetailPage(
                     // 正文段落
                     if (detail.paragraphs.isEmpty()) {
                         item {
-                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
                                 Text(
                                     "（正文为空）",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -318,7 +324,7 @@ fun AnnouncementDetailPage(
                     } else {
                         items(detail.paragraphs.size) { idx ->
                             val paragraph = detail.paragraphs[idx]
-                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
                                 Text(
                                     paragraph,
                                     style = MaterialTheme.typography.bodyMedium,
@@ -341,7 +347,7 @@ private fun AnnouncementCard(news: NewsItem, onOpenWeb: (String) -> Unit) {
             .fillMaxWidth()
             .clip(CartoonKit.CardShape)
             .clickable { onOpenWeb(AppContainer.webUrl("announcement.htm?id=${news.id}")) },
-        alpha = 0.82f
+        alpha = UiT.glassCard
     ) {
         Row(
             Modifier.fillMaxWidth().padding(16.dp),

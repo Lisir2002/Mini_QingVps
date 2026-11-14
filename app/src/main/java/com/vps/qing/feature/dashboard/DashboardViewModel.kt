@@ -6,6 +6,7 @@ import com.vps.qing.core.AppContainer
 import com.vps.qing.core.network.ApiResult
 import com.vps.qing.data.repository.AccountInfo
 import com.vps.qing.data.repository.CatalogRepository
+import com.vps.qing.data.repository.CertInfo
 import com.vps.qing.data.repository.HostSummary
 import com.vps.qing.data.repository.NewsItem
 import com.vps.qing.data.repository.ProfileRepository
@@ -23,6 +24,8 @@ data class DashboardUiState(
     val loading: Boolean = true,
     val loggedIn: Boolean = false,
     val account: AccountInfo? = null,
+    /** 实名状态（v1.4.12）：决定首页欢迎卡显示实名姓名还是账号名 + 未实名徽标。 */
+    val cert: CertInfo? = null,
     val hosts: List<HostSummary> = emptyList(),
     val news: List<NewsItem> = emptyList(),
     val notice: String? = null
@@ -71,16 +74,22 @@ class DashboardViewModel(
                 val accountCall = async {
                     if (loggedIn) profile.account().orNull() else null
                 }
+                // v1.4.12：实名状态与账号信息并发拉取，401/插件未开启时降级为 null
+                val certCall = async {
+                    if (loggedIn) (profile.certInfo() as? ApiResult.Success)?.data else null
+                }
 
                 val newsList = newsCall.await()
                 val hostsList = hostsCall.await()
                 val accountInfo = accountCall.await()
+                val certInfo = certCall.await()
 
                 _ui.update {
                     it.copy(
                         loading = false,
                         loggedIn = loggedIn,
                         account = accountInfo,
+                        cert = certInfo,
                         // v1.4.11：已购服务只展示已支付的机器，待支付的不进首页列表
                         hosts = hostsList.filter { host -> !isUnpaidHostStatus(host.status) },
                         news = newsList,

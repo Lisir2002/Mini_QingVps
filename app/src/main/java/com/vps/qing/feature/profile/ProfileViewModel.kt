@@ -137,6 +137,10 @@ data class ProfileUiState(
     val subAccountDetails: Map<String, SubAccountDetailUi> = emptyMap(),
     /** 工单状态筛选（null = 全部）。 */
     val ticketFilterStatusId: String? = null,
+    /** 订单记录分类筛选（null = 全部，v1.4.12）。 */
+    val orderFilter: String? = null,
+    /** 交易记录分类筛选（null = 全部，v1.4.12）。 */
+    val txnFilter: String? = null,
     /** 子账户表单元数据。 */
     val subFormMeta: SubAccountFormMeta = SubAccountFormMeta(),
     /** 实名认证表单与进度（v1.4.5）。 */
@@ -179,8 +183,12 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
         viewModelScope.launch {
             _ui.update { it.copy(loading = true, error = null) }
             when (val result = repo.account()) {
-                is ApiResult.Success -> _ui.update {
-                    it.copy(loading = false, account = result.data, error = null)
+                is ApiResult.Success -> {
+                    _ui.update {
+                        it.copy(loading = false, account = result.data, error = null)
+                    }
+                    // v1.4.12：拉取实名状态，供个人中心名字显示与「未实名」徽标使用
+                    ensureCertName()
                 }
                 is ApiResult.Failure -> _ui.update {
                     it.copy(loading = false, error = "[${result.code}] ${result.msg}")
@@ -220,6 +228,8 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
     }
 
     fun setTicketFilter(statusId: String?) = _ui.update { it.copy(ticketFilterStatusId = statusId) }
+    fun setOrderFilter(id: String?) = _ui.update { it.copy(orderFilter = id) }
+    fun setTxnFilter(id: String?) = _ui.update { it.copy(txnFilter = id) }
 
     // ---- v1.4.5：实名认证提交与进度（协议对齐官方插件 idcsmart_certification）----
 
@@ -436,6 +446,33 @@ class ProfileViewModel(private val repo: ProfileRepository) : ViewModel() {
     }
 
     fun refreshTicketDetail(id: String) = fetchTicketDetail(id)
+
+    // ---- v1.4.12：安全中心可编辑项（邮箱 / 手机 / 登录密码）----
+
+    private fun ApiResult<*>.errorText(): String? = when (this) {
+        is ApiResult.Success -> null
+        is ApiResult.Failure -> "[${code}] $msg"
+        is ApiResult.Error -> friendly(throwable)
+    }
+
+    /** 返回 null 表示成功，非 null 为错误信息；UI 据此决定下一步与提示。 */
+    suspend fun sendSecurityCode(
+        target: String, action: String, value: String, phoneCode: String = "86"
+    ): String? = repo.sendSecurityCode(target, action, value, phoneCode).errorText()
+
+    suspend fun verifyOldContact(target: String, code: String): String? =
+        repo.verifyOldContact(target, code).errorText()
+
+    suspend fun submitSecurityContact(
+        target: String, value: String, code: String, phoneCode: String = "86"
+    ): String? {
+        val err = repo.updateContact(target, value, code, phoneCode).errorText()
+        if (err == null) load() // 刷新账号信息，安全中心显示新值
+        return err
+    }
+
+    suspend fun submitSecurityPassword(old: String, new: String, repeat: String): String? =
+        repo.updatePassword(old, new, repeat).errorText()
 
     /**
      * 工单页展示用户实名（v1.4.11）：按需拉取认证信息，只填充 CERTIFICATION 面板的

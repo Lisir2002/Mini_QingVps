@@ -42,6 +42,8 @@ import com.vps.qing.core.ui.SectionTitle
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.data.repository.PurchasedDetail
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.vps.qing.core.ui.ScrollGlassEffect
 
 /**
  * 已购产品详情（v1.4.2）：展示「已经订购的配置信息 + 支付信息」，不是购买页。
@@ -111,7 +113,10 @@ private fun ProductDetailBody(d: PurchasedDetail, onOpenOrder: (String) -> Unit)
     /** 站点返回明文密码，默认掩码；点击行可切换显示（对齐网页端眼睛图标）。 */
     var showPassword by remember { mutableStateOf(false) }
 
+    val glassListState = rememberLazyListState()
+    ScrollGlassEffect(glassListState)
     LazyColumn(
+        state = glassListState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)

@@ -24,16 +24,24 @@ object UiT {
     // ---------- 阴影（elevation） ----------
     val shadowNone = 0.dp
     val shadowSm = 4.dp      // 按钮、小控件
-    val shadowMd = 8.dp      // 卡片
-    val shadowLg = 12.dp     // 顶栏 / 悬浮容器
+    val shadowButton = 3.dp  // 按钮统一柔和阴影（v1.4.12，消除生硬割裂投影）
+    val shadowMd = 8.dp      // 卡片 / 顶栏 / 底栏
+    val shadowLg = 12.dp     // 悬浮容器
     val shadowXl = 18.dp     // 弹窗
 
-    // ---------- 玻璃透明度（v1.4.9 深度透明化：组件半透明以透出糖果背景）----------
-    const val glassFaint = 0.42f     // 侧边栏等大面积玻璃
-    const val glass = 0.54f          // 常规玻璃容器
-    const val glassStrong = 0.64f    // 卡片（内容区更实，便于阅读）
-    const val glassBar = 0.46f       // 顶栏/底栏：透明画布，透出背景糖果光斑
-    const val glassBarScrolling = 0.14f // 顶栏/底栏滚动中：磨砂感消失只留透明度（v1.4.11）
+    // ---------- 玻璃透明度（v1.4.12 统一高磨砂玻璃）----------
+    /**
+     * 设计基准：所有卡片一律采用「磨砂高度模糊的透明玻璃」——静置时玻璃足够实，
+     * 下层内容被雾化成柔和的彩色影子（而不是清晰文字），文字保持高可读；
+     * 滚动时磨砂渐隐、只留透明度，让内容清晰穿过（见 [glassBarScrolling]）。
+     * 玻璃层始终是半透明，不存在任何不透明画布。
+     */
+    const val glassCard = 0.86f      // 所有内容卡片统一材质
+    const val glassFaint = 0.74f     // 侧边栏等大面积玻璃
+    const val glass = 0.82f          // 常规玻璃容器
+    const val glassStrong = glassCard // 卡片（与 glassCard 统一，不再分档）
+    const val glassBar = 0.88f       // 顶栏/底栏静置：高磨砂，只透出下层模糊影子
+    const val glassBarScrolling = 0.20f // 顶栏/底栏滚动中：磨砂渐隐，只留透明度
     const val glassOverlay = 0.92f   // toast / 遮罩层
 
     // ---------- 边框 ----------

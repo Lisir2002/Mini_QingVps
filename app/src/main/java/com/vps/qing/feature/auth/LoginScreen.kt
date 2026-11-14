@@ -47,6 +47,7 @@ import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.Strings
+import com.vps.qing.core.ui.UiT
 
 /** 登录页：只保留「邮箱 + 密码」，纯白卡通 + 磨砂玻璃。 */
 @Composable
@@ -110,7 +111,7 @@ fun LoginScreen(
             GlassSurface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = CartoonKit.CardShape,
-                alpha = 0.82f,
+                alpha = UiT.glassCard,
                 elevation = 12.dp
             ) {
                 Column(

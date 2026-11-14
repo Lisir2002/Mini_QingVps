@@ -41,6 +41,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.AppIcons
+import com.vps.qing.core.ui.accountDisplay
+import com.vps.qing.core.ui.CertBadge
+import com.vps.qing.core.ui.CertBadgeChip
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonButton
 import com.vps.qing.core.ui.CartoonBackground
@@ -51,6 +54,7 @@ import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.SectionTitle
 import com.vps.qing.core.ui.ScrollGlassEffect
 import com.vps.qing.core.ui.Strings
+import com.vps.qing.core.ui.UiT
 import com.vps.qing.data.repository.HostSummary
 import com.vps.qing.data.repository.NewsItem
 
@@ -126,7 +130,7 @@ fun DashboardScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    item { WelcomeCard(state) }
+                    item { WelcomeCard(state) { onOpenPanel("cert") } }
 
                     item {
                         Row(
@@ -285,8 +289,10 @@ private fun TrailingAction(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun WelcomeCard(state: DashboardUiState) {
-    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.82f) {
+private fun WelcomeCard(state: DashboardUiState, onGoCert: () -> Unit) {
+    // v1.4.12：未实名不冒充实名姓名，显示账号名 + 未实名徽标；已实名才显示实名姓名
+    val display = accountDisplay(state.account, state.cert, state.loggedIn)
+    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
         Row(
             Modifier.fillMaxWidth().padding(18.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -301,14 +307,24 @@ private fun WelcomeCard(state: DashboardUiState) {
                 Icon(AppIcons.Sparkle, null, tint = CartoonColors.Brand, modifier = Modifier.size(30.dp))
             }
             Spacer(Modifier.width(14.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(Strings.WELCOME, style = MaterialTheme.typography.labelMedium, color = CartoonColors.InkSub)
-                Text(
-                    state.account?.username ?: state.account?.email ?: Strings.APP_NAME,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = CartoonColors.Ink
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        display.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = CartoonColors.Ink,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (display.badge != CertBadge.NONE) {
+                        Spacer(Modifier.width(8.dp))
+                        CertBadgeChip(
+                            badge = display.badge,
+                            onClick = if (display.badge == CertBadge.UNCERTIFIED) onGoCert else null
+                        )
+                    }
+                }
                 state.notice?.let {
                     Text(it, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
                 }
@@ -329,7 +345,7 @@ private fun StatCard(
         modifier = modifier.then(
             if (clickable) Modifier.clip(CartoonKit.CardShape).clickable { onClick?.invoke() } else Modifier
         ),
-        alpha = 0.82f
+        alpha = UiT.glassCard
     ) {
         Column(Modifier.padding(14.dp)) {
             Box(
@@ -356,7 +372,7 @@ private fun StatCard(
 
 @Composable
 private fun HintCard(text: String) {
-    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.7f) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
         Text(
             text,
             style = MaterialTheme.typography.bodySmall,
@@ -369,7 +385,7 @@ private fun HintCard(text: String) {
 /** 带动作按钮的引导卡：未登录「去登录」、无服务「去选购」。 */
 @Composable
 private fun ActionHintCard(text: String, actionText: String, onAction: () -> Unit) {
-    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.7f) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(
                 text,
@@ -395,7 +411,7 @@ private fun HostCard(host: HostSummary, onOpenPanel: (String) -> Unit) {
             .fillMaxWidth()
             .clip(CartoonKit.CardShape)
             .clickable { onOpenPanel(navToken) },
-        alpha = 0.8f
+        alpha = UiT.glassCard
     ) {
         Row(
             Modifier.fillMaxWidth().padding(14.dp),
@@ -446,7 +462,7 @@ private fun NewsCard(news: NewsItem, onOpenId: (String) -> Unit) {
                     }
                 } else Modifier
             ),
-        alpha = 0.8f
+        alpha = UiT.glassCard
     ) {
         Row(
             Modifier.fillMaxWidth().padding(14.dp),
@@ -477,7 +493,7 @@ private fun NewsCard(news: NewsItem, onOpenId: (String) -> Unit) {
 
 @Composable
 private fun QuickEntryCard(entry: QuickEntry, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    GlassCard(modifier = modifier, alpha = 0.8f) {
+    GlassCard(modifier = modifier, alpha = UiT.glassCard) {
         Row(
             Modifier
                 .fillMaxWidth()

@@ -108,8 +108,22 @@ fun CartoonBackground(
 }
 
 /**
- * 磨砂玻璃 Modifier：半透明白渐变 + 描边 + 柔和阴影。
- * 边界用 [UiT.borderColor]（灰蓝细线）保证卡片轮廓清晰。
+ * 统一柔和阴影（v1.4.12）：彩色低对比阴影，所有玻璃卡片与按钮共用同一套阴影语言，
+ * 消除 Material 默认按钮投影那种「贴了一层灰黑硬边」的割裂感。
+ */
+fun Modifier.softShadow(shape: Shape, elevation: Dp = UiT.shadowButton): Modifier = this.shadow(
+    elevation = elevation,
+    shape = shape,
+    clip = false,
+    ambientColor = CartoonColors.GlassShadow,
+    spotColor = CartoonColors.GlassShadow
+)
+
+/**
+ * 磨砂高度模糊的透明玻璃（v1.4.12 统一材质）：
+ *  - 玻璃主体用接近均匀的半透明色，静置时把下层内容雾化成柔和影子；
+ *  - 顶部叠一条柔和高光 + 细描边，形成真实磨砂玻璃的边缘光；
+ *  - 所有卡片 / 顶栏 / 底栏都经由此 Modifier，材质全局唯一事实来源。
  */
 fun Modifier.glass(
     shape: Shape = CartoonKit.GlassShape,
@@ -117,24 +131,25 @@ fun Modifier.glass(
     elevation: Dp = UiT.shadowMd,
     border: Boolean = true
 ): Modifier = this
-    .shadow(
-        elevation = elevation,
-        shape = shape,
-        clip = false,
-        ambientColor = CartoonColors.GlassShadow,
-        spotColor = CartoonColors.GlassShadow
-    )
+    .softShadow(shape, elevation)
     .clip(shape)
     .background(
         Brush.verticalGradient(
             listOf(
                 CartoonColors.GlassTint.copy(alpha = alpha),
-                CartoonColors.GlassTint.copy(alpha = (alpha - 0.18f).coerceAtLeast(0.18f))
+                CartoonColors.GlassTint.copy(alpha = (alpha - 0.05f).coerceAtLeast(0.16f))
             )
         )
     )
+    // 顶部柔和高光：磨砂玻璃的边缘光，让「雾化」质感更明确
+    .background(
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = 0.26f),
+            0.20f to Color.Transparent
+        )
+    )
     .then(
-        if (border) Modifier.border(UiT.strokeWidth, UiT.borderColor, shape)
+        if (border) Modifier.border(UiT.strokeWidth, UiT.borderColor.copy(alpha = 0.6f), shape)
         else Modifier
     )
 
@@ -239,7 +254,10 @@ fun CartoonButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(UiT.button),
+        // v1.4.12：去掉 Material 默认生硬投影，改用与玻璃卡片一致的柔和彩色阴影
+        modifier = modifier
+            .softShadow(CartoonKit.PillShape, UiT.shadowButton)
+            .height(UiT.button),
         shape = CartoonKit.PillShape,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             horizontal = UiT.spaceLg, vertical = UiT.spaceXs
@@ -250,7 +268,13 @@ fun CartoonButton(
             disabledContainerColor = containerColor.copy(alpha = 0.4f),
             disabledContentColor = Color.White
         ),
-        elevation = ButtonDefaults.buttonElevation(defaultElevation = UiT.shadowSm)
+        elevation = ButtonDefaults.buttonElevation(
+            defaultElevation = 0.dp,
+            pressedElevation = 0.dp,
+            focusedElevation = 0.dp,
+            hoveredElevation = 0.dp,
+            disabledElevation = 0.dp
+        )
     ) {
         if (icon != null) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(UiT.buttonIcon))

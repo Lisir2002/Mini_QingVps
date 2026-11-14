@@ -83,7 +83,7 @@ fun CheckoutSheet(
                 when (checkout.stage) {
                     // ---- 成功态 ----
                     "SUCCESS" -> {
-                        GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+                        GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
                             Column(
                                 Modifier.fillMaxWidth().padding(vertical = 28.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -127,7 +127,7 @@ fun CheckoutSheet(
                     // ---- 选支付方式 ----
                     else -> {
                         if (checkout.gatewaysLoading) {
-                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
                                 Box(
                                     Modifier.fillMaxWidth().padding(vertical = 32.dp),
                                     contentAlignment = Alignment.Center
@@ -136,7 +136,7 @@ fun CheckoutSheet(
                                 }
                             }
                         } else if (checkout.gateways.isEmpty()) {
-                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+                            GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
                                 Text(
                                     "站点未提供在线支付方式，请前往网页完成支付",
                                     style = MaterialTheme.typography.bodySmall,
@@ -196,7 +196,7 @@ fun CheckoutSheet(
 /** 订单详情卡：金额 + 订单号 + 台数 + 商品名，选方式与等待支付两页共用（绑定显示）。 */
 @Composable
 private fun OrderSummaryCard(checkout: CheckoutState) {
-    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 "应付金额",
@@ -250,7 +250,7 @@ private fun PayingCard(
     onOpenPayUrl: (String) -> Unit,
     onCheckPayNow: () -> Unit
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.72f) {
+    GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
         Column(
             Modifier.fillMaxWidth().padding(18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -333,7 +333,7 @@ private fun GatewayRow(gateway: GatewayOption, enabled: Boolean, onClick: () -> 
             .fillMaxWidth()
             .clip(CartoonKit.CardShape)
             .clickable(enabled = enabled) { onClick() },
-        alpha = 0.85f
+        alpha = UiT.glassCard
     ) {
         Row(
             Modifier.fillMaxWidth().padding(16.dp),

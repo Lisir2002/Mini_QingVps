@@ -44,6 +44,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.simpleViewModelFactory
 import com.vps.qing.core.ui.AppIcons
+import com.vps.qing.core.ui.accountDisplay
+import com.vps.qing.core.ui.CertBadge
+import com.vps.qing.core.ui.CertBadgeChip
+import com.vps.qing.core.ui.UiT
 import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonButton
 import com.vps.qing.core.ui.CartoonIconChip
@@ -85,7 +89,8 @@ fun ProfileScreen(
     val themeMode by AppContainer.settings.themeMode.collectAsState()
 
     var showLogout by remember { mutableStateOf(false) }
-    var showAbout by remember { mutableStateOf(false) }
+    /** 独立「关于」页面（v1.4.12，取代原弹窗）。 */
+    var showAboutPage by rememberSaveable { mutableStateOf(false) }
     /** 当前打开的服务子页面；null = 个人中心主页。 */
     var servicePage by rememberSaveable { mutableStateOf<ServicePanel?>(null) }
     /** 应用设置子页面。 */
@@ -167,14 +172,17 @@ fun ProfileScreen(
         }
     }
     // 上报主容器：任意子页面打开即隐藏底栏
-    LaunchedEffect(servicePage, showSettingsPage, detailStack) {
-        onSubPageChanged(servicePage != null || showSettingsPage || detailStack.isNotBlank())
+    LaunchedEffect(servicePage, showSettingsPage, showAboutPage, detailStack) {
+        onSubPageChanged(
+            servicePage != null || showSettingsPage || showAboutPage || detailStack.isNotBlank()
+        )
     }
     BackHandler(
-        enabled = servicePage != null || showSettingsPage || detailStack.isNotBlank()
+        enabled = servicePage != null || showSettingsPage || showAboutPage || detailStack.isNotBlank()
     ) {
         when {
             detailStack.isNotBlank() -> popDetail()
+            showAboutPage -> showAboutPage = false
             showSettingsPage -> showSettingsPage = false
             else -> servicePage = null
         }
@@ -237,6 +245,15 @@ fun ProfileScreen(
                 )
                 return
             }
+            // v1.4.12：安全中心编辑整页（密码 / 邮箱 / 手机）
+            token.startsWith("secedit:") -> {
+                SecurityEditPage(
+                    vm = vm,
+                    target = token.removePrefix("secedit:"),
+                    onBack = popDetail
+                )
+                return
+            }
         }
     }
 
@@ -263,7 +280,13 @@ fun ProfileScreen(
             onCertCompanyMode = vm::setCertCompanyMode,
             onCertFormChange = { newForm -> vm.updateCertForm { newForm } },
             onSubmitCert = vm::submitCert,
-            actionBusy = state.actionBusy
+            actionBusy = state.actionBusy,
+            // v1.4.12 订单 / 交易记录分类
+            orderFilter = state.orderFilter,
+            onOrderFilter = vm::setOrderFilter,
+            txnFilter = state.txnFilter,
+            onTxnFilter = vm::setTxnFilter,
+            onEditSecurity = { pushDetail("secedit:$it") }
         )
         return
     }
@@ -276,6 +299,12 @@ fun ProfileScreen(
             onSelectAccent = { AppContainer.settings.setAccentId(it) },
             onBack = { showSettingsPage = false }
         )
+        return
+    }
+
+    // v1.4.12：关于改为独立整页（占位五项，后续逐项补充）
+    if (showAboutPage) {
+        AboutPage(onBack = { showAboutPage = false })
         return
     }
 
@@ -307,7 +336,7 @@ fun ProfileScreen(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 // 账号卡
-                GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.85f) {
+                GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
@@ -322,12 +351,30 @@ fun ProfileScreen(
                             Spacer(Modifier.width(14.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(Strings.ACCOUNT, style = MaterialTheme.typography.labelMedium, color = CartoonColors.InkSub)
-                                Text(
-                                    state.account?.username ?: Strings.UNKNOWN,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = CartoonColors.Ink
+                                // v1.4.12：未实名显示账号名 + 未实名徽标，不冒充实名姓名
+                                val display = accountDisplay(
+                                    state.account,
+                                    state.panels[ServicePanel.CERTIFICATION]?.cert,
+                                    state.account != null
                                 )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        display.name,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = CartoonColors.Ink,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (display.badge != CertBadge.NONE) {
+                                        Spacer(Modifier.width(8.dp))
+                                        CertBadgeChip(
+                                            badge = display.badge,
+                                            onClick = if (display.badge == CertBadge.UNCERTIFIED) {
+                                                { servicePage = ServicePanel.CERTIFICATION }
+                                            } else null
+                                        )
+                                    }
+                                }
                             }
                         }
                         InfoRow(AppIcons.Mail, "邮箱", state.account?.email ?: Strings.UNKNOWN)
@@ -346,7 +393,7 @@ fun ProfileScreen(
                 }
 
                 SectionTitle(Strings.ACCOUNT_SERVICES, CartoonColors.Brand)
-                GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.82f) {
+                GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
                     Column(Modifier.padding(vertical = 6.dp)) {
                         // 账号与服务：每项点击进入独立子页面
                         ServicePanels.entries.forEach { menu ->
@@ -358,7 +405,7 @@ fun ProfileScreen(
                 }
 
                 SectionTitle(Strings.APP_GROUP, CartoonColors.Lilac)
-                GlassCard(modifier = Modifier.fillMaxWidth(), alpha = 0.82f) {
+                GlassCard(modifier = Modifier.fillMaxWidth(), alpha = UiT.glassCard) {
                     Column(Modifier.padding(vertical = 6.dp)) {
                         MenuRow(
                             ServiceMenu(Strings.SETTINGS, Strings.THEME, AppIcons.Settings, 4)
@@ -366,7 +413,7 @@ fun ProfileScreen(
                         MenuRow(
                             ServiceMenu(Strings.ABOUT, "", AppIcons.Info, 1),
                             subtitle = "版本 ${Strings.APP_VERSION}"
-                        ) { showAbout = true }
+                        ) { showAboutPage = true }
                     }
                 }
 
@@ -391,17 +438,6 @@ fun ProfileScreen(
         }
     }
 
-    if (showAbout) {
-        GlassDialog(
-            title = Strings.ABOUT,
-            text = Strings.ABOUT_TEXT.replace("%s", Strings.APP_VERSION),
-            onDismiss = { showAbout = false }
-        ) {
-            TextButton(onClick = { showAbout = false }) {
-                Text(Strings.CONFIRM, fontWeight = FontWeight.Bold, color = CartoonColors.Brand)
-            }
-        }
-    }
 }
 
 /**

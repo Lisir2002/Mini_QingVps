@@ -57,6 +57,7 @@ import com.vps.qing.data.repository.OptionType
 import com.vps.qing.data.repository.PriceQuote
 import com.vps.qing.data.repository.ProductConfig
 import com.vps.qing.data.repository.ProductInfo
+import com.vps.qing.core.ui.UiT
 
 /**
  * 自定义配置独立页（v1.4.0，原为弹窗）。
@@ -760,7 +761,7 @@ private fun GlassDropdown(
                 .clip(RoundedCornerShape(16.dp))
                 .clickable { expanded = !expanded },
             shape = RoundedCornerShape(16.dp),
-            alpha = 0.8f,
+            alpha = UiT.glassCard,
             elevation = 2.dp
         ) {
             Row(

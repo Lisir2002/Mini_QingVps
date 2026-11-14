@@ -217,4 +217,66 @@ class ProfileRepository(
             is ApiResult.Error -> result
         }
     }
+
+    // ---- v1.4.12：安全中心可编辑项 ----
+
+    /** 发送安全验证码：verify=验证原绑定，update=验证新绑定。 */
+    suspend fun sendSecurityCode(
+        target: String,
+        action: String,
+        value: String,
+        phoneCode: String = "86"
+    ): ApiResult<Unit> {
+        val body = JsonObject().apply {
+            addProperty("action", action)
+            if (target == "phone") {
+                addProperty("phone_code", phoneCode)
+                addProperty("phone", value)
+            } else {
+                addProperty("email", value)
+            }
+        }
+        return safeApiCall({
+            if (target == "phone") api.phoneCode(body) else api.emailCode(body)
+        }) { Unit }
+    }
+
+    /** 验证原绑定（邮箱 / 手机）的验证码。 */
+    suspend fun verifyOldContact(target: String, code: String): ApiResult<Unit> {
+        val body = JsonObject().apply { addProperty("code", code) }
+        return safeApiCall({
+            if (target == "phone") api.verifyAccountOldPhone(body) else api.verifyAccountOldEmail(body)
+        }) { Unit }
+    }
+
+    /** 提交新的邮箱 / 手机。 */
+    suspend fun updateContact(
+        target: String,
+        value: String,
+        code: String,
+        phoneCode: String = "86"
+    ): ApiResult<Unit> {
+        val body = JsonObject().apply {
+            if (target == "phone") {
+                addProperty("phone_code", phoneCode)
+                addProperty("phone", value)
+            } else {
+                addProperty("email", value)
+            }
+            addProperty("code", code)
+        }
+        return safeApiCall({
+            if (target == "phone") api.updateAccountPhone(body) else api.updateAccountEmail(body)
+        }) { Unit }
+    }
+
+    /** 修改登录密码。 */
+    suspend fun updatePassword(old: String, new: String, repeat: String): ApiResult<Unit> {
+        val body = JsonObject().apply {
+            addProperty("old_password", old)
+            addProperty("new_password", new)
+            addProperty("repassword", repeat)
+        }
+        return safeApiCall({ api.updateAccountPassword(body) }) { Unit }
+    }
 }

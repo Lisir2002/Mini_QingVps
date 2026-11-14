@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -51,7 +52,10 @@ import com.vps.qing.core.ui.EmptyHint
 import com.vps.qing.core.ui.GlassCard
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.SectionTitle
+import com.vps.qing.core.ui.ScrollGlassEffect
+import com.vps.qing.core.ui.FilterChipRow
 import com.vps.qing.core.ui.Strings
+import com.vps.qing.core.ui.UiT
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.theme.ThemePalettes
 import com.vps.qing.data.repository.CertPlugin
@@ -137,7 +141,14 @@ fun ServicePageScreen(
     onCertCompanyMode: (Boolean) -> Unit = {},
     onCertFormChange: (CertFormUi) -> Unit = {},
     onSubmitCert: () -> Unit = {},
-    actionBusy: Boolean = false
+    actionBusy: Boolean = false,
+    // ---- v1.4.12 订单 / 交易记录分类 ----
+    orderFilter: String? = null,
+    onOrderFilter: (String?) -> Unit = {},
+    txnFilter: String? = null,
+    onTxnFilter: (String?) -> Unit = {},
+    // ---- v1.4.12 安全中心可编辑项 ----
+    onEditSecurity: (String) -> Unit = {}
 ) {
     val menu = ServicePanels.entries.firstOrNull { it.panel == panel }
     val pageTitle = menu?.title
@@ -231,9 +242,29 @@ fun ServicePageScreen(
                             modifier = Modifier.fillMaxSize()
                         )
                     }
+                    // v1.4.12：订单记录 / 交易记录各自带分类筛选的独立列表
+                    panel == ServicePanel.ORDERS -> OrdersBody(
+                        data = data,
+                        filter = orderFilter,
+                        onFilter = onOrderFilter,
+                        onOpenOrder = onOpenOrder,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    panel == ServicePanel.TRANSACTIONS -> TransactionsBody(
+                        data = data,
+                        filter = txnFilter,
+                        onFilter = onTxnFilter,
+                        onOpenOrder = onOpenOrder,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    // v1.4.12：安全中心区分可编辑项与只读项
+                    panel == ServicePanel.SECURITY -> SecurityBody(
+                        data = data,
+                        onEdit = onEditSecurity,
+                        modifier = Modifier.fillMaxSize()
+                    )
                     else -> {
-                        val empty = data.hosts.isEmpty() && data.orders.isEmpty() && data.txns.isEmpty() &&
-                            data.security.isEmpty()
+                        val empty = data.hosts.isEmpty()
                         if (empty) {
                             EmptyHint(
                                 icon = AppIcons.EmptyBox,
@@ -241,7 +272,10 @@ fun ServicePageScreen(
                                 modifier = Modifier.align(Alignment.Center)
                             )
                         } else {
+                            val listState = rememberLazyListState()
+                            ScrollGlassEffect(listState)
                             LazyColumn(
+                                state = listState,
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(14.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -251,35 +285,6 @@ fun ServicePageScreen(
                                         HostLineRow(host)
                                     }
                                 }
-                                items(data.orders, key = { "order-${it.id}" }) { order ->
-                                    Box(Modifier.clickable { onOpenOrder(order.id) }) {
-                                        OrderLineRow(order, withChevron = true)
-                                    }
-                                }
-                                items(data.txns, key = { "txn-${it.number}-${it.createTime}" }) { txn ->
-                                    // 交易记录绑定关联订单：有 order_id 即可点击进入订单详情（v1.4.1）
-                                    Box(
-                                        Modifier.clickable(
-                                            enabled = txn.orderId.isNotBlank()
-                                        ) { onOpenOrder(txn.orderId) }
-                                    ) {
-                                        TxnLineRow(txn)
-                                    }
-                                }
-                                if (data.security.isNotEmpty()) {
-                                    item {
-                                        GlassCard(modifier = Modifier.fillMaxWidth()) {
-                                            Column(
-                                                Modifier.padding(14.dp),
-                                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                                            ) {
-                                                data.security.forEach { (label, value) ->
-                                                    KeyValueRow(label, value)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
@@ -287,6 +292,139 @@ fun ServicePageScreen(
             }
         }
     }
+}
+
+/**
+ * 订单记录（v1.4.12 分类化）：全部 / 各订单类型 / 待支付，
+ * 分类胶囊与工单中心统一材质，列表滚动时顶栏磨砂渐隐。
+ */
+@Composable
+private fun OrdersBody(
+    data: ServicePanelData,
+    filter: String?,
+    onFilter: (String?) -> Unit,
+    onOpenOrder: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val orders = data.orders
+    val types = orders.map { it.type }.filter { it.isNotBlank() }.distinct()
+    val hasUnpaid = orders.any {
+        it.status.equals("Unpaid", true) || it.status.equals("Pending", true)
+    }
+    val options = buildList {
+        add(null to "全部 ${orders.size}")
+        types.forEach { t -> add("type:$t" to orderTypeText(t)) }
+        if (hasUnpaid) add("status:unpaid" to "待支付")
+    }
+    val shown = when {
+        filter == null -> orders
+        filter == "status:unpaid" -> orders.filter {
+            it.status.equals("Unpaid", true) || it.status.equals("Pending", true)
+        }
+        filter.startsWith("type:") -> orders.filter { it.type == filter.removePrefix("type:") }
+        else -> orders
+    }
+    val listState = rememberLazyListState()
+    ScrollGlassEffect(listState)
+    Column(modifier = modifier) {
+        FilterChipRow(
+            options = options,
+            selected = filter,
+            onSelect = onFilter,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+        )
+        if (shown.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyHint(
+                    icon = AppIcons.Order,
+                    text = if (orders.isEmpty()) "暂无订单记录" else "该分类下暂无订单"
+                )
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(shown, key = { "order-${it.id}" }) { order ->
+                    Box(Modifier.clickable { onOpenOrder(order.id) }) {
+                        OrderLineRow(order, withChevron = true)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 交易记录（v1.4.12 分类化）：全部 / 各支付渠道 / 各流水类型。
+ */
+@Composable
+private fun TransactionsBody(
+    data: ServicePanelData,
+    filter: String?,
+    onFilter: (String?) -> Unit,
+    onOpenOrder: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val txns = data.txns
+    val gateways = txns.map { it.gateway }.filter { it.isNotBlank() }.distinct()
+    val types = txns.map { it.type }.filter { it.isNotBlank() }.distinct()
+    val options = buildList {
+        add(null to "全部 ${txns.size}")
+        gateways.forEach { g -> add("gw:$g" to g) }
+        types.forEach { t -> add("type:$t" to txnTypeText(t)) }
+    }
+    val shown = when {
+        filter == null -> txns
+        filter.startsWith("gw:") -> txns.filter { it.gateway == filter.removePrefix("gw:") }
+        filter.startsWith("type:") -> txns.filter { it.type == filter.removePrefix("type:") }
+        else -> txns
+    }
+    val listState = rememberLazyListState()
+    ScrollGlassEffect(listState)
+    Column(modifier = modifier) {
+        FilterChipRow(
+            options = options,
+            selected = filter,
+            onSelect = onFilter,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+        )
+        if (shown.isEmpty()) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyHint(
+                    icon = AppIcons.Tag,
+                    text = if (txns.isEmpty()) "暂无交易记录" else "该分类下暂无流水"
+                )
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(shown, key = { "txn-${it.number}-${it.createTime}" }) { txn ->
+                    Box(
+                        Modifier.clickable(enabled = txn.orderId.isNotBlank()) { onOpenOrder(txn.orderId) }
+                    ) {
+                        TxnLineRow(txn)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 交易流水类型中文映射（站点返回什么就兜底显示什么，不猜测）。 */
+private fun txnTypeText(type: String): String = when (type.lowercase()) {
+    "recharge", "recharge_order", "rechargeorder" -> "充值"
+    "consume", "order", "pay", "purchase" -> "消费"
+    "refund" -> "退款"
+    "withdraw", "cash" -> "提现"
+    "credit", "credit_add" -> "加款"
+    else -> type.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
 }
 
 /** 应用设置子页面：主题配色独立整页 —— 深浅模式 + 六套高级主题色板（v1.4.0）。 */
@@ -831,7 +969,10 @@ fun OrderDetailPage(
                     }
                     else -> {
                         val d = state.detail
+                        val glassListState = rememberLazyListState()
+                        ScrollGlassEffect(glassListState)
                         LazyColumn(
+                            state = glassListState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(14.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)

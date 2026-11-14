@@ -39,6 +39,7 @@ import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.data.repository.AuthBodies
+import com.vps.qing.core.ui.UiT
 
 /** 找回密码：图形验证码改为提交时弹窗。 */
 @Composable
@@ -79,7 +80,7 @@ fun ForgotPasswordScreen(onDone: () -> Unit, onBack: () -> Unit) {
                 GlassSurface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = CartoonKit.CardShape,
-                    alpha = 0.84f
+                    alpha = UiT.glassCard
                 ) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(

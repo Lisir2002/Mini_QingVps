@@ -193,6 +193,28 @@ interface QingVpsApiService {
     @POST("logout")
     suspend fun logout(): ApiEnvelope
 
+    // ---- v1.4.12：安全中心可编辑项（协议取自站点 api/account.js + js/account.js 实测）----
+
+    /** 修改登录密码：body{old_password,new_password,repassword}。成功后站点要求重新登录。 */
+    @PUT("account/password")
+    suspend fun updateAccountPassword(@Body body: JsonObject): ApiEnvelope
+
+    /** 验证原手机：body{code}。 */
+    @PUT("account/phone/old")
+    suspend fun verifyAccountOldPhone(@Body body: JsonObject): ApiEnvelope
+
+    /** 修改 / 绑定手机：body{phone_code,phone,code}。 */
+    @PUT("account/phone")
+    suspend fun updateAccountPhone(@Body body: JsonObject): ApiEnvelope
+
+    /** 验证原邮箱：body{code}。 */
+    @PUT("account/email/old")
+    suspend fun verifyAccountOldEmail(@Body body: JsonObject): ApiEnvelope
+
+    /** 修改 / 绑定邮箱：body{code,email}。 */
+    @PUT("account/email")
+    suspend fun updateAccountEmail(@Body body: JsonObject): ApiEnvelope
+
     // ---- 个人中心 ----
     @GET("account")
     suspend fun account(): ApiEnvelope

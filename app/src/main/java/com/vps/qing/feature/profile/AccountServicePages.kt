@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -49,6 +50,8 @@ import com.vps.qing.core.ui.CartoonButton
 import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.EmptyHint
+import com.vps.qing.core.ui.FilterChipRow
+import com.vps.qing.core.ui.ScrollGlassEffect
 import com.vps.qing.core.ui.GlassCard
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
@@ -154,32 +157,8 @@ private fun ChipGroup(
     selected: String?,
     onSelect: (String?) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        options.forEach { (id, label) ->
-            val active = selected == id
-            Box(
-                Modifier
-                    .clip(CartoonKit.PillShape)
-                    .background(if (active) CartoonColors.Brand else CartoonColors.White.copy(alpha = 0.7f))
-                    .clickable { onSelect(id) }
-                    .padding(horizontal = 14.dp, vertical = 7.dp)
-            ) {
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (active) Color.White else CartoonColors.Ink
-                )
-            }
-        }
-        // v1.4.11：尾部留白，滚动到最右时最后一个胶囊不贴边被裁
-        Spacer(Modifier.width(6.dp))
-    }
+    // v1.4.12：工单 / 订单 / 交易统一分类胶囊材质与滚动规范
+    FilterChipRow(options = options, selected = selected, onSelect = onSelect)
 }
 
 // ---------------------------------------------------------------- 工单列表
@@ -199,7 +178,10 @@ fun TicketsListBody(
     val shown = if (filterStatusId == null) data.tickets
     else data.tickets.filter { it.statusId == filterStatusId }
 
+    val glassListState = rememberLazyListState()
+    ScrollGlassEffect(glassListState)
     LazyColumn(
+        state = glassListState,
         modifier = modifier,
         contentPadding = PaddingValues(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -301,6 +283,8 @@ private fun TicketStatisticBar(statistic: TicketStatistic, statuses: List<Ticket
                         )
                     }
                 }
+                // v1.4.12：横向滚动到最右时留白，最后一个统计格不贴边被裁
+                Spacer(Modifier.width(6.dp))
             }
         }
     }
@@ -719,20 +703,24 @@ fun SubAccountsListBody(
 ) {
     var pendingDelete by remember { mutableStateOf<String?>(null) }
 
-    LazyColumn(
-        modifier = modifier,
-        contentPadding = PaddingValues(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        if (data.subAccounts.isEmpty()) {
-            item {
-                EmptyHint(
-                    icon = AppIcons.Users,
-                    text = "还没有子账户，点右上角 + 创建一个",
-                    action = { CartoonButton(text = "新建子账户", onClick = onCreateSubAccount, icon = AppIcons.Plus) }
-                )
-            }
-        } else {
+    if (data.subAccounts.isEmpty()) {
+        // v1.4.12：空态整页垂直水平居中（此前作为 LazyColumn 首项，永远贴在顶部）
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            EmptyHint(
+                icon = AppIcons.Users,
+                text = "还没有子账户，点右上角 + 创建一个",
+                action = { CartoonButton(text = "新建子账户", onClick = onCreateSubAccount, icon = AppIcons.Plus) }
+            )
+        }
+    } else {
+        val listState = rememberLazyListState()
+        ScrollGlassEffect(listState)
+        LazyColumn(
+            state = listState,
+            modifier = modifier,
+            contentPadding = PaddingValues(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             items(data.subAccounts, key = { "sub-${it.id}" }) { sub ->
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
