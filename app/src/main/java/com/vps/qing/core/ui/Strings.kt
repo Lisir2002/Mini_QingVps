@@ -3,7 +3,7 @@ package com.vps.qing.core.ui
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.4.14"
+    const val APP_VERSION = "1.4.15"
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"
@@ -30,6 +30,13 @@ object Strings {
     const val BACK = "返回"
     const val REFRESH = "刷新"
     const val NOT_LOGGED_IN = "登录已失效，请重新登录"
+
+    // ---- 下拉刷新 / 等待反馈（v1.4.15 全局统一）----
+    const val PULL_TO_REFRESH = "下拉刷新"
+    const val RELEASE_TO_REFRESH = "松开立即刷新"
+    const val REFRESHING = "正在获取最新数据…"
+    const val REFRESH_DONE = "已更新"
+    const val LOADING_DATA = "正在从站点获取最新数据…"
 
     // ---- 底栏 Tab ----
     const val TAB_DASHBOARD = "首页"

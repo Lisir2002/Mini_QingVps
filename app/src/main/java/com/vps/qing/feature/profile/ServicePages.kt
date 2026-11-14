@@ -28,10 +28,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Slider
@@ -62,12 +60,18 @@ import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.EmptyHint
 import com.vps.qing.core.ui.GlassCard
+import com.vps.qing.core.ui.GlassLoadingBar
+import com.vps.qing.core.ui.GlassPullRefreshBox
+import com.vps.qing.core.ui.GlassRefreshChip
 import com.vps.qing.core.ui.GlassTopBar
+import com.vps.qing.core.ui.LoadingSkeleton
 import com.vps.qing.core.ui.SectionTitle
 import com.vps.qing.core.ui.ScrollGlassEffect
 import com.vps.qing.core.ui.FilterChipRow
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.UiT
+import com.vps.qing.core.ui.glassField
+import com.vps.qing.core.ui.glassFieldColors
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.theme.ThemePalettes
 import com.vps.qing.data.repository.CertPlugin
@@ -189,25 +193,28 @@ fun ServicePageScreen(
                         )
                         Spacer(Modifier.width(6.dp))
                     }
-                    CartoonIconChip(
-                        icon = AppIcons.Refresh,
+                    // v1.4.15：刷新中持续旋转并禁用重复点击
+                    GlassRefreshChip(
+                        refreshing = data?.loading == true,
                         onClick = onRefresh,
                         tint = CartoonColors.Mint,
                         bg = CartoonColors.MintSoft
                     )
                 }
             )
-            Box(Modifier.fillMaxSize()) {
+            // v1.4.15：服务面板列表统一支持磨砂玻璃下拉刷新
+            GlassPullRefreshBox(
+                isRefreshing = data?.loading == true && data?.loaded == true,
+                onRefresh = onRefresh,
+                modifier = Modifier.fillMaxSize()
+            ) {
                 when {
-                    data == null || data.loading -> {
-                        Column(
-                            modifier = Modifier.align(Alignment.Center),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            LinearProgressIndicator(color = CartoonColors.Brand, modifier = Modifier.width(120.dp))
-                            Spacer(Modifier.height(12.dp))
-                            Text("正在从站点读取…", style = MaterialTheme.typography.bodySmall, color = CartoonColors.InkSub)
-                        }
+                    data == null || (data.loading && !data.loaded) -> {
+                        // 首屏取数：磨砂骨架等待态，不再是干转圈
+                        LoadingSkeleton(
+                            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                            rows = 4
+                        )
                     }
                     data.error != null -> {
                         Column(
@@ -764,9 +771,10 @@ private fun CertBody(
                             style = MaterialTheme.typography.bodySmall,
                             color = CartoonColors.InkSub
                         )
-                        LinearProgressIndicator(
-                            color = CartoonColors.Mint,
-                            modifier = Modifier.fillMaxWidth().height(4.dp)
+                        // v1.4.15：核验轮询等待态与全局统一为磨砂玻璃提示条
+                        GlassLoadingBar(
+                            modifier = Modifier.fillMaxWidth(),
+                            message = "核验状态同步中…"
                         )
                         Text(
                             "如站点要求人脸核验，请点击下方按钮在官方认证页完成；完成后回到本页将自动显示最新状态",
@@ -1043,13 +1051,11 @@ private fun CertTextField(
         singleLine = true,
         enabled = enabled,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = CartoonColors.Brand,
-            unfocusedBorderColor = CartoonColors.InkSub,
-            focusedLabelColor = CartoonColors.Brand,
-            cursorColor = CartoonColors.Brand
-        ),
-        modifier = modifier.fillMaxWidth()
+        // v1.4.15：实名认证表单输入框统一磨砂玻璃态
+        colors = glassFieldColors(),
+        modifier = modifier
+            .fillMaxWidth()
+            .glassField(CartoonKit.ItemShape)
     )
 }
 
@@ -1082,25 +1088,26 @@ fun OrderDetailPage(
                 navIcon = AppIcons.Back,
                 onNavClick = onBack,
                 actions = {
-                    CartoonIconChip(
-                        icon = AppIcons.Refresh,
+                    GlassRefreshChip(
+                        refreshing = state.loading,
                         onClick = onRefresh,
                         tint = CartoonColors.Mint,
                         bg = CartoonColors.MintSoft
                     )
                 }
             )
-            Box(Modifier.fillMaxSize()) {
+            // v1.4.15：订单详情同样支持磨砂下拉刷新与骨架等待态
+            GlassPullRefreshBox(
+                isRefreshing = state.loading && state.detail != null,
+                onRefresh = onRefresh,
+                modifier = Modifier.fillMaxSize()
+            ) {
                 when {
-                    state.loading -> {
-                        Column(
-                            modifier = Modifier.align(Alignment.Center),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            LinearProgressIndicator(color = CartoonColors.Brand, modifier = Modifier.width(120.dp))
-                            Spacer(Modifier.height(12.dp))
-                            Text("正在从站点读取订单…", style = MaterialTheme.typography.bodySmall, color = CartoonColors.InkSub)
-                        }
+                    state.loading && state.detail == null -> {
+                        LoadingSkeleton(
+                            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                            rows = 3
+                        )
                     }
                     state.error != null -> {
                         Column(

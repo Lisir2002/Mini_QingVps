@@ -90,7 +90,14 @@ fun MainScreen(
      * 由 ProfileScreen 消费后回调置空；发起时切到「我的」Tab。
      */
     var profileNavRequest by rememberSaveable { mutableStateOf<String?>(null) }
+    /**
+     * v1.4.15：记录「从哪个 Tab 发起个人中心子页」。首页快捷入口 / 已购服务卡等
+     * 会把 selected 切到「我的」；逐级返回到栈空时必须切回来源 Tab，而不是停在
+     * 个人中心主页，才能满足「从哪个页面进入就退回哪个页面」。
+     */
+    var profileNavOrigin by rememberSaveable { mutableStateOf<Int?>(null) }
     val openProfileNav: (String) -> Unit = { token ->
+        profileNavOrigin = selected
         profileNavRequest = token
         selected = 3
     }
@@ -99,6 +106,15 @@ fun MainScreen(
     /** 公告原生内容页直达（v1.4.10）：首页公告卡带来的公告 id，消费后置空。 */
     var announcementFocus by rememberSaveable { mutableStateOf<String?>(null) }
     BackHandler(enabled = showAnnouncements) { showAnnouncements = false }
+
+    // v1.4.15：外部 Tab 直达的个人中心子页，逐级返回到栈空时回到来源 Tab
+    LaunchedEffect(profileSubOpen) {
+        if (!profileSubOpen && profileNavOrigin != null && profileNavOrigin != 3) {
+            selected = profileNavOrigin!!
+            profileNavOrigin = null
+        }
+    }
+
     val shopVm: ShopViewModel = viewModel(
         factory = simpleViewModelFactory { ShopViewModel(AppContainer.catalogRepository) }
     )

@@ -19,7 +19,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,6 +47,8 @@ import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.UiT
+import com.vps.qing.core.ui.glassField
+import com.vps.qing.core.ui.glassFieldColors
 
 /** 登录页：只保留「邮箱 + 密码」，纯白卡通 + 磨砂玻璃。 */
 @Composable
@@ -212,16 +213,12 @@ fun AuthTextField(
         leadingIcon = { Icon(icon, null, tint = CartoonColors.Brand, modifier = Modifier.size(20.dp)) },
         singleLine = true,
         shape = CartoonKit.PillShape,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            // v1.4.15：登录/注册/找回密码输入框统一磨砂玻璃态，不再是一块不透明白底
+            .glassField(CartoonKit.PillShape),
         visualTransformation = if (password) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = CartoonColors.Brand,
-            unfocusedBorderColor = CartoonColors.Line,
-            focusedContainerColor = CartoonColors.White,
-            unfocusedContainerColor = CartoonColors.White.copy(alpha = 0.8f),
-            focusedLabelColor = CartoonColors.Brand,
-            cursorColor = CartoonColors.Brand
-        )
+        colors = glassFieldColors()
     )
 }

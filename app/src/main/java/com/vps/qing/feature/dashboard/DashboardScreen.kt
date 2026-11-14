@@ -17,11 +17,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import com.vps.qing.core.ui.GlassPullRefreshBox
+import com.vps.qing.core.ui.GlassRefreshChip
+import com.vps.qing.core.ui.LoadingSkeleton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -114,11 +118,25 @@ fun DashboardScreen(
             val density = LocalDensity.current
             val headerSpace = with(density) { headerPx.toDp() } + 4.dp
 
-            PullToRefreshBox(
+            GlassPullRefreshBox(
                 isRefreshing = state.loading,
                 onRefresh = { vm.load(force = true) },
                 modifier = Modifier.fillMaxSize()
             ) {
+                // v1.4.15：首屏取数用磨砂骨架等待态；后续刷新保留列表 + 下拉指示器，
+                // 不再出现「空白刷屏 / 干转圈」，等待本身也有与全局一致的玻璃质感。
+                val firstLoading = state.loading &&
+                    state.hosts.isEmpty() && state.news.isEmpty() && state.account == null
+                if (firstLoading) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(top = headerSpace)
+                    ) {
+                        LoadingSkeleton(modifier = Modifier.fillMaxWidth(), rows = 4)
+                    }
+                } else {
                 // v1.4.11：滚动时玻璃顶/底栏磨砂感消失只留透明度
                 val listState = rememberLazyListState()
                 ScrollGlassEffect(listState)
@@ -228,7 +246,8 @@ fun DashboardScreen(
                             )
                         }
                     }
-                }
+                } // LazyColumn
+                } // firstLoading else 分支
             }
 
             // 顶栏悬浮在列表之上（v1.4.10）：磨砂玻璃实时透出下方滚动内容
@@ -241,11 +260,10 @@ fun DashboardScreen(
                     title = Strings.DASHBOARD_TITLE,
                     subtitle = Strings.WELCOME_SUB,
                     actions = {
-                        CartoonIconChip(
-                            icon = AppIcons.Refresh,
-                            onClick = { vm.load(force = true) },
-                            tint = CartoonColors.Mint,
-                            bg = CartoonColors.MintSoft
+                        // v1.4.15：刷新中持续旋转并禁用重复点击，给「点击刷新」明确回应
+                        GlassRefreshChip(
+                            refreshing = state.loading,
+                            onClick = { vm.load(force = true) }
                         )
                     }
                 )

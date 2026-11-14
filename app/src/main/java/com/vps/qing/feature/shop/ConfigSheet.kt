@@ -45,6 +45,7 @@ import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassSurface
+import com.vps.qing.core.ui.LoadingSkeleton
 import com.vps.qing.core.ui.QuantityStepper
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.data.repository.CartCalculator
@@ -99,16 +100,12 @@ fun ConfigSheet(
             ) {
                 when {
                     sheet.loading -> {
-                        Box(
-                            Modifier.fillMaxWidth().height(140.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator(color = CartoonColors.Brand)
-                                Spacer(Modifier.height(10.dp))
-                                Text(Strings.CONFIG_LOADING, style = MaterialTheme.typography.bodySmall, color = CartoonColors.InkSub)
-                            }
-                        }
+                        // v1.4.15：配置取数等待态统一为磨砂骨架，不再是居中的干转圈
+                        LoadingSkeleton(
+                            modifier = Modifier.fillMaxWidth(),
+                            rows = 3,
+                            message = Strings.CONFIG_LOADING
+                        )
                     }
                     sheet.config?.requiresWebOrder == true -> {
                         WebOrderFallback(sheet.product.id, onOpenWeb)
@@ -447,7 +444,8 @@ private fun PriceSummary(sheet: ConfigSheetState) {
                             Text(
                                 CartCalculator.money(quote.basePrice * sheet.qty),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = CartoonColors.InkSub
+                                color = CartoonColors.InkSub,
+                                textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
                             )
                         }
                         Text(
@@ -457,11 +455,31 @@ private fun PriceSummary(sheet: ConfigSheetState) {
                             color = CartoonColors.Coral
                         )
                         Text(
-                            "${sheet.qty} 份 · ${quote.billingCycle.ifBlank { "站点实时算价" }}",
+                            // v1.4.15：站点标价兜底时如实标注来源，不冒充「实时算价」
+                            if (quote.isEstimated) "站点标价 · 以结算价为准"
+                            else "${sheet.qty} 份 · ${quote.billingCycle.ifBlank { "站点实时算价" }}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = CartoonColors.InkSub
+                            color = if (quote.isEstimated) CartoonColors.Brand else CartoonColors.InkSub
                         )
                     }
+                }
+            }
+
+            // v1.4.15：开通费 / 续费单价独立于 preview 明细展示（站点实测这些字段与
+            // preview 并非必然同时存在），确保「续费单价」始终如实可见。
+            if (quote != null && quote.setupFee > 0) {
+                KeyValueLine("开通费", CartCalculator.money(quote.setupFee))
+            }
+            if (quote != null && quote.renewPrice > 0) {
+                KeyValueLine(
+                    if (quote.renewDiffers) "续费单价（不同于首期）" else "续费单价",
+                    CartCalculator.money(quote.renewPrice)
+                )
+                if (quote.renewDiscounted) {
+                    KeyValueLine(
+                        "续费原价（已优惠）",
+                        CartCalculator.money(quote.renewListPrice)
+                    )
                 }
             }
 
@@ -499,15 +517,6 @@ private fun PriceSummary(sheet: ConfigSheetState) {
                             }
                         }
                     }
-                }
-                if (quote.setupFee > 0) {
-                    KeyValueLine("开通费", CartCalculator.money(quote.setupFee))
-                }
-                if (quote.renewPrice > 0) {
-                    KeyValueLine(
-                        if (quote.renewDiffers) "续费单价（不同于首期）" else "续费单价",
-                        CartCalculator.money(quote.renewPrice)
-                    )
                 }
             }
             sheet.quoteError?.let {
@@ -752,7 +761,10 @@ private fun GlassDropdown(
     var expanded by remember { mutableStateOf(false) }
     val selectedLabel = items.firstOrNull { it.first == selectedId }?.second
         ?: items.firstOrNull()?.second.orEmpty()
-    val height by animateDpAsState(targetValue = if (expanded) 200.dp else 0.dp)
+    // v1.4.15：展开高度按实际条目数自适应（每项约 42dp + 上下 12dp 内边距），
+    // 上限 240dp 再滚动。此前写死 200dp，操作系统分组只有 4 项时底部会有大片空白「空行」。
+    val expandedHeight = ((items.size * 42 + 12).coerceIn(0, 240)).dp
+    val height by animateDpAsState(targetValue = if (expanded) expandedHeight else 0.dp)
 
     Column {
         GlassSurface(

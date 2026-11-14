@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,7 +36,10 @@ import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.EmptyHint
 import com.vps.qing.core.ui.GlassCard
+import com.vps.qing.core.ui.GlassPullRefreshBox
+import com.vps.qing.core.ui.GlassRefreshChip
 import com.vps.qing.core.ui.GlassTopBar
+import com.vps.qing.core.ui.LoadingSkeleton
 import com.vps.qing.core.ui.SectionTitle
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.theme.CartoonColors
@@ -66,25 +68,26 @@ fun PurchasedProductPage(
                 navIcon = AppIcons.Back,
                 onNavClick = onBack,
                 actions = {
-                    CartoonIconChip(
-                        icon = AppIcons.Refresh,
+                    GlassRefreshChip(
+                        refreshing = state.loading,
                         onClick = onRefresh,
                         tint = CartoonColors.Mint,
                         bg = CartoonColors.MintSoft
                     )
                 }
             )
-            Box(Modifier.fillMaxSize()) {
+            // v1.4.15：已购产品详情支持磨砂下拉刷新与骨架等待态
+            GlassPullRefreshBox(
+                isRefreshing = state.loading && state.detail != null,
+                onRefresh = onRefresh,
+                modifier = Modifier.fillMaxSize()
+            ) {
                 when {
-                    state.loading -> {
-                        Column(
-                            modifier = Modifier.align(Alignment.Center),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            LinearProgressIndicator(color = CartoonColors.Brand, modifier = Modifier.width(120.dp))
-                            Spacer(Modifier.height(12.dp))
-                            Text("正在读取已购产品信息…", style = MaterialTheme.typography.bodySmall, color = CartoonColors.InkSub)
-                        }
+                    state.loading && state.detail == null -> {
+                        LoadingSkeleton(
+                            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                            rows = 3
+                        )
                     }
                     state.error != null -> {
                         Column(

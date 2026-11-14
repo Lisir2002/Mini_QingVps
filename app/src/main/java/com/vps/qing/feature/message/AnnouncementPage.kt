@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -41,11 +40,13 @@ import com.vps.qing.core.ui.AppIcons
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonButton
-import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.EmptyHint
 import com.vps.qing.core.ui.GlassCard
+import com.vps.qing.core.ui.GlassPullRefreshBox
+import com.vps.qing.core.ui.GlassRefreshChip
 import com.vps.qing.core.ui.GlassTopBar
+import com.vps.qing.core.ui.LoadingSkeleton
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.data.repository.CatalogRepository
 import com.vps.qing.data.repository.NewsDetail
@@ -130,49 +131,56 @@ fun AnnouncementPage(
                 navIcon = AppIcons.Back,
                 onNavClick = if (detailId != null) ({ detailId = null }) else onBack,
                 actions = {
-                    if (!state.loading && !state.refreshing) {
-                    CartoonIconChip(
-                        icon = AppIcons.Refresh,
-                            onClick = { vm.load(force = true) },
-                            tint = CartoonColors.Mint,
-                            bg = CartoonColors.MintSoft
-                        )
-                    }
-                }
-            )
-            val newsListState = rememberLazyListState()
-            ScrollGlassEffect(newsListState)
-            when {
-                state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = CartoonColors.Brand)
-                }
-                state.error != null && state.news.isEmpty() -> Box(
-                    Modifier.fillMaxSize(), contentAlignment = Alignment.Center
-                ) {
-                    EmptyHint(
-                        icon = AppIcons.EmptyBox,
-                        text = state.error ?: "公告加载失败",
-                        action = {
-                            CartoonButton(
-                                text = Strings.RETRY,
-                                onClick = { vm.load(force = true) },
-                                icon = AppIcons.Refresh
-                            )
-                        }
+                    // v1.4.15：刷新中持续旋转并禁用重复点击
+                    GlassRefreshChip(
+                        refreshing = state.loading || state.refreshing,
+                        onClick = { vm.load(force = true) },
+                        tint = CartoonColors.Mint,
+                        bg = CartoonColors.MintSoft
                     )
                 }
-                state.news.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    EmptyHint(icon = AppIcons.EmptyBox, text = Strings.NO_NEWS)
+            )
+            // v1.4.15：公告列表统一磨砂玻璃下拉刷新反馈
+            GlassPullRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = { vm.load(force = true) },
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            ) {
+                val newsListState = rememberLazyListState()
+                ScrollGlassEffect(newsListState)
+                when {
+                    state.loading -> LoadingSkeleton(
+                        modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                        rows = 4
+                    )
+                    state.error != null && state.news.isEmpty() -> Box(
+                        Modifier.fillMaxSize(), contentAlignment = Alignment.Center
+                    ) {
+                        EmptyHint(
+                            icon = AppIcons.EmptyBox,
+                            text = state.error ?: "公告加载失败",
+                            action = {
+                                CartoonButton(
+                                    text = Strings.RETRY,
+                                    onClick = { vm.load(force = true) },
+                                    icon = AppIcons.Refresh
+                                )
+                            }
+                        )
+                    }
+                    state.news.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        EmptyHint(icon = AppIcons.EmptyBox, text = Strings.NO_NEWS)
+                    }
+                    else -> LazyColumn(
+                        state = newsListState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(state.news) { news -> AnnouncementCard(news) { detailId = news.id } }
+                    }
                 }
-                else -> LazyColumn(
-                    state = newsListState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(state.news) { news -> AnnouncementCard(news) { detailId = news.id } }
-                }
-            }
+            } // GlassPullRefreshBox
         }
     }
 
@@ -246,20 +254,26 @@ fun AnnouncementDetailPage(
                 navIcon = AppIcons.Back,
                 onNavClick = onBack,
                 actions = {
-                    if (!state.loading) {
-                        CartoonIconChip(
-                            icon = AppIcons.Refresh,
-                            onClick = { vm.load(force = true) },
-                            tint = CartoonColors.Mint,
-                            bg = CartoonColors.MintSoft
-                        )
-                    }
+                    // v1.4.15：刷新中旋转 + 禁用重复点击
+                    GlassRefreshChip(
+                        refreshing = state.loading,
+                        onClick = { vm.load(force = true) },
+                        tint = CartoonColors.Mint,
+                        bg = CartoonColors.MintSoft
+                    )
                 }
             )
-            when {
-                state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = CartoonColors.Brand)
-                }
+            // v1.4.15：公告详情也支持磨砂下拉刷新与骨架等待态
+            GlassPullRefreshBox(
+                isRefreshing = state.loading && detail != null,
+                onRefresh = { vm.load(force = true) },
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            ) {
+                when {
+                state.loading && detail == null -> LoadingSkeleton(
+                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                    rows = 3
+                )
                 detail == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     EmptyHint(
                         icon = AppIcons.EmptyBox,
@@ -335,7 +349,8 @@ fun AnnouncementDetailPage(
                         }
                     }
                 }
-            }
+            } // when
+            } // GlassPullRefreshBox
         }
     }
 }

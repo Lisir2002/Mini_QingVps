@@ -44,6 +44,8 @@ import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.Strings
+import com.vps.qing.core.ui.glassField
+import com.vps.qing.core.ui.glassFieldColors
 import com.vps.qing.data.repository.CaptchaChallenge
 
 /** 提交时弹出的图形验证码对话框（磨砂玻璃）。验证通过后自动继续刚才的动作。 */
@@ -135,8 +137,12 @@ fun CaptchaDialog(
                         label = { Text(Strings.CAPTCHA_INPUT) },
                         singleLine = true,
                         enabled = !loading,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.weight(1f),
+                        shape = CartoonKit.ItemShape,
+                        modifier = Modifier
+                            .weight(1f)
+                            // v1.4.15：验证码输入框同样统一磨砂玻璃态
+                            .glassField(CartoonKit.ItemShape),
+                        colors = glassFieldColors(),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Ascii,
                             imeAction = ImeAction.Done

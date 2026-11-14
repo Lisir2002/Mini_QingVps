@@ -164,11 +164,29 @@ data class PriceQuote(
     val unitPrice: Double = 0.0,
     val basePrice: Double = 0.0,
     val setupFee: Double = 0.0,
+    /**
+     * v1.4.15「续费单价」：站点算价响应实测存在完整续费价格族——
+     *  - renew_price / base_renew_price：续费原价（如 13.33）
+     *  - discount_renew_price：用户等级折扣后的**实际续费单价**（如 10.00）
+     *  - renew_price_total：含数量的续费总额
+     * 真正该展示给用户的是折扣后实付的 [renewPrice]（discount_renew_price 优先），
+     * 原价留作 [renewListPrice] 划线对比，避免把未折扣的原价伪装成续费价。
+     */
     val renewPrice: Double = 0.0,
+    /** 续费原价（renew_price / base_renew_price），用于与实付续费价对比。 */
+    val renewListPrice: Double = 0.0,
     val renewTotal: Double = 0.0,
     val priceTotal: Double = 0.0,
     val dueTime: Long = 0L,
-    val isNaturalMonthPrepaid: Boolean = false
+    val isNaturalMonthPrepaid: Boolean = false,
+    /**
+     * v1.4.15：mf_cloud 套餐型商品的 /product/{id}/config_option 算价接口实测返回
+     * 400「商品不存在」（需登录态 + 完整推荐配置），App 现有配置模型无法稳定拿到成交价。
+     * 算价失败时回退到 /product 列表返回的**站点实时标价**构造本对象（isEstimated=true），
+     * UI 明确标注「站点标价 · 以结算价为准」，既真实（官方实时接口）又实时（随刷新更新），
+     * 不再显示「价格待确认」这种空白态。
+     */
+    val isEstimated: Boolean = false
 ) {
     /** 应付总额（站点 price_total 优先，缺失回退 price）。 */
     val total: Double get() = if (priceTotal > 0.0) priceTotal else price
@@ -179,8 +197,12 @@ data class PriceQuote(
     /** 是否享受了折扣（成交单价低于原价）。 */
     val discounted: Boolean get() = basePrice > 0.0 && perUnit > 0.0 && perUnit < basePrice - 0.001
 
-    /** 首期与续费不一致时提示用户（常见：首月优惠、续费原价）。 */
+    /** 续费单价是否高于首期成交单价（常见：首月优惠、续费恢复原价）。基于实付续费价比较。 */
     val renewDiffers: Boolean get() = renewPrice > 0.0 && kotlin.math.abs(renewPrice - perUnit) > 0.001
+
+    /** 续费是否有等级折扣（实付续费价低于续费原价）。 */
+    val renewDiscounted: Boolean get() = renewListPrice > 0.0 && renewPrice > 0.0 &&
+        renewPrice < renewListPrice - 0.001
 }
 
 object ConfigParser {
@@ -304,6 +326,10 @@ object ConfigParser {
         val unit = data.number("discount_order_price")
             ?: data.number("base_price") ?: price
         val base = data.number("base_price") ?: unit
+        // v1.4.15 续费单价族：实付续费价优先 discount_renew_price（站点实测 10.00，
+        // 而 renew_price 是未折扣原价 13.33）；原价单独留作划线对比。
+        val renewList = data.number("renew_price") ?: data.number("base_renew_price") ?: 0.0
+        val renewReal = data.number("discount_renew_price") ?: renewList
         return PriceQuote(
             price = price,
             billingCycle = data.string("billing_cycle").orEmpty(),
@@ -314,7 +340,8 @@ object ConfigParser {
             unitPrice = unit,
             basePrice = base,
             setupFee = data.number("setup_fee") ?: 0.0,
-            renewPrice = data.number("renew_price") ?: data.number("discount_renew_price") ?: 0.0,
+            renewPrice = renewReal,
+            renewListPrice = renewList,
             renewTotal = data.number("renew_price_total") ?: 0.0,
             priceTotal = data.number("price_total") ?: 0.0,
             dueTime = data.number("due_time")?.toLong() ?: 0L,

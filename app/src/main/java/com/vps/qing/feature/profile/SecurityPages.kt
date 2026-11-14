@@ -49,6 +49,8 @@ import com.vps.qing.core.ui.ScrollGlassEffect
 import com.vps.qing.core.ui.SectionTitle
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.UiT
+import com.vps.qing.core.ui.glassField
+import com.vps.qing.core.ui.glassFieldColors
 import com.vps.qing.core.ui.theme.CartoonColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -477,11 +479,15 @@ private fun SecurityField(
         OutlinedTextField(
             value = value,
             onValueChange = onValue,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                // v1.4.15：安全中心编辑页输入框统一磨砂玻璃态
+                .glassField(CartoonKit.ItemShape),
+            colors = glassFieldColors(),
             enabled = enabled,
             placeholder = { Text(placeholder, style = MaterialTheme.typography.bodySmall, color = CartoonColors.InkSub) },
             singleLine = true,
-            shape = RoundedCornerShape(16.dp),
+            shape = CartoonKit.ItemShape,
             textStyle = MaterialTheme.typography.bodyMedium,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             visualTransformation = if (isPassword) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None

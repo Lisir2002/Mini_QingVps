@@ -23,7 +23,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -170,21 +172,11 @@ fun Modifier.glass(
 ): Modifier = this
     .softShadow(shape, elevation)
     .clip(shape)
-    .background(
-        Brush.verticalGradient(
-            listOf(
-                CartoonColors.GlassTint.copy(alpha = alpha),
-                CartoonColors.GlassTint.copy(alpha = (alpha - 0.05f).coerceAtLeast(0.16f))
-            )
-        )
-    )
-    // 顶部柔和高光：磨砂玻璃的边缘光，让「雾化」质感更明确
-    .background(
-        Brush.verticalGradient(
-            0f to Color.White.copy(alpha = 0.26f),
-            0.20f to Color.Transparent
-        )
-    )
+    // v1.4.15：改为完全均匀的单一玻璃色。此前主体做了 0.05 的上下 alpha 渐变，
+    // 又额外叠了一层「顶部 0→20% 白色 0.26 高光」，在深色/自定义背景图玻璃上
+    // 形成明显的「上半边白影」。去掉不对称高光 + 上下色差后，整张卡片磨砂一致，
+    // 轮廓改由描边勾勒，仍是半透明玻璃，背景图依旧自然透出。
+    .background(CartoonColors.GlassTint.copy(alpha = alpha))
     .then(
         if (border) Modifier.border(UiT.strokeWidth, UiT.borderColor.copy(alpha = 0.6f), shape)
         else Modifier
@@ -204,6 +196,36 @@ fun GlassSurface(
         content = content
     )
 }
+
+/**
+ * v1.4.15：所有输入框统一的磨砂玻璃底。
+ * 用在 [androidx.compose.material3.OutlinedTextField] 的 modifier 上，
+ * 与卡片 / 顶栏同一套 [glass] 材质；配合 [glassFieldColors] 把默认白底与
+ * 描边关掉，轮廓改由玻璃描边勾勒，避免「输入框一块不透明白」破坏透明画布。
+ */
+fun Modifier.glassField(shape: Shape = CartoonKit.ItemShape): Modifier =
+    this.glass(shape = shape, alpha = UiT.glassCard, elevation = UiT.shadowSm)
+
+/**
+ * v1.4.15：输入框统一配色——容器/描边全透明，让 [glassField] 的玻璃透出来；
+ * 文字、光标、标签沿用全局色板，聚焦时标签变主题色，交互反馈清晰。
+ */
+@Composable
+fun glassFieldColors(): TextFieldColors = OutlinedTextFieldDefaults.colors(
+    focusedContainerColor = Color.Transparent,
+    unfocusedContainerColor = Color.Transparent,
+    disabledContainerColor = Color.Transparent,
+    errorContainerColor = Color.Transparent,
+    focusedBorderColor = Color.Transparent,
+    unfocusedBorderColor = Color.Transparent,
+    disabledBorderColor = Color.Transparent,
+    errorBorderColor = Color.Transparent,
+    focusedTextColor = CartoonColors.Ink,
+    unfocusedTextColor = CartoonColors.Ink,
+    cursorColor = CartoonColors.Brand,
+    focusedLabelColor = CartoonColors.Brand,
+    unfocusedLabelColor = CartoonColors.InkSub
+)
 
 /**
  * 磨砂玻璃顶栏。自带标题 + 可选左侧图标 + 右侧动作槽。

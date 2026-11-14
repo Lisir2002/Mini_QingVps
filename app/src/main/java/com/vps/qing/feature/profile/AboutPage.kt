@@ -18,9 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +43,7 @@ import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonButton
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassCard
+import com.vps.qing.core.ui.GlassLoadingBar
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.ScrollGlassEffect
@@ -303,21 +302,10 @@ private fun UpdateDialog(
 
                 when {
                     checking -> {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(
-                                color = CartoonColors.Brand,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                Strings.UPDATE_CHECKING,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = CartoonColors.InkSub
-                            )
-                        }
-                        LinearProgressIndicator(
-                            color = CartoonColors.Brand,
-                            modifier = Modifier.fillMaxWidth().height(3.dp)
+                        // v1.4.15：检查更新的等待态与全局统一为磨砂玻璃提示条
+                        GlassLoadingBar(
+                            modifier = Modifier.fillMaxWidth(),
+                            message = Strings.UPDATE_CHECKING
                         )
                     }
                     release == null -> {

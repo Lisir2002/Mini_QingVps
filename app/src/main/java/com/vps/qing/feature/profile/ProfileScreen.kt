@@ -20,7 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -55,6 +54,7 @@ import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassCard
+import com.vps.qing.core.ui.GlassLoadingBar
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.SectionTitle
@@ -90,34 +90,33 @@ fun ProfileScreen(
     val themeMode by AppContainer.settings.themeMode.collectAsState()
 
     var showLogout by remember { mutableStateOf(false) }
-    /** 独立「关于」页面（v1.4.12，取代原弹窗）。 */
-    var showAboutPage by rememberSaveable { mutableStateOf(false) }
-    /** 当前打开的服务子页面；null = 个人中心主页。 */
-    var servicePage by rememberSaveable { mutableStateOf<ServicePanel?>(null) }
-    /** 应用设置子页面。 */
-    var showSettingsPage by rememberSaveable { mutableStateOf(false) }
     /**
-     * 详情页返回栈（v1.4.2）：逗号分隔的 "product:{hostId}" / "order:{orderId}"。
-     * 用栈而非两个互斥 id，是为了让「已购产品详情 ↔ 订单详情」可以互相跳转并逐级返回，
-     * 不会出现点了关联订单却被上层页面盖住、或返回时丢失上一页的问题。
+     * v1.4.15 统一页面返回栈：逗号分隔的页面 token，栈顶即当前页面，空栈 = 个人中心主页。
+     * token 规则：
+     *  - `panel:<ServicePanel.name>` 服务面板；`settings` / `about` 独立页；
+     *  - `product:<hostId>` / `order:<id>` / `ticket:<id>` / `ticketnew` / `subnew` /
+     *    `subedit:<id>` / `secedit:<target>` 详情页。
+     *
+     * 任何页面进入子页面都 push、返回都 pop，天然满足「从哪个页面进入就退回哪个页面」：
+     * 例如 安全中心(panel:SECURITY) → 实名卡 push(panel:CERTIFICATION) → 返回 pop 回安全中心，
+     * 而不再像旧版那样用 `servicePage = CERTIFICATION` **替换**当前面板，导致返回直接回主页。
+     * 服务面板 → 订单详情 → 关联产品详情 也可逐级回退，互不覆盖。
      */
-    var detailStack by rememberSaveable { mutableStateOf("") }
+    var navStack by rememberSaveable { mutableStateOf("") }
     val accentId by AppContainer.settings.accentId.collectAsState()
 
-    val currentDetail = detailStack.substringAfterLast(',').takeIf { it.isNotBlank() }
-    val pushDetail: (String) -> Unit = { token ->
-        detailStack = if (detailStack.isBlank()) token else "$detailStack,$token"
+    val topToken: String? = navStack.substringAfterLast(',').takeIf { it.isNotBlank() }
+    val pushPage: (String) -> Unit = { token ->
+        navStack = if (navStack.isBlank()) token else "$navStack,$token"
     }
-    val popDetail: () -> Unit = {
-        detailStack = detailStack.substringBeforeLast(',', "")
-    }
-    val openOrderDetail: (String) -> Unit = { pushDetail("order:$it") }
+    val popPage: () -> Unit = { navStack = navStack.substringBeforeLast(',', "") }
+    val openOrderDetail: (String) -> Unit = { pushPage("order:$it") }
     /** 打开已购产品详情：hostId 优先，缺失时按商品名在已购列表里兜底匹配。 */
     val openHostDetail: (String, String) -> Unit = { hostId, productName ->
         val target = hostId.takeIf { it.isNotBlank() }
             ?: state.panels[ServicePanel.HOSTS]?.hosts
                 ?.firstOrNull { productName.isNotBlank() && it.productName == productName }?.id
-        if (target != null) pushDetail("product:$target")
+        if (target != null) pushPage("product:$target")
         else if (hostId.isBlank()) vm.ensurePanel(ServicePanel.HOSTS)
     }
 
@@ -135,183 +134,154 @@ fun ProfileScreen(
         }
     }
 
-    // 子页面打开时：进入懒加载 + 系统返回键逐级回退（详情页 → 服务页 / 设置页 → 主页）
-    LaunchedEffect(servicePage) { servicePage?.let(vm::ensurePanel) }
+    // v1.4.15：按栈顶页面触发懒加载（服务面板 / 各类详情），回退到旧页面时不会重复加载出错
+    LaunchedEffect(topToken) {
+        val token = topToken ?: return@LaunchedEffect
+        when {
+            token.startsWith("panel:") ->
+                runCatching { ServicePanel.valueOf(token.removePrefix("panel:")) }
+                    .getOrNull()?.let(vm::ensurePanel)
+            token.startsWith("product:") -> vm.ensureProductDetail(token.removePrefix("product:"))
+            token.startsWith("order:") -> vm.ensureOrderDetail(token.removePrefix("order:"))
+            token.startsWith("ticket:") -> vm.ensureTicketDetail(token.removePrefix("ticket:"))
+            token == "ticketnew" || token == "subnew" -> vm.ensureFormMeta()
+            token.startsWith("subedit:") -> {
+                vm.ensureFormMeta()
+                vm.ensureSubAccountDetail(token.removePrefix("subedit:"))
+            }
+        }
+    }
 
-    // v1.4.6：消费首页发起的导航请求（服务面板直达 / 产品详情直达）
+    // v1.4.6 / v1.4.15：消费首页发起的导航请求（服务面板直达 / 产品详情直达）。
+    // 直达属于「从主页发起的一层导航」，重置为单 token 栈，返回即回个人中心主页。
     LaunchedEffect(navRequest) {
         if (navRequest != null) {
-            val panel = when (navRequest) {
-                "hosts" -> ServicePanel.HOSTS
-                "orders" -> ServicePanel.ORDERS
-                "finance" -> ServicePanel.TRANSACTIONS
-                "tickets" -> ServicePanel.TICKETS
-                "subaccounts" -> ServicePanel.SUB_ACCOUNTS
-                "security" -> ServicePanel.SECURITY
-                "cert" -> ServicePanel.CERTIFICATION
-                else -> null
+            val token = when (navRequest) {
+                "hosts" -> "panel:${ServicePanel.HOSTS.name}"
+                "orders" -> "panel:${ServicePanel.ORDERS.name}"
+                "finance" -> "panel:${ServicePanel.TRANSACTIONS.name}"
+                "tickets" -> "panel:${ServicePanel.TICKETS.name}"
+                "subaccounts" -> "panel:${ServicePanel.SUB_ACCOUNTS.name}"
+                "security" -> "panel:${ServicePanel.SECURITY.name}"
+                "cert" -> "panel:${ServicePanel.CERTIFICATION.name}"
+                else -> if (navRequest.startsWith("product:")) navRequest else null
             }
-            if (panel != null) servicePage = panel
-            else if (navRequest.startsWith("product:")) pushDetail(navRequest)
+            if (token != null) navStack = token
             onNavConsumed()
         }
     }
-    LaunchedEffect(currentDetail) {
-        when {
-            currentDetail == null -> Unit
-            currentDetail.startsWith("product:") ->
-                vm.ensureProductDetail(currentDetail.removePrefix("product:"))
-            currentDetail.startsWith("order:") ->
-                vm.ensureOrderDetail(currentDetail.removePrefix("order:"))
-            currentDetail.startsWith("ticket:") ->
-                vm.ensureTicketDetail(currentDetail.removePrefix("ticket:"))
-            currentDetail == "ticketnew" || currentDetail == "subnew" -> vm.ensureFormMeta()
-            currentDetail.startsWith("subedit:") -> {
-                vm.ensureFormMeta()
-                vm.ensureSubAccountDetail(currentDetail.removePrefix("subedit:"))
-            }
-        }
-    }
     // 上报主容器：任意子页面打开即隐藏底栏
-    LaunchedEffect(servicePage, showSettingsPage, showAboutPage, detailStack) {
-        onSubPageChanged(
-            servicePage != null || showSettingsPage || showAboutPage || detailStack.isNotBlank()
-        )
-    }
-    BackHandler(
-        enabled = servicePage != null || showSettingsPage || showAboutPage || detailStack.isNotBlank()
-    ) {
-        when {
-            detailStack.isNotBlank() -> popDetail()
-            showAboutPage -> showAboutPage = false
-            showSettingsPage -> showSettingsPage = false
-            else -> servicePage = null
-        }
-    }
+    LaunchedEffect(navStack) { onSubPageChanged(navStack.isNotBlank()) }
+    // 系统返回键：逐级 pop，永远回到「进入当前页面的那个页面」
+    BackHandler(enabled = navStack.isNotBlank()) { popPage() }
 
-    // 栈顶详情页优先渲染（订单详情与已购产品详情可互相跳转）
-    currentDetail?.let { token ->
+    // v1.4.15：统一按栈顶页面渲染；所有子页面 onBack 一律 popPage，
+    // 因而「从哪个页面进入就退回哪个页面」——例如安全中心 → 实名认证返回回安全中心。
+    topToken?.let { token ->
         when {
             token.startsWith("product:") -> {
                 val hostId = token.removePrefix("product:")
                 PurchasedProductPage(
                     hostId = hostId,
                     state = state.productDetails[hostId] ?: ProductDetailUi(),
-                    onBack = popDetail,
+                    onBack = popPage,
                     onRefresh = { vm.refreshProductDetail(hostId) },
                     onOpenOrder = openOrderDetail
                 )
-                return
             }
             token.startsWith("order:") -> {
                 val orderId = token.removePrefix("order:")
                 OrderDetailPage(
                     orderId = orderId,
                     state = state.orderDetails[orderId] ?: OrderDetailUi(),
-                    onBack = popDetail,
+                    onBack = popPage,
                     onRefresh = { vm.refreshOrderDetail(orderId) },
                     onOpenProduct = openHostDetail,
                     onContinuePay = onContinuePay
                 )
-                return
             }
             // v1.4.3：工单详情 / 新建工单
             token.startsWith("ticket:") -> {
                 TicketDetailPage(
                     vm = vm,
                     ticketId = token.removePrefix("ticket:"),
-                    onBack = popDetail
+                    onBack = popPage
                 )
-                return
             }
             token == "ticketnew" -> {
-                TicketCreatePage(
-                    vm = vm,
-                    onBack = popDetail,
-                    onCreated = popDetail
-                )
-                return
+                TicketCreatePage(vm = vm, onBack = popPage, onCreated = popPage)
             }
             // v1.4.3：子账户新建 / 编辑
             token == "subnew" -> {
-                SubAccountFormPage(vm = vm, editId = null, onBack = popDetail, onSaved = popDetail)
-                return
+                SubAccountFormPage(vm = vm, editId = null, onBack = popPage, onSaved = popPage)
             }
             token.startsWith("subedit:") -> {
                 SubAccountFormPage(
                     vm = vm,
                     editId = token.removePrefix("subedit:"),
-                    onBack = popDetail,
-                    onSaved = popDetail
+                    onBack = popPage,
+                    onSaved = popPage
                 )
-                return
             }
             // v1.4.12：安全中心编辑整页（密码 / 邮箱 / 手机）
             token.startsWith("secedit:") -> {
                 SecurityEditPage(
                     vm = vm,
                     target = token.removePrefix("secedit:"),
-                    onBack = popDetail
+                    onBack = popPage
                 )
-                return
+            }
+            // 服务面板（含安全中心 / 实名认证等），从栈里解析具体面板
+            token.startsWith("panel:") -> {
+                val panel = runCatching { ServicePanel.valueOf(token.removePrefix("panel:")) }
+                    .getOrNull()
+                if (panel != null) {
+                    ServicePageScreen(
+                        panel = panel,
+                        data = state.panels[panel],
+                        onBack = popPage,
+                        onRefresh = { vm.refreshPanel(panel) },
+                        onOpenOrder = openOrderDetail,
+                        onOpenProduct = { openHostDetail(it, "") },
+                        onOpenWeb = onOpenWeb,
+                        onOpenTicket = { pushPage("ticket:$it") },
+                        onCreateTicket = { pushPage("ticketnew") },
+                        onTicketFilter = vm::setTicketFilter,
+                        ticketFilterStatusId = state.ticketFilterStatusId,
+                        onOpenSubAccount = { pushPage("subedit:$it") },
+                        onCreateSubAccount = { pushPage("subnew") },
+                        onToggleSubAccount = vm::toggleSubAccountStatus,
+                        onDeleteSubAccount = vm::deleteSubAccount,
+                        certForm = state.certForm,
+                        onSelectCertPlugin = vm::selectCertPlugin,
+                        onCertCompanyMode = vm::setCertCompanyMode,
+                        onCertFormChange = { newForm -> vm.updateCertForm { newForm } },
+                        onSubmitCert = vm::submitCert,
+                        actionBusy = state.actionBusy,
+                        orderFilter = state.orderFilter,
+                        onOrderFilter = vm::setOrderFilter,
+                        txnFilter = state.txnFilter,
+                        onTxnFilter = vm::setTxnFilter,
+                        onEditSecurity = { pushPage("secedit:$it") },
+                        certInfo = state.panels[ServicePanel.CERTIFICATION]?.cert,
+                        // v1.4.15：实名卡是「从安全中心进入的一层」，push 而非替换，返回回安全中心
+                        onOpenCert = { pushPage("panel:${ServicePanel.CERTIFICATION.name}") }
+                    )
+                }
+            }
+            token == "settings" -> {
+                ThemeSettingsPage(
+                    currentMode = themeMode,
+                    currentAccentId = accentId,
+                    onSelectMode = { AppContainer.settings.setThemeMode(it) },
+                    onSelectAccent = { AppContainer.settings.setAccentId(it) },
+                    onBack = popPage
+                )
+            }
+            token == "about" -> {
+                AboutPage(onBack = popPage, onOpenWeb = onOpenWeb)
             }
         }
-    }
-
-    servicePage?.let { panel ->
-        ServicePageScreen(
-            panel = panel,
-            data = state.panels[panel],
-            onBack = { servicePage = null },
-            onRefresh = { vm.refreshPanel(panel) },
-            onOpenOrder = openOrderDetail,
-            onOpenProduct = { openHostDetail(it, "") },
-            onOpenWeb = onOpenWeb,
-            onOpenTicket = { pushDetail("ticket:$it") },
-            onCreateTicket = { pushDetail("ticketnew") },
-            onTicketFilter = vm::setTicketFilter,
-            ticketFilterStatusId = state.ticketFilterStatusId,
-            onOpenSubAccount = { pushDetail("subedit:$it") },
-            onCreateSubAccount = { pushDetail("subnew") },
-            onToggleSubAccount = vm::toggleSubAccountStatus,
-            onDeleteSubAccount = vm::deleteSubAccount,
-            // v1.4.5 实名认证提交与进度
-            certForm = state.certForm,
-            onSelectCertPlugin = vm::selectCertPlugin,
-            onCertCompanyMode = vm::setCertCompanyMode,
-            onCertFormChange = { newForm -> vm.updateCertForm { newForm } },
-            onSubmitCert = vm::submitCert,
-            actionBusy = state.actionBusy,
-            // v1.4.12 订单 / 交易记录分类
-            orderFilter = state.orderFilter,
-            onOrderFilter = vm::setOrderFilter,
-            txnFilter = state.txnFilter,
-            onTxnFilter = vm::setTxnFilter,
-            onEditSecurity = { pushDetail("secedit:$it") },
-            // v1.4.14 实名认证合入安全中心：安全中心入口直接切到认证整页
-            certInfo = state.panels[ServicePanel.CERTIFICATION]?.cert,
-            onOpenCert = { servicePage = ServicePanel.CERTIFICATION }
-        )
-        return
-    }
-
-    if (showSettingsPage) {
-        ThemeSettingsPage(
-            currentMode = themeMode,
-            currentAccentId = accentId,
-            onSelectMode = { AppContainer.settings.setThemeMode(it) },
-            onSelectAccent = { AppContainer.settings.setAccentId(it) },
-            onBack = { showSettingsPage = false }
-        )
-        return
-    }
-
-    // v1.4.14：关于独立整页（官网在 App 内打开 / 官方 QQ 群 / GitHub 软件更新）
-    if (showAboutPage) {
-        AboutPage(
-            onBack = { showAboutPage = false },
-            onOpenWeb = onOpenWeb
-        )
         return
     }
 
@@ -376,9 +346,9 @@ fun ProfileScreen(
                                         Spacer(Modifier.width(8.dp))
                                         CertBadgeChip(
                                             badge = display.badge,
-                                            // v1.4.14：实名认证已合入安全中心，未实名徽标先进安全中心
+                                            // v1.4.15：未实名徽标进入安全中心（实名认证已合入其中）
                                             onClick = if (display.badge == CertBadge.UNCERTIFIED) {
-                                                { servicePage = ServicePanel.SECURITY }
+                                                { pushPage("panel:${ServicePanel.SECURITY.name}") }
                                             } else null
                                         )
                                     }
@@ -395,7 +365,10 @@ fun ProfileScreen(
                     }
                 }
 
-                if (state.loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = CartoonColors.Brand)
+                // v1.4.15：主页刷新等待态统一为磨砂玻璃提示条
+                if (state.loading) {
+                    GlassLoadingBar(modifier = Modifier.fillMaxWidth())
+                }
                 state.error?.let { message ->
                     Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     CartoonButton(text = Strings.RETRY, onClick = { vm.load() })
@@ -407,7 +380,7 @@ fun ProfileScreen(
                         // 账号与服务：每项点击进入独立子页面。
                         // v1.4.14：实名认证已合并进「安全中心」，不再单列独立菜单项。
                         ServicePanels.entries.forEach { menu ->
-                            MenuRow(menu) { menu.panel?.let { servicePage = it } }
+                            MenuRow(menu) { menu.panel?.let { pushPage("panel:${it.name}") } }
                         }
                     }
                 }
@@ -417,11 +390,11 @@ fun ProfileScreen(
                     Column(Modifier.padding(vertical = 6.dp)) {
                         MenuRow(
                             ServiceMenu(Strings.SETTINGS, Strings.THEME, AppIcons.Settings, 4)
-                        ) { showSettingsPage = true }
+                        ) { pushPage("settings") }
                         MenuRow(
                             ServiceMenu(Strings.ABOUT, "", AppIcons.Info, 1),
                             subtitle = "版本 ${Strings.APP_VERSION}"
-                        ) { showAboutPage = true }
+                        ) { pushPage("about") }
                     }
                 }
 

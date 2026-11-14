@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -53,9 +52,12 @@ import com.vps.qing.core.ui.EmptyHint
 import com.vps.qing.core.ui.FilterChipRow
 import com.vps.qing.core.ui.ScrollGlassEffect
 import com.vps.qing.core.ui.GlassCard
+import com.vps.qing.core.ui.GlassLoadingBar
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.Strings
+import com.vps.qing.core.ui.glassField
+import com.vps.qing.core.ui.glassFieldColors
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.data.repository.AuthNode
 import com.vps.qing.data.repository.SubAccountDetail
@@ -140,11 +142,15 @@ private fun FormField(
         OutlinedTextField(
             value = value,
             onValueChange = onValue,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                // v1.4.15：工单提交 / 新建 / 子账户表单统一磨砂玻璃输入框
+                .glassField(CartoonKit.ItemShape),
+            colors = glassFieldColors(),
             placeholder = { Text(placeholder, style = MaterialTheme.typography.bodySmall, color = CartoonColors.InkSub) },
             singleLine = singleLine,
             minLines = minLines,
-            shape = RoundedCornerShape(16.dp),
+            shape = CartoonKit.ItemShape,
             textStyle = MaterialTheme.typography.bodyMedium
         )
     }
@@ -433,9 +439,13 @@ fun TicketDetailPage(
                                     OutlinedTextField(
                                         value = replyText,
                                         onValueChange = { replyText = it },
-                                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp, max = 130.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 56.dp, max = 130.dp)
+                                            .glassField(CartoonKit.ItemShape),
+                                        colors = glassFieldColors(),
                                         placeholder = { Text("输入回复内容…", style = MaterialTheme.typography.bodySmall) },
-                                        shape = RoundedCornerShape(16.dp),
+                                        shape = CartoonKit.ItemShape,
                                         maxLines = 5
                                     )
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -862,7 +872,8 @@ fun SubAccountFormPage(
                 onNavClick = onBack
             )
             if (editId != null && detailState?.loading == true && detailState.detail == null) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = CartoonColors.Brand)
+                // v1.4.15：编辑子账户读取详情的等待态统一为磨砂玻璃提示条
+                GlassLoadingBar(modifier = Modifier.fillMaxWidth())
             }
             Column(
                 Modifier

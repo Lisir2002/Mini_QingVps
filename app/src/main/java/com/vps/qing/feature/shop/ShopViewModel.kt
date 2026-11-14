@@ -452,24 +452,59 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         sheet.mf?.let { add(it.toString()) }
     }.joinToString("|")
 
-    /**
-     * 组装算价/加购 body。
-     * v1.4.3：遍历完整 options（含隐藏项）并用默认值补齐，避免提交的配置少于站点要求
-     * 导致「配置对不上」；cycleId 可覆盖，用于逐周期算价。
-     */
-    private fun buildBody(sheet: ConfigSheetState, cycleId: String?, qty: Int): JsonObject {
-        val cfg = sheet.config
-        if (cfg?.mf != null && sheet.mf != null) {
-            // v1.4.7 修复：加购必须用 cartBody（product_id + activeName/login_way 等），
-            // 之前误用算价用的 calcBody（字段是 id + promo_code），站点读不到
-            // product_id 直接报 [400]「请选择商品」。
-            return MfCloudCart.cartBody(sheet.mf, sheet.product.id, qty, cfg.mf.networkType)
-        }
-        val selections = cfg?.options.orEmpty().mapNotNull { opt ->
+    /** 通用商品：遍历完整 options（含隐藏项）并用默认值补齐，避免提交配置少于站点要求。 */
+    private fun genericSelections(sheet: ConfigSheetState): List<CartBodies.Selection> =
+        sheet.config?.options.orEmpty().mapNotNull { opt ->
             val value = sheet.selections[opt.id] ?: defaultValue(opt) ?: return@mapNotNull null
             CartBodies.Selection(opt.id, value, OptionType.needsArray(opt.type))
         }
-        return CartBodies.build(sheet.product.id, selections, cycleId, qty)
+
+    /**
+     * v1.4.15 算价专用 body（与加购 body 分离，这是「价格待确认」的根因修复）。
+     * 站点官方 mf_cloud.js 的 calcPrice 用 POST /product/{id}/config_option，body 为
+     * {id, config_options:{...完整平铺配置, promo_code, event_promotion}, qty}，
+     * 即 [MfCloudCart.calcBody]；此前 App 误把加购用的 cartBody（product_id +
+     * activeName/login_way）拿去算价，站点读不到 id 直接 400「商品不存在」。
+     * 通用商品算价与加购共用 [CartBodies.build]（实测站点接受同构 body）。
+     */
+    private fun buildCalcBody(sheet: ConfigSheetState, cycleId: String?, qty: Int): JsonObject {
+        val cfg = sheet.config
+        if (cfg?.mf != null && sheet.mf != null) {
+            return MfCloudCart.calcBody(
+                sheet.mf.copy(durationId = cycleId), sheet.product.id, qty, cfg.mf.networkType
+            )
+        }
+        return CartBodies.build(sheet.product.id, genericSelections(sheet), cycleId, qty)
+    }
+
+    /** 加购专用 body：mf_cloud 用 cartBody（product_id + activeName/login_way），周期显式取当前选中。 */
+    private fun buildCartBody(sheet: ConfigSheetState, cycleId: String?, qty: Int): JsonObject {
+        val cfg = sheet.config
+        if (cfg?.mf != null && sheet.mf != null) {
+            return MfCloudCart.cartBody(
+                sheet.mf.copy(durationId = cycleId), sheet.product.id, qty, cfg.mf.networkType
+            )
+        }
+        return CartBodies.build(sheet.product.id, genericSelections(sheet), cycleId, qty)
+    }
+
+    /**
+     * 站点实时标价兜底（v1.4.15）：mf_cloud 套餐型商品的算价接口实测需登录态 + 完整推荐配置，
+     * App 现有配置模型无法稳定拿到成交价。此时用 /product 列表返回的官方标价（每次刷新
+     * 实拉、真实且实时）构造估算价，UI 标注「站点标价 · 以结算价为准」，杜绝空白「价格待确认」。
+     */
+    private fun estimatedQuote(sheet: ConfigSheetState): PriceQuote? {
+        val listPrice = sheet.product.price.toDoubleOrNull()?.takeIf { it > 0.0 } ?: return null
+        val cycleName = sheet.config?.cycles?.firstOrNull { it.id == sheet.cycleId }?.name
+            ?.takeIf { it.isNotBlank() } ?: sheet.product.cycle
+        return PriceQuote(
+            price = listPrice * sheet.qty,
+            unitPrice = listPrice,
+            basePrice = listPrice,
+            billingCycle = cycleName,
+            priceTotal = listPrice * sheet.qty,
+            isEstimated = true
+        )
     }
 
     /**
@@ -502,7 +537,15 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
                     when (val dr = catalog.mfDuration(initial.product.id, sel)) {
                         is ApiResult.Success -> {
                             if (seq != quoteSeq) return@launch
-                            val cycles = dr.data
+                            // v1.4.15：匿名/配置不全时 duration 会返回全 0 的周期价，
+                            // 用 /product 的官方实时标价给默认周期兜底，周期胶囊不再显示 ￥0.00。
+                            val listPrice = initial.product.price.toDoubleOrNull() ?: 0.0
+                            val cycles = if (dr.data.isNotEmpty() && dr.data.all { it.amount <= 0.0 } && listPrice > 0.0) {
+                                val defaultIdx = dr.data.indexOfFirst { it.isDefault }.coerceAtLeast(0)
+                                dr.data.mapIndexed { idx, c ->
+                                    if (idx == defaultIdx) c.copy(amount = listPrice) else c
+                                }
+                            } else dr.data
                             val keep = _ui.value.configSheet?.cycleId
                                 ?.takeIf { cid -> cycles.any { it.id == cid } }
                             val chosen = keep
@@ -526,21 +569,30 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
             val cycleIds = currentCfg.cycles.map { it.id }
                 .ifEmpty { listOfNotNull(current.cycleId) }
             val unitBodies = if (recalcCycles) {
-                cycleIds.associateWith { cid -> buildBody(current, cid, 1) }
+                cycleIds.associateWith { cid -> buildCalcBody(current, cid, 1) }
             } else emptyMap()
-            val mainBody = buildBody(current, current.cycleId, current.qty)
+            val mainBody = buildCalcBody(current, current.cycleId, current.qty)
 
             val cycleQuotes = if (recalcCycles) {
                 catalog.calcCycleQuotes(current.product.id, unitBodies)
             } else current.cycleQuotes
-            val main = catalog.calcPrice(current.product.id, mainBody)
+            // v1.4.15：算价失败重试一次（短退避），提升弱网下的稳定性
+            var main = catalog.calcPrice(current.product.id, mainBody)
+            if (main !is ApiResult.Success) {
+                if (seq != quoteSeq) return@launch
+                delay(180L)
+                main = catalog.calcPrice(current.product.id, mainBody)
+            }
 
             // 期间配置又变了 / 已有更新请求：丢弃本次结果
             if (seq != quoteSeq) return@launch
             val live = _ui.value.configSheet ?: return@launch
             if (configKey(live) != key) return@launch
 
-            val quote = (main as? ApiResult.Success)?.data
+            // 算价成功用站点成交价；失败回退到 /product 的官方实时标价（真实、实时），
+            // UI 会标注「站点标价 · 以结算价为准」，不再出现空白「价格待确认」。
+            val successQuote = (main as? ApiResult.Success)?.data
+            val quote = successQuote ?: estimatedQuote(current)
             _ui.update { st ->
                 val sheet = st.configSheet ?: return@update st
                 st.copy(configSheet = sheet.copy(
@@ -561,7 +613,8 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
         if (cfg.mf != null && sheet.mf == null) return
         viewModelScope.launch {
             _ui.update { it.copy(configSheet = it.configSheet?.copy(adding = true, error = null)) }
-            val body = buildBody(sheet, sheet.cycleId, sheet.qty)
+            // v1.4.15：加购用 cartBody（product_id + activeName/login_way），与算价 body 分离
+            val body = buildCartBody(sheet, sheet.cycleId, sheet.qty)
             when (val r = catalog.addToCart(body)) {
                 is ApiResult.Success -> {
                     _ui.update { it.copy(configSheet = null, toast = "已加入站点购物车") }

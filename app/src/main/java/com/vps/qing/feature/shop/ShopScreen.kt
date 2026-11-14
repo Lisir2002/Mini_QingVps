@@ -3,8 +3,12 @@ package com.vps.qing.feature.shop
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -36,7 +40,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -55,7 +58,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
@@ -63,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.ui.AppIcons
@@ -72,12 +75,18 @@ import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.EmptyHint
 import com.vps.qing.core.ui.GlassCard
+import com.vps.qing.core.ui.GlassLoadingBar
+import com.vps.qing.core.ui.GlassPullRefreshBox
+import com.vps.qing.core.ui.GlassRefreshChip
 import com.vps.qing.core.ui.GlassSurface
 import com.vps.qing.core.ui.GlassTopBar
+import com.vps.qing.core.ui.LoadingSkeleton
 import com.vps.qing.core.ui.QuantityStepper
 import com.vps.qing.core.ui.ScrollGlassEffect
 import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.UiT
+import com.vps.qing.core.ui.glassField
+import com.vps.qing.core.ui.glassFieldColors
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.data.repository.CartCalculator
 import com.vps.qing.data.repository.CartItem
@@ -134,8 +143,10 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
                         tint = if (searchOpen) CartoonColors.Brand else CartoonColors.Mint,
                         bg = if (searchOpen) CartoonColors.BrandSoft else CartoonColors.MintSoft
                     )
-                    CartoonIconChip(
-                        icon = AppIcons.Refresh,
+                    // v1.4.15：顶栏两个按钮拉开间距，避免贴在一起误触
+                    Spacer(Modifier.width(UiT.spaceSm + 2.dp))
+                    GlassRefreshChip(
+                        refreshing = state.refreshing || state.productsLoading,
                         onClick = { vm.refresh() },
                         tint = CartoonColors.Mint,
                         bg = CartoonColors.MintSoft
@@ -162,7 +173,12 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
             TopTabRow(state, vm)
 
             if (state.cartLoading && state.tab == 1) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = CartoonColors.Brand)
+                // v1.4.15：等待态统一为磨砂玻璃提示条，不再是生硬的横向进度条
+                GlassLoadingBar(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = UiT.pagePad)
+                )
             }
 
             if (state.tab == 0) {
@@ -191,72 +207,7 @@ private fun CountBadge(count: Int, selected: Boolean, accent: Color) {
     )
 }
 
-/** 「全部商品」快捷入口：忽略分类过滤，一键回到全量列表。 */
-@Composable
-private fun SidebarAllItem(
-    count: Int,
-    selected: Boolean,
-    sidebarExpanded: Boolean,
-    onClick: () -> Unit
-) {
-    val (accent, soft) = CartoonColors.accent(0)
-    if (sidebarExpanded) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(CartoonKit.ItemShape)
-                .background(if (selected) soft else Color.Transparent)
-                .clickable { onClick() }
-                .padding(horizontal = UiT.spaceSm + 2.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                Modifier.size(30.dp).clip(CartoonKit.PillShape).background(soft),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(AppIcons.Shop, null, tint = accent, modifier = Modifier.size(18.dp))
-            }
-            Spacer(Modifier.width(UiT.spaceSm))
-            Text(
-                "全部商品",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                color = if (selected) accent else CartoonColors.Ink,
-                modifier = Modifier.weight(1f)
-            )
-            CountBadge(count, selected, accent)
-        }
-    } else {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(CartoonKit.ItemShape)
-                .clickable { onClick() }
-                .padding(vertical = 6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                Modifier.size(34.dp).clip(CartoonKit.ItemShape)
-                    .background(if (selected) accent else soft.copy(alpha = 0.45f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    AppIcons.Shop, null,
-                    tint = if (selected) Color.White else accent,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(Modifier.height(UiT.spaceXs))
-            Text(
-                count.toString(),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (selected) accent else CartoonColors.InkSub
-            )
-        }
-    }
-}
-
-/** 商品搜索框（v1.4.11）：由顶栏搜索按钮展开；匹配名称、分类名与配置指标，跨分类检索。 */
+/** 商品搜索框（v1.4.11）：由顶栏搜索按钮展开；v1.4.15 补统一磨砂玻璃底。 */
 @Composable
 private fun ProductSearchField(
     query: String,
@@ -272,7 +223,10 @@ private fun ProductSearchField(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = UiT.spaceMd, vertical = UiT.spaceXs)
+            // v1.4.15：搜索框也用统一磨砂玻璃底，与卡片/顶栏同材质
+            .glassField(CartoonKit.PillShape)
             .focusRequester(focusRequester),
+        colors = glassFieldColors(),
         placeholder = {
             Text(
                 "搜索商品名称 / 配置指标",
@@ -297,9 +251,20 @@ private fun ProductSearchField(
     )
 }
 
-/** 侧边栏底部内嵌开关：展开态是带文字的胶囊，收起态是居中的圆形图标按钮。 */
+/**
+ * 侧边栏底部内嵌开关：展开态是带文字的胶囊，收起态是居中的圆形图标按钮。
+ * v1.4.15：统一用同一个图标随展开态 180° 平滑旋转，开合过程不再硬切图标。
+ */
 @Composable
 private fun SidebarToggle(expanded: Boolean, onClick: () -> Unit) {
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "sidebarToggleRotation"
+    )
     if (expanded) {
         Row(
             modifier = Modifier
@@ -312,9 +277,11 @@ private fun SidebarToggle(expanded: Boolean, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.Center
         ) {
             Icon(
-                AppIcons.PanelClose, null,
+                AppIcons.PanelOpen, null,
                 tint = CartoonColors.Brand,
-                modifier = Modifier.size(15.dp)
+                modifier = Modifier
+                    .size(15.dp)
+                    .graphicsLayer { rotationZ = rotation }
             )
             Spacer(Modifier.width(6.dp))
             Text(
@@ -344,7 +311,9 @@ private fun SidebarToggle(expanded: Boolean, onClick: () -> Unit) {
                 Icon(
                     AppIcons.PanelOpen, null,
                     tint = CartoonColors.Brand,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier
+                        .size(16.dp)
+                        .graphicsLayer { rotationZ = rotation }
                 )
             }
         }
@@ -409,8 +378,26 @@ private fun PurchasePane(
     vm: ShopViewModel,
     modifier: Modifier = Modifier
 ) {
+    // v1.4.15：侧栏开合用 spring 曲线，宽度、卡片间距同步平滑过渡，不再生硬跳变
+    val sidebarMotion = spring<Dp>(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = Spring.StiffnessMedium
+    )
     val sidebarWidth by animateDpAsState(
-        targetValue = if (state.sidebarExpanded) UiT.sidebarExpandedWidth else UiT.sidebarCollapsedWidth
+        targetValue = if (state.sidebarExpanded) UiT.sidebarExpandedWidth else UiT.sidebarCollapsedWidth,
+        animationSpec = sidebarMotion,
+        label = "sidebarWidth"
+    )
+    // 侧栏展开时右侧变窄：同步收紧卡片间距与左内边距，消掉「上下空区」
+    val cardGap by animateDpAsState(
+        targetValue = if (state.sidebarExpanded) UiT.spaceSm else UiT.spaceMd,
+        animationSpec = sidebarMotion,
+        label = "cardGap"
+    )
+    val listStartPad by animateDpAsState(
+        targetValue = if (state.sidebarExpanded) UiT.spaceSm else UiT.spaceMd,
+        animationSpec = sidebarMotion,
+        label = "listStartPad"
     )
 
     Row(modifier = modifier.fillMaxSize()) {
@@ -436,13 +423,8 @@ private fun PurchasePane(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(UiT.spaceXs + 2.dp)
                 ) {
-                    // 「全部商品」快捷入口：一键忽略分类过滤
-                    SidebarAllItem(
-                        count = state.allProducts.size,
-                        selected = state.showAll,
-                        sidebarExpanded = state.sidebarExpanded,
-                        onClick = { vm.showAllProducts() }
-                    )
+                    // v1.4.15：移除「全部商品」入口，侧栏只保留分类菜单；
+                    // 默认由 ViewModel 自动选中首个有货分类，搜索仍可跨分类查看全量商品
                     if (state.firstGroups.isEmpty() && !state.groupsLoading) {
                         Text(
                             Strings.NO_GROUP,
@@ -495,11 +477,19 @@ private fun PurchasePane(
                 .weight(1f)
                 .fillMaxHeight()
         ) {
-            if (state.productsLoading || state.refreshing) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = CartoonColors.Brand)
-            }
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            // v1.4.15：下拉刷新统一走磨砂玻璃指示器；首屏取数用骨架等待态
+            GlassPullRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = { vm.refresh() },
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            ) {
                 when {
+                    state.productsLoading && state.visibleProducts.isEmpty() && state.error == null -> {
+                        LoadingSkeleton(
+                            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+                            rows = 3
+                        )
+                    }
                     state.visibleProducts.isEmpty() && state.error != null -> {
                         EmptyHint(
                             icon = AppIcons.EmptyBox,
@@ -525,9 +515,9 @@ private fun PurchasePane(
                             state = listState,
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(
-                                start = UiT.spaceMd, end = UiT.pagePad, bottom = 132.dp
+                                start = listStartPad, end = UiT.pagePad, bottom = 132.dp
                             ),
-                            verticalArrangement = Arrangement.spacedBy(UiT.spaceMd)
+                            verticalArrangement = Arrangement.spacedBy(cardGap)
                         ) {
                             item {
                                 Text(
@@ -573,7 +563,15 @@ private fun SidebarFirstItem(
     onToggle: () -> Unit
 ) {
     val (accent, soft) = CartoonColors.accent(accentIndex)
-    val chevronRotation by animateFloatAsState(targetValue = if (open) 0f else -90f)
+    // v1.4.15：手风琴箭头也走 spring，与侧栏宽度动画节奏一致
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (open) 0f else -90f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "chevronRotation"
+    )
 
     if (sidebarExpanded) {
         Row(
@@ -752,9 +750,11 @@ private fun abbreviate(name: String): String {
 }
 
 /**
- * 商品卡片。侧栏展开时（[compact]=true）标题/规格/价格以 0.85× 统一缩放适配窄栏。
- * v1.4.11：加购按钮统一为「图标 + 加入购物车文字」整体按钮，固定放在价格下面一行；
- * 侧栏开合时的布局位移由 animateContentSize 平滑过渡，不再用悬浮圆形图标按钮。
+ * 商品卡片。v1.4.15：侧栏展开时不再用 graphicsLayer 整体缩放——缩放只改绘制、
+ * 不改测量高度，会在卡片上下留下与真实布局不符的空白区。改为真实收紧内边距 /
+ * 间距 / 字号 / 图标尺寸，配合 spring 动画让尺寸变化丝滑，列表间距同步收缩，
+ * 卡片内容始终贴紧玻璃边界。
+ * v1.4.11：加购按钮统一为「图标 + 加入购物车文字」整体按钮，固定放在价格下面一行。
  */
 @Composable
 private fun ProductCard(
@@ -762,24 +762,41 @@ private fun ProductCard(
     compact: Boolean,
     onCustomize: () -> Unit
 ) {
-    val scale by animateFloatAsState(targetValue = if (compact) 0.85f else 1f)
+    val motion = spring<Dp>(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = Spring.StiffnessMedium
+    )
+    val pad by animateDpAsState(
+        targetValue = if (compact) 10.dp else UiT.cardPad,
+        animationSpec = motion,
+        label = "productCardPad"
+    )
+    val gap by animateDpAsState(
+        targetValue = if (compact) 6.dp else UiT.spaceSm,
+        animationSpec = motion,
+        label = "productCardGap"
+    )
+    val iconSize by animateDpAsState(
+        targetValue = if (compact) 32.dp else 38.dp,
+        animationSpec = motion,
+        label = "productCardIcon"
+    )
+    val titleStyle = if (compact) MaterialTheme.typography.titleSmall
+    else MaterialTheme.typography.titleMedium
+    val priceStyle = if (compact) MaterialTheme.typography.titleLarge
+    else MaterialTheme.typography.headlineSmall
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
-                .padding(UiT.cardPad)
-                .animateContentSize()
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    transformOrigin = TransformOrigin(0f, 0.5f)
-                },
-            verticalArrangement = Arrangement.spacedBy(UiT.spaceSm)
+                .padding(pad)
+                .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessMedium)),
+            verticalArrangement = Arrangement.spacedBy(gap)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier
-                        .size(38.dp)
+                        .size(iconSize)
                         .clip(CartoonKit.ItemShape)
                         .background(CartoonColors.SkySoft),
                     contentAlignment = Alignment.Center
@@ -790,7 +807,7 @@ private fun ProductCard(
                 Column(Modifier.weight(1f)) {
                     Text(
                         product.name,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = titleStyle,
                         fontWeight = FontWeight.ExtraBold,
                         color = CartoonColors.Ink,
                         maxLines = 2,
@@ -838,7 +855,7 @@ private fun ProductCard(
 
             if (product.specs.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    product.specs.take(4).forEach { spec ->
+                    product.specs.take(if (compact) 3 else 4).forEach { spec ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 Modifier
@@ -856,7 +873,7 @@ private fun ProductCard(
                             )
                         }
                     }
-                    if (product.specs.size > 4) {
+                    if (product.specs.size > (if (compact) 3 else 4)) {
                         Text(
                             Strings.SPEC_MORE.format(product.specs.size),
                             style = MaterialTheme.typography.labelSmall,
@@ -866,19 +883,11 @@ private fun ProductCard(
                 }
             }
 
-            // 价格随卡片整体缩放；加购按钮固定尺寸（图标+文字整体），
-            // 统一放在价格下面一行，侧栏开合时由 animateContentSize 平滑位移（v1.4.11）
-            Row(
-                modifier = Modifier.graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    transformOrigin = TransformOrigin(0f, 0.5f)
-                },
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            // 价格与加购按钮：均按真实布局尺寸排版，不再做绘制层缩放
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "￥${product.price}",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = priceStyle,
                     fontWeight = FontWeight.ExtraBold,
                     color = CartoonColors.Coral
                 )
@@ -919,17 +928,23 @@ private fun CartPane(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        val cartListState = rememberLazyListState()
-        ScrollGlassEffect(cartListState)
-        LazyColumn(
-            state = cartListState,
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(
-                start = UiT.pagePad, end = UiT.pagePad,
-                top = UiT.spaceXs, bottom = 132.dp
-            ),
-            verticalArrangement = Arrangement.spacedBy(UiT.spaceMd)
+        // v1.4.15：购物车同样支持统一的下拉刷新反馈
+        GlassPullRefreshBox(
+            isRefreshing = state.cartLoading,
+            onRefresh = { vm.refresh() },
+            modifier = Modifier.weight(1f).fillMaxWidth()
         ) {
+            val cartListState = rememberLazyListState()
+            ScrollGlassEffect(cartListState)
+            LazyColumn(
+                state = cartListState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = UiT.pagePad, end = UiT.pagePad,
+                    top = UiT.spaceXs, bottom = 16.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(UiT.spaceMd)
+            ) {
             items(state.cart, key = { it.key }) { item ->
                 CloudCartCard(
                     item = item,
@@ -948,7 +963,8 @@ private fun CartPane(
                     )
                 }
             }
-        }
+            } // LazyColumn
+        } // GlassPullRefreshBox
 
         GlassSurface(
             modifier = Modifier
