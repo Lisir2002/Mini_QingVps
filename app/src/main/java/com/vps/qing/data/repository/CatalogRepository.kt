@@ -280,4 +280,34 @@ class CatalogRepository(private val api: QingVpsApiService) {
     /** 需登录态；匿名时站点返回 status=401，由 UI 降级为「登录后查看」。 */
     suspend fun hosts(): ApiResult<List<HostSummary>> =
         safeApiCall({ api.hosts() }) { CatalogParser.hosts(it) }
+
+    // ---- v1.4.20 消息中心 ----
+
+    suspend fun announcements(): ApiResult<List<ArticleItem>> =
+        safeApiCall({ api.announcements() }) { MessageParser.announcements(it) }
+
+    suspend fun resources(): ApiResult<List<ArticleItem>> =
+        safeApiCall({ api.helps() }) { MessageParser.resources(it) }
+
+    suspend fun articleDetail(id: String, kind: MessageKind): ApiResult<ArticleDetail?> =
+        safeApiCall({ if (kind == MessageKind.ANNOUNCEMENT) api.announcementDetail(id) else api.helpDetail(id) }) {
+            MessageParser.articleDetail(it, kind) { html -> CatalogParser.paragraphsFromHtml(html) }
+        }
+
+    suspend fun mailSummary(): ApiResult<JsonElement?> =
+        safeApiCall({ api.mailSummary() }) { it }
+
+    suspend fun mailList(page: Int = 1, limit: Int = 50): ApiResult<List<MailItem>> =
+        safeApiCall({ api.mailList(page, limit) }) { MessageParser.mails(it) }
+
+    suspend fun mailRead(id: String): ApiResult<Unit> =
+        safeApiCall({ api.mailRead(JsonObject().apply { addProperty("id", id) }) }) { Unit }
+
+    suspend fun mailDelete(id: String): ApiResult<Unit> =
+        safeApiCall({ api.mailDelete(id) }) { Unit }
+
+    // ---- v1.4.20 选购页优惠券 ----
+
+    suspend fun coupons(): ApiResult<List<CouponItem>> =
+        safeApiCall({ api.coupons() }) { MessageParser.coupons(it) }
 }

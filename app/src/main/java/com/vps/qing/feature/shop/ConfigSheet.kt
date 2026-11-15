@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -98,6 +99,9 @@ fun ConfigSheet(
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // v1.4.20：选购辅助信息——购前须知（站点公告）/ 区域机器须知 / 可用优惠券。
+                // 全部来自站点真实数据，App 只负责结构化展示，不硬编码任何业务文案。
+                PurchaseInfoBlocks(sheet)
                 when {
                     sheet.loading -> {
                         // v1.4.15：配置取数等待态统一为磨砂骨架，不再是居中的干转圈
@@ -525,6 +529,154 @@ private fun PriceSummary(sheet: ConfigSheetState) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error
                 )
+            }
+        }
+    }
+}
+
+/**
+ * v1.4.20 选购页辅助信息区：
+ *  - 购前须知：站点公告前 3 条（GET /announcement，购前必读的服务/放假/升级公告）；
+ *  - 区域机器须知：从商品 description 的「地区/IP/说明」等行提取，随商品变化；
+ *  - 可用优惠券：GET /coin/client/coupon（登录后返回 JSON，未登录站点回 HTML → 静默降级为空）。
+ * 三者均为站点真实数据，App 只做结构化展示。
+ */
+@Composable
+private fun PurchaseInfoBlocks(sheet: ConfigSheetState) {
+    if (sheet.announcements.isEmpty() && sheet.regionNotices.isEmpty() &&
+        !sheet.couponsLoading && sheet.coupons.isEmpty()
+    ) return
+
+    if (sheet.announcements.isNotEmpty()) {
+        InfoCard(title = Strings.CONFIG_PRE_PURCHASE_NOTICE, tint = CartoonColors.Sky) {
+            sheet.announcements.take(3).forEachIndexed { i, a ->
+                NoticeLine(index = i + 1, text = a.title)
+            }
+        }
+    }
+    if (sheet.regionNotices.isNotEmpty()) {
+        InfoCard(title = Strings.CONFIG_REGION_NOTICE, tint = CartoonColors.Lemon) {
+            sheet.regionNotices.forEach { line -> NoticeLine(index = null, text = line) }
+        }
+    }
+    InfoCard(title = Strings.CONFIG_COUPON, tint = CartoonColors.Peach) {
+        when {
+            sheet.couponsLoading -> Text(
+                Strings.CONFIG_LOADING,
+                style = MaterialTheme.typography.labelSmall,
+                color = CartoonColors.InkSub
+            )
+            sheet.coupons.isEmpty() -> Text(
+                Strings.CONFIG_COUPON_NONE,
+                style = MaterialTheme.typography.labelSmall,
+                color = CartoonColors.InkSub
+            )
+            else -> sheet.coupons.take(4).forEach { c -> CouponLine(coupon = c) }
+        }
+    }
+}
+
+/** 通用玻璃信息卡：标题 + 竖排内容。 */
+@Composable
+private fun InfoCard(
+    title: String,
+    tint: Color,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = CartoonKit.CardShape,
+        alpha = 0.62f,
+        elevation = 0.dp
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(width = 4.dp, height = 15.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(tint)
+                )
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = CartoonColors.Ink
+                )
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun NoticeLine(index: Int?, text: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        if (index != null) {
+            Box(
+                Modifier.size(16.dp).clip(RoundedCornerShape(8.dp)).background(CartoonColors.BrandSoft),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    index.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CartoonColors.Brand,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(Modifier.width(7.dp))
+        } else {
+            Text("·", style = MaterialTheme.typography.labelLarge, color = CartoonColors.Brand)
+            Spacer(Modifier.width(4.dp))
+        }
+        Text(
+            text,
+            style = MaterialTheme.typography.labelSmall,
+            color = CartoonColors.InkSub,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun CouponLine(coupon: com.vps.qing.data.repository.CouponItem) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(CartoonColors.PeachSoft)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (coupon.amount.isNotBlank()) {
+            Text(
+                "￥${coupon.amount}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = CartoonColors.Coral
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                coupon.name.ifBlank { "优惠券" },
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = CartoonColors.Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            val cond = buildString {
+                if (coupon.condition.isNotBlank()) append(Strings.CONFIG_CONDITION_PREFIX).append(coupon.condition).append("可用")
+                if (coupon.expireTime.isNotBlank()) {
+                    if (isNotEmpty()) append(" · ")
+                    append("有效期 ").append(coupon.expireTime)
+                }
+            }
+            if (cond.isNotBlank()) {
+                Text(cond, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
             }
         }
     }

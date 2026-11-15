@@ -94,14 +94,18 @@ object CachePolicy {
             // 站点会随时增删网关（实测新增了微信支付），任何缓存都会导致
             // 「站点有、App 里没有」或「选到已下线的方式」，因此绝不缓存。
             rel == "gateway" || rel.startsWith("gateway/") || rel.endsWith("/gateway") ||
-            rel == "pay" || rel.startsWith("pay/")
+            rel == "pay" || rel.startsWith("pay/") ||
+            // v1.4.20：站内信已读/删除必须实时；优惠券可用性随订单变化，均不缓存。
+            rel.startsWith("client_care/mail") || rel.startsWith("coin/")
         ) return NONE
 
         return when {
             // ---- 公共数据（可落磁盘） ----
             rel == "common" || rel == "menu" || rel == "country" ->
                 CacheRule(CacheScope.PUBLIC, TTL_DICT, label = "site-config")
-            rel == "news/index" || rel == "index" ->
+            rel == "news/index" || rel == "index" ||
+                rel == "announcement" || rel.startsWith("announcement/") ||
+                rel == "help" || rel.startsWith("help/") ->
                 CacheRule(CacheScope.PUBLIC, TTL_NEWS, label = "news-menu")
             rel == "product" -> CacheRule(CacheScope.PUBLIC, TTL_CATALOG, label = "products")
             rel.startsWith("product/group/") ->

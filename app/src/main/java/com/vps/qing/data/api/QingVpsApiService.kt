@@ -394,6 +394,48 @@ interface QingVpsApiService {
     /** 项目列表（部分版本未启用，返回 HTML，仓库层容错为空）。 */
     @GET("project")
     suspend fun projects(): ApiEnvelope
+
+    // ---- v1.4.20 消息中心 / 选购页须知与优惠券 ----
+
+    /** 公告中心列表：data.list[{id,title,img,create_time,type}]（匿名可用，实测）。 */
+    @GET("announcement")
+    suspend fun announcements(): ApiEnvelope
+
+    /** 公告中心详情：data.announcement{id,title,type,content(html),create_time}。 */
+    @GET("announcement/{id}")
+    suspend fun announcementDetail(@Path("id") id: String): ApiEnvelope
+
+    /** 帮助中心 / 资源：data.list[{id,name,helps:[{id,title}]}]（匿名可用）。 */
+    @GET("help")
+    suspend fun helps(): ApiEnvelope
+
+    /** 帮助文章详情：data.help{title,content(html)}（部分版本路径不同，仓库层容错）。 */
+    @GET("help/{id}")
+    suspend fun helpDetail(@Path("id") id: String): ApiEnvelope
+
+    /** 站内信概要（未读数等）：data{...}（需登录）。 */
+    @GET("client_care/mail")
+    suspend fun mailSummary(): ApiEnvelope
+
+    /** 站内信列表：data.list[{id,title,content,is_read,create_time}]（需登录）。 */
+    @GET("client_care/mail/list")
+    suspend fun mailList(@Query("page") page: Int = 1, @Query("limit") limit: Int = 50): ApiEnvelope
+
+    /** 标记站内信已读：body{id} 或 {ids:[]}。 */
+    @PUT("client_care/mail/read")
+    suspend fun mailRead(@Body body: JsonObject): ApiEnvelope
+
+    /** 删除站内信：query{id}。 */
+    @DELETE("client_care/mail")
+    suspend fun mailDelete(@Query("id") id: String): ApiEnvelope
+
+    /** 用户可用优惠券：data.list[...]（需登录，站点启用 PromoCode 插件时可用）。 */
+    @GET("coin/client/coupon")
+    suspend fun coupons(): ApiEnvelope
+
+    /** 优惠券使用详情：data{...}（需登录）。 */
+    @GET("coin/coupon/{id}/use_detail")
+    suspend fun couponUseDetail(@Path("id") id: String): ApiEnvelope
 }
 
 /** /captcha/tp_captcha/index/refresh 的响应。 */

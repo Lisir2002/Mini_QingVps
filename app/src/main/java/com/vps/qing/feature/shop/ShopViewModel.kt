@@ -13,6 +13,8 @@ import com.vps.qing.data.repository.CatalogRepository
 import com.vps.qing.data.repository.CheckoutParser
 import com.vps.qing.data.repository.ConfigOption
 import com.vps.qing.data.repository.GatewayOption
+import com.vps.qing.data.repository.ArticleItem
+import com.vps.qing.data.repository.CouponItem
 import com.vps.qing.data.repository.PayDeadline
 import com.vps.qing.data.repository.MfCloudCart
 import com.vps.qing.data.repository.MfSelection
@@ -49,6 +51,11 @@ data class ConfigSheetState(
     val cycleQuotes: Map<String, PriceQuote> = emptyMap(),
     /** 商品详情指标（计费方式 / 起价 / 模块），来自 GET /product/{id}。 */
     val indicators: ProductInfo? = null,
+    /** v1.4.20 选购页辅助信息：站点公告（购前须知载体）/ 区域机器须知 / 可用优惠券。 */
+    val announcements: List<ArticleItem> = emptyList(),
+    val regionNotices: List<String> = emptyList(),
+    val coupons: List<CouponItem> = emptyList(),
+    val couponsLoading: Boolean = false,
     val quoting: Boolean = false,
     /** 实时算价失败提示；此时不展示任何「看起来像成交价」的数字。 */
     val quoteError: String? = null,
@@ -200,6 +207,9 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
     private var lastCatalogSyncMs = 0L
     /** 支付状态轮询任务（v1.4.8）。 */
     private var payPollJob: Job? = null
+    /** v1.4.20：购物车同步任务与序号——连续删除/改数量时，只让最新一次回源结果写回，避免旧响应覆盖。 */
+    private var cartSyncJob: Job? = null
+    private var cartSyncSeq = 0L
 
     companion object {
         /** 目录静默刷新的最小间隔，避免每次切 Tab 都打网络。 */
@@ -379,11 +389,21 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
     fun openConfig(product: ProductInfo) {
         quoteJob?.cancel()
         quoteSeq++
-        _ui.update { it.copy(configSheet = ConfigSheetState(product = product)) }
+        _ui.update {
+            it.copy(configSheet = ConfigSheetState(
+                product = product,
+                // 区域机器须知来自商品自身 description（列表已带回），无需额外请求
+                regionNotices = CatalogParser.regionNoticesFromHtml(product.descriptionHtml),
+                couponsLoading = true
+            ))
+        }
         viewModelScope.launch {
             // 配置定义与商品指标并发拉取；配置强制刷新，避免站点改价后仍用旧缓存
             val cfgCall = async { catalog.productConfig(product.id, forceRefresh = true) }
             val infoCall = async { catalog.productIndicators(product.id) }
+            // v1.4.20：选购页公告（购前须知）与可用优惠券并发拉取，失败静默降级不影响主配置
+            val annCall = async { catalog.announcements() }
+            val couponCall = async { catalog.coupons() }
             when (val r = cfgCall.await()) {
                 is ApiResult.Success -> {
                     val cfg = r.data
@@ -420,6 +440,22 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
                         loading = false, error = r.throwable.message ?: "配置加载失败"
                     ))
                 }
+            }
+            // v1.4.20：辅助信息回写。用商品 id 守卫，防止用户快速切换商品时旧响应覆盖新页面。
+            val ann = when (val ar = annCall.await()) {
+                is ApiResult.Success -> ar.data
+                else -> emptyList()
+            }
+            val coupons = when (val cr = couponCall.await()) {
+                is ApiResult.Success -> cr.data
+                else -> emptyList()
+            }
+            _ui.update { st ->
+                val sheet = st.configSheet
+                if (sheet == null || sheet.product.id != product.id) st
+                else st.copy(configSheet = sheet.copy(
+                    announcements = ann, coupons = coupons, couponsLoading = false
+                ))
             }
         }
     }
@@ -669,20 +705,37 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
     // ---- 云端购物车 ----
 
     fun syncCart() {
-        viewModelScope.launch {
+        cartSyncJob?.cancel()
+        val seq = ++cartSyncSeq
+        cartSyncJob = viewModelScope.launch {
             _ui.update { it.copy(cartLoading = true) }
             when (val r = catalog.cloudCart()) {
                 is ApiResult.Success -> _ui.update {
-                    it.copy(cartLoading = false, cartSynced = true, cart = r.data)
+                    if (seq != cartSyncSeq) it else it.copy(cartLoading = false, cartSynced = true, cart = r.data)
                 }
                 is ApiResult.Failure -> _ui.update {
-                    it.copy(cartLoading = false, cartSynced = true, error = "[${r.code}] ${r.msg}")
+                    if (seq != cartSyncSeq) it else it.copy(cartLoading = false, cartSynced = true, error = "[${r.code}] ${r.msg}")
                 }
                 is ApiResult.Error -> _ui.update {
-                    it.copy(cartLoading = false, cartSynced = true)
+                    if (seq != cartSyncSeq) it else it.copy(cartLoading = false, cartSynced = true)
                 }
             }
         }
+    }
+
+    /**
+     * v1.4.20：移除/改数量的即时反馈。
+     * 先按 key 乐观更新本地列表（数量归零即移除），让角标、金额、列表在同一帧刷新；
+     * 随后以站点为准回源 [syncCart]。网络失败时回滚到操作前快照并给出提示。
+     */
+    private fun mutateCartOptimistically(
+        key: String,
+        transform: (CartItem) -> CartItem?
+    ): List<CartItem> {
+        val before = _ui.value.cart
+        val after = before.mapNotNull { if (it.key == key) transform(it) else it }
+        _ui.update { it.copy(cart = after) }
+        return before
     }
 
     // ---- 原生结算支付（v1.4.8，协议对齐 route/home.php）----
@@ -943,27 +996,32 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
     fun changeCartQty(item: CartItem, delta: Int) {
         if (item.position < 0) return
         val next = item.quantity + delta
+        val before = mutateCartOptimistically(item.key) { cur ->
+            val q = cur.quantity + delta
+            cur.copy(quantity = q).takeIf { q > 0 }
+        }
         viewModelScope.launch {
-            if (next <= 0) {
-                when (catalog.deleteCartLine(item.position)) {
-                    is ApiResult.Success -> syncCart()
-                    else -> _ui.update { it.copy(toast = "操作失败，请重试") }
-                }
+            val ok = if (next <= 0) {
+                catalog.deleteCartLine(item.position) is ApiResult.Success
             } else {
-                when (catalog.updateCartQty(item.position, next)) {
-                    is ApiResult.Success -> syncCart()
-                    else -> _ui.update { it.copy(toast = "操作失败，请重试") }
-                }
+                catalog.updateCartQty(item.position, next) is ApiResult.Success
+            }
+            if (ok) {
+                // 站点为准回源（位置索引在删除后会重排，必须以 GET /cart 结果覆盖）
+                syncCart()
+            } else {
+                _ui.update { it.copy(cart = before, toast = "操作失败，请重试") }
             }
         }
     }
 
     fun removeCartItem(item: CartItem) {
         if (item.position < 0) return
+        val before = mutateCartOptimistically(item.key) { null }
         viewModelScope.launch {
             when (catalog.deleteCartLine(item.position)) {
                 is ApiResult.Success -> syncCart()
-                else -> _ui.update { it.copy(toast = "删除失败，请重试") }
+                else -> _ui.update { it.copy(cart = before, toast = "删除失败，请重试") }
             }
         }
     }

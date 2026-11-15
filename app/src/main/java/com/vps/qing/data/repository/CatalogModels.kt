@@ -287,6 +287,25 @@ object CatalogParser {
             .filter { it.isNotBlank() }
     }
 
+    /**
+     * v1.4.20：从商品 description HTML 中抽取「区域机器须知」。
+     * 站点真实样例（div.pd-br 内）：
+     *   `独立IP：1个[100G防御]<br/>IP性质：IPV4[域名人工白名单]<br/>说明：BGP三网可通|电信专线|送Beian域名`
+     * 这些都是站点自己的业务数据，App 只做结构化提取与展示，绝不硬编码内容。
+     * 命中「地区/线路/IP/防御/网络/说明」等关键词的行视为区域机器须知。
+     */
+    fun regionNoticesFromHtml(html: String): List<String> {
+        if (html.isBlank()) return emptyList()
+        val keywords = listOf(
+            "地区", "地域", "区域", "线路", "机房", "节点", "ip", "宽带", "带宽",
+            "防御", "bgp", "电信", "联通", "移动", "三网", "网络", "说明"
+        )
+        return paragraphsFromHtml(html)
+            .filter { line -> keywords.any { line.contains(it, ignoreCase = true) } }
+            .distinct()
+            .take(8)
+    }
+
     fun hosts(data: JsonElement?): List<HostSummary> =
         data.listOrNull()?.map { el ->
             HostSummary(

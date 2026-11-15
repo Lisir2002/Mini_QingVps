@@ -3,7 +3,7 @@ package com.vps.qing.core.ui
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.4.19"
+    const val APP_VERSION = "1.4.20"
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"
@@ -115,6 +115,15 @@ object Strings {
     const val CONFIG_ADDING = "正在加入…"
     const val CONFIG_WEB_TIP = "该商品采用站点套餐配置，需在网页完成选购"
     const val CONFIG_LOADING = "正在加载可选配置…"
+    // v1.4.20 选购页：购前须知 / 区域机器须知 / 优惠券
+    const val CONFIG_PRE_PURCHASE_NOTICE = "购前须知"
+    const val CONFIG_REGION_NOTICE = "区域机器须知"
+    const val CONFIG_COUPON = "可用优惠券"
+    const val CONFIG_COUPON_NONE = "当前暂无可用优惠券"
+    const val CONFIG_COUPON_LOGIN = "登录后查看可用优惠券"
+    const val CONFIG_ANNOUNCEMENT = "站点公告"
+    const val CONFIG_MORE = "更多"
+    const val CONFIG_CONDITION_PREFIX = "满"
 
     // ---- 消息 ----
     const val MESSAGES_PLACEHOLDER = "消息中心"
@@ -122,6 +131,22 @@ object Strings {
     const val MESSAGE_TIP = "站内通知、工单回复与公告将在这里汇总"
     const val OPEN_WEB_MESSAGES = "查看站点站内信"
     const val OPEN_ANNOUNCEMENTS = "查看网站公告"
+    // v1.4.20 消息中心：四类内容分段 + 已读未读
+    const val MSG_TAB_NOTICE = "通知"
+    const val MSG_TAB_ANNOUNCEMENT = "公告"
+    const val MSG_TAB_NEWS = "新闻"
+    const val MSG_TAB_RESOURCE = "资源"
+    const val MSG_UNREAD = "未读"
+    const val MSG_MARK_READ = "标为已读"
+    const val MSG_MARK_ALL_READ = "全部标为已读"
+    const val MSG_EMPTY_NOTICE = "暂无站点通知"
+    const val MSG_EMPTY_ANNOUNCEMENT = "暂无网站公告"
+    const val MSG_EMPTY_NEWS = "暂无新闻资讯"
+    const val MSG_EMPTY_RESOURCE = "暂无帮助资源"
+    const val MSG_LOGIN_REQUIRED = "登录后查看站点通知"
+    const val MSG_DETAIL = "消息详情"
+    const val MSG_ALL_READ = "已全部标为已读"
+    const val MSG_DELETE = "删除"
 
     // ---- 个人中心 / 设置 ----
     const val ACCOUNT = "账号信息"

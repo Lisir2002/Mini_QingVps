@@ -63,21 +63,30 @@ import com.vps.qing.core.ui.Strings
 import com.vps.qing.core.ui.UiT
 import com.vps.qing.data.repository.HostSummary
 import com.vps.qing.data.repository.NewsItem
+import com.vps.qing.feature.profile.ServicePanel
+import com.vps.qing.feature.profile.ServicePanels
 
 /**
  * 快捷入口（v1.4.6 原生化）：点击直达 App 内原生页面，不再跳 WebView；
  * navToken 由主容器路由到「我的」Tab 的对应服务面板。
+ *
+ * v1.4.20：入口命名直接取自目标服务面板的标题（[panelTitle] 读 ServicePanels 单一数据源），
+ * 确保「入口文案」与「点进去的页面标题」永远一致，不再各写一套导致失配。
  */
 private data class QuickEntry(val title: String, val navToken: String, val icon: ImageVector, val accent: Color, val soft: Color)
 
+/** 从服务面板真实标题取值；找不到时回退到传入文案。 */
+private fun panelTitle(panel: ServicePanel, fallback: String): String =
+    ServicePanels.entries.firstOrNull { it.panel == panel }?.title ?: fallback
+
 private val QUICK_ENTRIES = listOf(
-    QuickEntry(Strings.MY_ORDERS, "orders", AppIcons.Order, CartoonColors.Brand, CartoonColors.BrandSoft),
-    QuickEntry(Strings.MY_HOSTS, "hosts", AppIcons.Server, CartoonColors.Mint, CartoonColors.MintSoft),
-    QuickEntry(Strings.FINANCE, "finance", AppIcons.Wallet, CartoonColors.Lemon, CartoonColors.LemonSoft),
-    QuickEntry(Strings.TICKETS, "tickets", AppIcons.Ticket, CartoonColors.Sky, CartoonColors.SkySoft),
+    QuickEntry(panelTitle(ServicePanel.ORDERS, Strings.MY_ORDERS), "orders", AppIcons.Order, CartoonColors.Brand, CartoonColors.BrandSoft),
+    QuickEntry(panelTitle(ServicePanel.HOSTS, Strings.MY_HOSTS), "hosts", AppIcons.Server, CartoonColors.Mint, CartoonColors.MintSoft),
+    QuickEntry(panelTitle(ServicePanel.TRANSACTIONS, Strings.FINANCE), "finance", AppIcons.Wallet, CartoonColors.Lemon, CartoonColors.LemonSoft),
+    QuickEntry(panelTitle(ServicePanel.TICKETS, Strings.TICKETS), "tickets", AppIcons.Ticket, CartoonColors.Sky, CartoonColors.SkySoft),
     // v1.4.14：实名认证已并入「安全中心」，此格改为直达子账户管理（原生面板）
-    QuickEntry(Strings.SUB_ACCOUNTS, "subaccounts", AppIcons.Users, CartoonColors.Peach, CartoonColors.PeachSoft),
-    QuickEntry(Strings.SECURITY, "security", AppIcons.Lock, CartoonColors.Lilac, CartoonColors.LilacSoft)
+    QuickEntry(panelTitle(ServicePanel.SUB_ACCOUNTS, Strings.SUB_ACCOUNTS), "subaccounts", AppIcons.Users, CartoonColors.Peach, CartoonColors.PeachSoft),
+    QuickEntry(panelTitle(ServicePanel.SECURITY, Strings.SECURITY), "security", AppIcons.Lock, CartoonColors.Lilac, CartoonColors.LilacSoft)
 )
 
 /**

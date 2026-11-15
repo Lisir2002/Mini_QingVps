@@ -301,7 +301,6 @@ fun AboutPage(
             UpdateDialog(
                 phase = p,
                 onRetry = { doCheck() },
-                onOpenUrl = { url -> openExternal(ctx, url) },
                 onDownload = { r -> startDownload(r) },
                 onCancelDownload = { r -> cancelDownload(r) },
                 onDismiss = { dismiss() }
@@ -420,12 +419,14 @@ private fun UpdateDialogShell(
 /**
  * 软件更新弹窗：检查中 / 检查失败 / 发现新版本 / 下载中（真实进度）/ 下载失败。
  * 版本对比、更新日志、包体大小都来自 Release 真实数据。
+ *
+ * v1.4.20：更新全程在 App 内完成（检查 → 内下载真实进度 → 安装确认），
+ * 不提供任何跳转 GitHub / 外部浏览器的入口；失败只给应用内重试与关闭。
  */
 @Composable
 private fun UpdateDialog(
     phase: UpdatePhase,
     onRetry: () -> Unit,
-    onOpenUrl: (String) -> Unit,
     onDownload: (UpdateChecker.ReleaseInfo) -> Unit,
     onCancelDownload: (UpdateChecker.ReleaseInfo) -> Unit,
     onDismiss: () -> Unit
@@ -448,22 +449,16 @@ private fun UpdateDialog(
             }
             is UpdatePhase.CheckFailed -> {
                 Text(
-                    Strings.UPDATE_FAIL,
+                    "暂时无法连接更新服务，请检查网络后重试。更新会在 App 内直接下载并安装。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = CartoonColors.Ink
-                )
-                CartoonButton(
-                    text = "打开 GitHub Releases",
-                    onClick = { onOpenUrl(UpdateChecker.RELEASES_URL) },
-                    icon = AppIcons.ExternalLink,
-                    modifier = Modifier.fillMaxWidth()
                 )
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = onRetry) { Text(Strings.UPDATE_RETRY, color = CartoonColors.Brand) }
                     TextButton(onClick = onDismiss) { Text(Strings.CANCEL, color = CartoonColors.InkSub) }
                 }
             }
-            is UpdatePhase.Ready -> ReadyContent(phase, onDownload, onOpenUrl, onRetry, onDismiss)
+            is UpdatePhase.Ready -> ReadyContent(phase, onDownload, onRetry, onDismiss)
             is UpdatePhase.Downloading -> DownloadingContent(phase, onCancelDownload, onDismiss)
             is UpdatePhase.DownloadFailed -> {
                 Text(
@@ -477,10 +472,7 @@ private fun UpdateDialog(
                     icon = AppIcons.Refresh,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { onOpenUrl(phase.release.htmlUrl) }) {
-                        Text(Strings.UPDATE_OPEN_RELEASES, color = CartoonColors.InkSub)
-                    }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text(Strings.CANCEL, color = CartoonColors.InkSub) }
                 }
             }
@@ -494,7 +486,6 @@ private fun UpdateDialog(
 private fun ReadyContent(
     phase: UpdatePhase.Ready,
     onDownload: (UpdateChecker.ReleaseInfo) -> Unit,
-    onOpenUrl: (String) -> Unit,
     onRetry: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -567,7 +558,7 @@ private fun ReadyContent(
         }
     }
 
-    // 主操作：有新版本且有 APK 资产 → App 内下载；否则用浏览器打开
+    // 主操作：发现新版本 → App 内下载；已是最新 → 提示，不再跳 GitHub / 浏览器
     if (phase.newer && r.apkUrl != null) {
         CartoonButton(
             text = Strings.UPDATE_DOWNLOAD,
@@ -575,12 +566,20 @@ private fun ReadyContent(
             icon = AppIcons.Update,
             modifier = Modifier.fillMaxWidth()
         )
+    } else if (phase.newer) {
+        Text(
+            "该版本暂未提供应用内安装包，请稍后再试。",
+            style = MaterialTheme.typography.bodySmall,
+            color = CartoonColors.InkSub,
+            modifier = Modifier.fillMaxWidth()
+        )
     } else {
         CartoonButton(
-            text = if (phase.newer) Strings.UPDATE_GOTO else "查看 Releases",
-            onClick = { onOpenUrl(r.apkUrl ?: r.htmlUrl) },
-            icon = AppIcons.ExternalLink,
-            modifier = Modifier.fillMaxWidth()
+            text = Strings.UPDATE_LATEST,
+            onClick = onDismiss,
+            icon = AppIcons.Check,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = false
         )
     }
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
