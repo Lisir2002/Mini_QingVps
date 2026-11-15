@@ -114,18 +114,15 @@ jobs:
           name: QingVPS-${{ github.ref_name }}-apk
           path: dist/
 
+      # v1.4.19：Release 说明改为读取仓库里手写的规范版本日志（CHANGELOG.md），
+      # 不再用 generate_release_notes 自动生成模板文案；找不到对应段落则让构建失败。
+      - name: 从 CHANGELOG 生成版本日志
+        run: python3 scripts/extract_changelog.py "${{ github.ref_name }}" RELEASE_BODY.md
+
       - name: 发布到 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          generate_release_notes: true
-          body: |
-            ## QingVPS ${{ github.ref_name }}
-
-            Debug 构建，使用固定签名，可直接覆盖安装（不会与旧包冲突）。
-
-            - 应用名：QingVPS，包名：`com.vps.qing`
-            - 站点：`https://vps.qingyayun.cn`（IDCSmart 10.7.2，`/console/v1`）
-
-            详见 `SHA256SUMS.txt`。如遇网络错误，站点提示不要使用 VPN 访问。
+          generate_release_notes: false
+          body_path: RELEASE_BODY.md
 

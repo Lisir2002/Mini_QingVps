@@ -1,6 +1,7 @@
 package com.vps.qing.feature.profile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -38,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,6 +62,7 @@ import com.vps.qing.core.ui.glassField
 import com.vps.qing.core.ui.glassFieldColors
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.data.repository.AuthNode
+import com.vps.qing.data.repository.AuthTreeSelection
 import com.vps.qing.data.repository.SubAccountDetail
 import com.vps.qing.data.repository.SubAccountForm
 import com.vps.qing.data.repository.TicketDetail
@@ -984,51 +987,207 @@ private fun MultiCheckCard(
     }
 }
 
-/** 权限树卡片：展示一级分组 + 二级条目，勾选叶子并把父 id 一并回传。 */
+/**
+ * 权限树卡片（v1.4.19 重写）：逐层展示**具体权限内容**，而不是像旧版那样
+ * 只列一级分类再折叠成「N 项」。层级来自站点 /auth 的 child 递归：
+ *  - 一级分组：可折叠，右侧显示「已选 / 共 M 项」，点击整行整组开关；
+ *  - 中间层 / 叶子：缩进显示各自的 title（具体权限名），可单独勾选；
+ *  - 三态：全选 ✓ / 半选 − / 未选（空），由 [AuthTreeSelection] 依叶子比例派生；
+ *  - 「概要」为站点必选项，勾选框显示为锁定态、不可取消。
+ * 提交 auth 由 [AuthTreeSelection.toggle] 生成（选中叶子 + 半选/全选父链），与站点一致。
+ */
 @Composable
 private fun AuthTreeCard(
     nodes: List<AuthNode>,
     selected: List<String>,
     onChange: (List<String>) -> Unit
 ) {
+    val auth = remember(selected) { selected.toSet() }
+    // 默认展开所有分组，让「具体权限」直接可见（用户反馈：不该只显示一级分类）
+    var expanded by remember(nodes) {
+        mutableStateOf(nodes.flatMap { collectAuthGroupIds(it) }.toSet())
+    }
+    val totalLeaves = remember(nodes) { AuthTreeSelection.allLeafIds(nodes).size }
+    val checkedLeaves = remember(nodes, auth) {
+        AuthTreeSelection.allLeafIds(nodes).count { it in auth }
+    }
+
     GlassCard(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("操作权限", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
-            Text("勾选允许子账户使用的功能", style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
-            nodes.forEach { root ->
-                val leaves = root.flatten().filter { it.isLeaf }
-                val allChecked = leaves.isNotEmpty() && leaves.all { it.id in selected }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (allChecked) CartoonColors.MintSoft else Color.Transparent)
-                        .clickable {
-                            val next = selected.toMutableList()
-                            if (allChecked) {
-                                next.remove(root.id)
-                                leaves.forEach { next.remove(it.id) }
-                            } else {
-                                if (root.id !in next) next.add(root.id)
-                                leaves.forEach { if (it.id !in next) next.add(it.id) }
-                            }
-                            onChange(next)
-                        }
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        if (allChecked) AppIcons.Check else AppIcons.Lock,
-                        null,
-                        tint = if (allChecked) CartoonColors.Mint else CartoonColors.InkSub,
-                        modifier = Modifier.size(15.dp)
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "操作权限",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = CartoonColors.Ink
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Text(root.title, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
-                    Spacer(Modifier.weight(1f))
-                    Text("${leaves.size} 项", style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+                    Text(
+                        "展开逐项勾选，父级自动汇总；「概要」为站点必选项",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CartoonColors.InkSub
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(CartoonColors.BrandSoft.copy(alpha = 0.7f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        "已选 $checkedLeaves / $totalLeaves",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = CartoonColors.Brand
+                    )
                 }
             }
+
+            nodes.forEach { node ->
+                AuthNodeRow(
+                    node = node,
+                    depth = 0,
+                    auth = auth,
+                    expanded = expanded,
+                    onToggleExpand = { id ->
+                        expanded = if (id in expanded) expanded - id else expanded + id
+                    },
+                    onToggleCheck = { id ->
+                        onChange(AuthTreeSelection.toggle(nodes, selected, id))
+                    }
+                )
+            }
+        }
+    }
+}
+
+/** 收集所有「有子节点」的分组 id，用于默认展开。 */
+private fun collectAuthGroupIds(node: AuthNode): List<String> =
+    if (node.children.isEmpty()) emptyList()
+    else listOf(node.id) + node.children.flatMap { collectAuthGroupIds(it) }
+
+/** 单个权限节点行（递归渲染 children），层级用缩进表达。 */
+@Composable
+private fun AuthNodeRow(
+    node: AuthNode,
+    depth: Int,
+    auth: Set<String>,
+    expanded: Set<String>,
+    onToggleExpand: (String) -> Unit,
+    onToggleCheck: (String) -> Unit
+) {
+    val isGroup = node.children.isNotEmpty()
+    val state = AuthTreeSelection.stateOf(node, auth)
+    val mandatory = AuthTreeSelection.isMandatoryNode(node)
+    val isOpen = node.id in expanded
+    val leaves = remember(node) { AuthTreeSelection.leavesOf(node) }
+    val checked = remember(leaves, auth) { leaves.count { it in auth } }
+
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(
+                    when {
+                        depth == 0 -> CartoonColors.BrandSoft.copy(alpha = 0.45f)
+                        state == AuthTreeSelection.State.ON -> CartoonColors.MintSoft.copy(alpha = 0.5f)
+                        else -> Color.Transparent
+                    }
+                )
+                .clickable(enabled = !mandatory) { onToggleCheck(node.id) }
+                .padding(start = (8 + depth * 14).dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 三态勾选框：全选 ✓ / 半选 − / 未选（空），必选项显示锁
+            AuthCheckChip(state = state, mandatory = mandatory)
+            Spacer(Modifier.width(8.dp))
+            // 分组折叠箭头
+            if (isGroup) {
+                Icon(
+                    AppIcons.ChevronDown,
+                    null,
+                    tint = CartoonColors.InkSub,
+                    modifier = Modifier
+                        .size(16.dp)
+                        .rotate(if (isOpen) 0f else -90f)
+                        .clickable { onToggleExpand(node.id) }
+                )
+                Spacer(Modifier.width(6.dp))
+            } else {
+                Spacer(Modifier.width(22.dp)) // 与分组箭头对齐，让叶子文字起点一致
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    node.title.ifBlank { "权限 #${node.id}" },
+                    style = if (depth == 0) MaterialTheme.typography.bodyMedium
+                    else MaterialTheme.typography.bodySmall,
+                    fontWeight = if (isGroup) FontWeight.Bold else FontWeight.Normal,
+                    color = CartoonColors.Ink
+                )
+                // 叶子：把 rules 作为「具体权限内容」的补充说明显示出来
+                if (!isGroup && node.rules.isNotEmpty()) {
+                    Text(
+                        node.rules.take(3).joinToString(" · ") +
+                            if (node.rules.size > 3) " 等 ${node.rules.size} 项" else "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CartoonColors.InkSub,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (mandatory) {
+                Text(
+                    "必选",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = CartoonColors.Mint
+                )
+            } else if (isGroup) {
+                Text(
+                    "$checked/${leaves.size}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CartoonColors.InkSub
+                )
+            }
+        }
+        // 展开时递归渲染子层级（具体权限项）
+        if (isGroup && isOpen) {
+            node.children.forEach { child ->
+                AuthNodeRow(
+                    node = child,
+                    depth = depth + 1,
+                    auth = auth,
+                    expanded = expanded,
+                    onToggleExpand = onToggleExpand,
+                    onToggleCheck = onToggleCheck
+                )
+            }
+        }
+    }
+}
+
+/** 权限节点前的三态勾选标记。 */
+@Composable
+private fun AuthCheckChip(state: AuthTreeSelection.State, mandatory: Boolean) {
+    val on = state != AuthTreeSelection.State.OFF
+    val accent = if (on) CartoonColors.Brand else CartoonColors.InkSub.copy(alpha = 0.5f)
+    Box(
+        Modifier
+            .size(20.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (on) accent else Color.Transparent)
+            .border(1.4.dp, accent, RoundedCornerShape(6.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        when {
+            mandatory -> Icon(AppIcons.Lock, null, tint = Color.White, modifier = Modifier.size(12.dp))
+            state == AuthTreeSelection.State.ON ->
+                Icon(AppIcons.Check, null, tint = Color.White, modifier = Modifier.size(13.dp))
+            state == AuthTreeSelection.State.INDETERMINATE ->
+                Icon(AppIcons.Minus, null, tint = Color.White, modifier = Modifier.size(13.dp))
         }
     }
 }

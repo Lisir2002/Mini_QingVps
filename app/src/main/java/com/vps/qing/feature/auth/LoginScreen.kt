@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import com.vps.qing.core.ui.topInsetPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -56,7 +56,7 @@ import com.vps.qing.core.ui.theme.CartoonColors
  *    根除浮动 label 被圆角裁到框外的问题；
  *  - 焦点链：邮箱「下一步」直接跳密码，密码「完成」直接提交并收起键盘；
  *  - 加载态内联进按钮（不再在按钮下方孤立转圈），错误/提示用带图标的提示条；
- *  - statusBarsPadding + imePadding，键盘弹起不遮挡输入框与操作按钮。
+ *  - topInsetPadding + imePadding：作为顶层导航页自行避开状态栏，键盘弹起不遮挡输入框与操作按钮。
  */
 @Composable
 fun LoginScreen(
@@ -98,7 +98,7 @@ fun LoginScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .topInsetPadding()
                 .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 28.dp),

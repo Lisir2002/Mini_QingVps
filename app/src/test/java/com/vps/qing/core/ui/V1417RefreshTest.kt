@@ -20,7 +20,7 @@ class V1417RefreshTest {
     }
 
     @Test
-    fun `版本号已推进到 1_4_18 或更高`() {
+    fun `版本号不低于当前发布基线`() {
         // 断言「不低于当前发布版本」而不是写死等值，避免每次发版都因升版本号失败
         val v = Strings.APP_VERSION
         assertTrue("$v 应为三段数字", v.matches(Regex("""\d+\.\d+\.\d+""")))

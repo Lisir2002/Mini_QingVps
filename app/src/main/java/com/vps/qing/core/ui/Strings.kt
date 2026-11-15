@@ -3,7 +3,7 @@ package com.vps.qing.core.ui
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.4.18"
+    const val APP_VERSION = "1.4.19"
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"
@@ -145,6 +145,10 @@ object Strings {
     const val ABOUT_GROUP = "官方群聊"
     const val ABOUT_GROUP_VALUE = "点击加入官方 QQ 群"
     const val ABOUT_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=85sIUtWe21jcA0J93jJvZllkJJTNujkr1TEMvtAHzr3shY2ZVQZnGIlVoUgjyrC2&busi_data=eyJncm91cENvZGUiOiIxMTI0NTQ5OTQzIiwidG9rZW4iOiJuNk1HSHdDazdVdkJaK2Q1bURhd2VLTWltc1RGN04rRDFUQklxK1VZYkIzQXJnQlA2MStxaUZYdkI4blJrekpPIiwidWluIjoiMTgwMTQyMTgxIn0%3D&data=vfL86IJ9Iw_a2exl8uPjU0VxZMkcMudR0YIkQZ9wQuM4Rd1bHCMkJRG5GV0ux44laycnxC1xtfaKh3uzhMIysw&svctype=4&tempid=h5_group_info"
+    /** v1.4.19：APP 开发下方的开发团队署名与链接。 */
+    const val ABOUT_DEV = "APP 开发"
+    const val ABOUT_DEV_TEAM = "MiniMe-Core开发团队"
+    const val ABOUT_DEV_TEAM_URL = "https://qm.qq.com/q/39MulEBLXW"
     const val ABOUT_UPDATE = "软件更新"
     const val ABOUT_UPDATE_VALUE = "检查 GitHub 最新版本"
     const val ABOUT_INFO_GROUP = "官方信息"
@@ -179,6 +183,20 @@ object Strings {
     const val UPDATE_GOTO = "前往 GitHub 下载"
     const val UPDATE_FAIL = "暂时无法连接 GitHub，点此打开 Releases 页面"
     const val UPDATE_RETRY = "重新检查"
+
+    // ---- v1.4.19 App 内真实下载 / 安装 ----
+    const val UPDATE_DOWNLOAD = "下载新版本"
+    const val UPDATE_DOWNLOADING = "正在下载安装包…"
+    const val UPDATE_CANCEL_DOWNLOAD = "取消下载"
+    const val UPDATE_DOWNLOAD_FAILED = "下载失败"
+    const val UPDATE_DOWNLOAD_RETRY = "重新下载"
+    const val UPDATE_OPEN_RELEASES = "用浏览器下载"
+    const val UPDATE_DOWNLOADED = "下载完成"
+    const val UPDATE_INSTALL_ASK = "是否立即安装新版本？"
+    const val UPDATE_INSTALL_NOW = "立即安装"
+    const val UPDATE_INSTALL_LATER = "稍后安装"
+    const val UPDATE_INSTALL_PERMISSION = "首次安装需在系统设置中允许本应用「安装未知应用」，开启后回来点「立即安装」即可。"
+    const val UPDATE_CHANGELOG = "本次更新"
 
     // ---- 图形验证码弹窗 ----
     const val CAPTCHA_DIALOG_TITLE = "安全验证"

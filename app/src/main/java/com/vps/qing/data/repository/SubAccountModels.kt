@@ -236,3 +236,119 @@ object SubAccountBodies {
         addProperty("status", if (enabled) 1 else 0)
     }
 }
+
+/**
+ * 子账户权限树的勾选状态机（纯 JVM，便于单测）。
+ *
+ * 协议依据站点 addChild.js：
+ *  - 权限树 [AuthNode] 可多层嵌套（child 递归），叶子才是真正的一条具体权限；
+ *  - 提交 auth = 树控件 `getCheckedKeys() + getHalfCheckedKeys()`：
+ *    即**所有「部分或全部后代被选中」的节点 id**（选中叶子 + 半选/全选父链），
+ *    站点用 deepFun 从选中叶子逐级上溯父 id 拼出来；
+ *  - `disabledFn` 强制 title=="概要" 的节点 checked=true 且不可取消，
+ *    `funActive` 把「概要」及其祖先链无条件加入提交列表。
+ *
+ * 因此这里统一以「选中叶子集合」为事实来源：
+ *  [stateOf] 由叶子选中比例派生三态；[normalize] 由叶子集合生成完整 auth；
+ *  [toggle] 切换任意节点（组则整组、叶子则单项）后重新 normalize。
+ *  UI 只需持有 form.auth（完整列表），无需另存一份状态，编辑回填也天然兼容。
+ */
+object AuthTreeSelection {
+
+    enum class State { OFF, ON, INDETERMINATE }
+
+    /** 站点强制必选的分组名（disabledFn）。 */
+    private const val MANDATORY_TITLE = "概要"
+
+    /** 节点下所有叶子 id（节点自身是叶子时返回自身）。 */
+    fun leavesOf(node: AuthNode): List<String> =
+        if (node.children.isEmpty()) listOf(node.id)
+        else node.children.flatMap { leavesOf(it) }
+
+    fun allLeafIds(nodes: List<AuthNode>): Set<String> =
+        nodes.flatMap { leavesOf(it) }.toSet()
+
+    fun allNodeIds(nodes: List<AuthNode>): Set<String> {
+        val out = LinkedHashSet<String>()
+        fun visit(n: AuthNode) { out.add(n.id); n.children.forEach { visit(it) } }
+        nodes.forEach { visit(it) }
+        return out
+    }
+
+    fun find(nodes: List<AuthNode>, id: String): AuthNode? {
+        for (n in nodes) {
+            if (n.id == id) return n
+            find(n.children, id)?.let { return it }
+        }
+        return null
+    }
+
+    /** 「概要」节点所在路径（自身 + 所有祖先）id，站点无条件提交。 */
+    fun mandatoryPathIds(nodes: List<AuthNode>): Set<String> {
+        val out = LinkedHashSet<String>()
+        fun visit(n: AuthNode, ancestors: List<String>): Boolean {
+            val path = ancestors + n.id
+            var hit = n.title == MANDATORY_TITLE
+            for (c in n.children) if (visit(c, path)) hit = true
+            if (hit) out.addAll(path)
+            return hit
+        }
+        nodes.forEach { visit(it, emptyList()) }
+        return out
+    }
+
+    /** 「概要」节点（含其子树）里的叶子，勾选时保底加入，取消时也不允许移除。 */
+    private fun mandatoryLeafIds(nodes: List<AuthNode>): Set<String> {
+        val out = LinkedHashSet<String>()
+        fun visit(n: AuthNode) {
+            if (n.title == MANDATORY_TITLE) out.addAll(leavesOf(n))
+            n.children.forEach { visit(it) }
+        }
+        nodes.forEach { visit(it) }
+        return out
+    }
+
+    /** 节点自身是否是必选项（UI 禁用其勾选交互）。 */
+    fun isMandatoryNode(node: AuthNode): Boolean = node.title == MANDATORY_TITLE
+
+    /** 由「完整 auth 列表」派生节点三态（只看叶子命中比例，父 id 是否在内不影响）。 */
+    fun stateOf(node: AuthNode, auth: Set<String>): State {
+        val leaves = leavesOf(node)
+        val hit = leaves.count { it in auth }
+        return when {
+            hit == 0 -> State.OFF
+            hit == leaves.size -> State.ON
+            else -> State.INDETERMINATE
+        }
+    }
+
+    /**
+     * 由「选中叶子集合」生成完整提交 auth：所有 state!=OFF 的节点 id
+     * + 概要必选路径 + 树外 id（站点隐含项原样回传，保证保真）。
+     */
+    fun normalize(nodes: List<AuthNode>, auth: Set<String>): List<String> {
+        val leafIds = allLeafIds(nodes)
+        val kept = (auth.filter { it in leafIds } + mandatoryLeafIds(nodes)).toMutableSet()
+        val out = LinkedHashSet<String>()
+        fun visit(n: AuthNode) {
+            if (stateOf(n, kept) != State.OFF) out.add(n.id)
+            n.children.forEach { visit(it) }
+        }
+        nodes.forEach { visit(it) }
+        out.addAll(mandatoryPathIds(nodes))
+        out.addAll(auth - allNodeIds(nodes))
+        return out.toList()
+    }
+
+    /** 切换任意节点：全选态→取消其下所有叶子，否则→选中其下所有叶子；随后 normalize。 */
+    fun toggle(nodes: List<AuthNode>, auth: List<String>, nodeId: String): List<String> {
+        val set = auth.toMutableSet()
+        val node = find(nodes, nodeId) ?: return normalize(nodes, set)
+        val leafIds = allLeafIds(nodes)
+        val leaves = leavesOf(node)
+        val kept = set.filter { it in leafIds }.toMutableSet()
+        if (stateOf(node, kept) == State.ON) kept.removeAll(leaves) else kept.addAll(leaves)
+        val extras = set.filter { it !in allNodeIds(nodes) } // 树外 id 原样保留
+        return normalize(nodes, (kept + mandatoryLeafIds(nodes) + extras).toSet())
+    }
+}

@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import com.vps.qing.core.ui.topInsetPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -115,9 +115,10 @@ fun PermissionOnboardingScreen(
     }
 
     CartoonBackground {
-        // v1.4.18：顶层导航页没有 Scaffold 的 insets 让位，必须自行避开状态栏，
-        // 否则玻璃顶栏标题会与状态栏时间/图标堆叠（截图问题）。
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+        // v1.4.19：本页既是首次启动顶层导航页（需自行避开状态栏），又是个人中心子页
+        // （Scaffold 已让位）。用 topInsetPadding() 按外层是否已让位自动决定，
+        // 既不与状态栏堆叠，也不产生「顶栏上方一大截空白」的双重让位。
+        Column(modifier = Modifier.fillMaxSize().topInsetPadding()) {
             GlassTopBar(
                 title = "权限管理",
                 subtitle = if (isOnboarding) "首次使用 · 由你决定是否开启" else "随时查看与调整权限",

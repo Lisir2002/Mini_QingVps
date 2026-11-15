@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import com.vps.qing.core.ui.topInsetPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -356,7 +356,7 @@ fun SecurityEditPage(
     }
 
     CartoonBackground {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(Modifier.fillMaxSize().topInsetPadding()) {
             GlassTopBar(
                 title = title,
                 subtitle = if (target == "password") "修改后需重新登录" else "按站点安全流程验证后生效",

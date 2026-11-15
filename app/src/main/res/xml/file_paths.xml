@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.4.19：FileProvider 仅暴露 App 内更新下载目录，供系统安装器读取 APK。
+     cache-path 指向 cacheDir/updates/，与 ApkInstaller.updateDir() 一致。 -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="updates" path="updates/" />
+</paths>

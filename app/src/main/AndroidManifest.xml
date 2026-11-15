@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- v1.4.19：App 内更新下载完成后，由用户确认再安装（非静默安装）。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- 可选权限：以下全部默认关闭，只有用户在权限管理页同意后才申请 / 使用 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -52,6 +54,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- v1.4.19：仅为「App 内更新」把下载到 cacheDir/updates 的 APK 暴露给系统安装器，
+             exported=false + grantUriPermissions，不下放任何其他目录。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.vps.qing.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

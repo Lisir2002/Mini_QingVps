@@ -36,8 +36,8 @@ class UpdateCheckerTest {
           "html_url": "https://github.com/Lisir2002/Mini_QingVps/releases/tag/v1.4.15",
           "published_at": "2026-11-14T00:00:00Z",
           "assets": [
-            {"name": "SHA256SUMS.txt", "browser_download_url": "https://example/sums"},
-            {"name": "QingVPS-v1.4.15-debug.apk", "browser_download_url": "https://example/app.apk"}
+            {"name": "SHA256SUMS.txt", "browser_download_url": "https://example/sums", "size": 128},
+            {"name": "QingVPS-v1.4.15-debug.apk", "browser_download_url": "https://example/app.apk", "size": 12930076}
           ]
         }
         """.trimIndent()
@@ -47,6 +47,17 @@ class UpdateCheckerTest {
         assertEquals("新增自定义背景图", r.body)
         assertEquals("https://example/app.apk", r.apkUrl)
         assertEquals("2026-11-14T00:00:00Z", r.publishedAt)
+        // v1.4.19：APK 资产真实字节数，用作下载进度分母兜底与包体展示
+        assertEquals(12930076L, r.apkSize)
+    }
+
+    @Test
+    fun `资产缺少 size 时回退为 0 不影响解析`() {
+        val r = UpdateChecker.parse(
+            """{"tag_name":"v1.4.19","assets":[{"name":"a.apk","browser_download_url":"https://x/a.apk"}]}"""
+        )!!
+        assertEquals("https://x/a.apk", r.apkUrl)
+        assertEquals(0L, r.apkSize)
     }
 
     @Test

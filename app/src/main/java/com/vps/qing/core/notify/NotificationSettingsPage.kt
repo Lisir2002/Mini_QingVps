@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import com.vps.qing.core.ui.topInsetPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -133,7 +133,7 @@ fun NotificationSettingsPage(
     val allReady = gates.all { it.second }
 
     CartoonBackground {
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(modifier = Modifier.fillMaxSize().topInsetPadding()) {
             GlassTopBar(
                 title = "通知管理",
                 subtitle = "按业务分类管理提醒，随时可关",

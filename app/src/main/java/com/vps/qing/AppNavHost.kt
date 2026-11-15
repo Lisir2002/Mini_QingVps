@@ -1,6 +1,7 @@
 package com.vps.qing
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -10,6 +11,7 @@ import androidx.navigation.navArgument
 import com.vps.qing.core.AppContainer
 import com.vps.qing.core.navigation.Routes
 import com.vps.qing.core.permissions.PermissionOnboardingScreen
+import com.vps.qing.core.ui.LocalTopInsetApplied
 import com.vps.qing.feature.auth.ForgotPasswordScreen
 import com.vps.qing.feature.auth.LoginScreen
 import com.vps.qing.feature.auth.RegisterScreen
@@ -86,12 +88,17 @@ fun AppNavHost(
                     popUpTo(Routes.MAIN) { inclusive = true }
                 }
             }
-            MainScreen(
-                onOpenWeb = { url -> navController.navigate(Routes.web(url)) },
-                onLoggedOut = toLogin,
-                // 首页「去登录」引导（v1.4.6）
-                onNeedLogin = toLogin
-            )
+            // v1.4.19：MAIN 容器内 Scaffold 已让位状态栏，标记给所有子页，
+            // 避免子页再各自 statusBarsPadding() 造成顶栏上方双重空白。
+            // 顶层导航页（登录/注册/找回/WebView/首次启动权限页）不在此树内，保持默认 false，自行让位。
+            CompositionLocalProvider(LocalTopInsetApplied provides true) {
+                MainScreen(
+                    onOpenWeb = { url -> navController.navigate(Routes.web(url)) },
+                    onLoggedOut = toLogin,
+                    // 首页「去登录」引导（v1.4.6）
+                    onNeedLogin = toLogin
+                )
+            }
         }
 
         composable(

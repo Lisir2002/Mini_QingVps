@@ -26,7 +26,9 @@ object UpdateChecker {
         val body: String,
         val htmlUrl: String,
         val apkUrl: String?,
-        val publishedAt: String
+        val publishedAt: String,
+        /** v1.4.19：APK 资产的真实字节数，用于下载进度分母兜底与包体大小展示。 */
+        val apkSize: Long = 0L
     )
 
     /**
@@ -58,17 +60,19 @@ object UpdateChecker {
         if (tag.isBlank()) {
             null
         } else {
-            val apkUrl = o.getAsJsonArray("assets")?.let { arr ->
-                arr.firstOrNull { it.asJsonObject.get("name")?.asString?.endsWith(".apk", true) == true }
-                    ?.asJsonObject?.get("browser_download_url")?.asString
-            }
+            val apkAsset = o.getAsJsonArray("assets")?.firstOrNull {
+                it.asJsonObject.get("name")?.asString?.endsWith(".apk", true) == true
+            }?.asJsonObject
+            val apkUrl = apkAsset?.get("browser_download_url")?.asString
+            val apkSize = apkAsset?.get("size")?.asLong ?: 0L
             ReleaseInfo(
                 tag = tag,
                 name = o.get("name")?.asString?.takeIf { it.isNotBlank() } ?: tag,
                 body = o.get("body")?.asString.orEmpty(),
                 htmlUrl = o.get("html_url")?.asString?.takeIf { it.isNotBlank() } ?: RELEASES_URL,
                 apkUrl = apkUrl,
-                publishedAt = o.get("published_at")?.asString.orEmpty()
+                publishedAt = o.get("published_at")?.asString.orEmpty(),
+                apkSize = apkSize
             )
         }
     }.getOrNull()
