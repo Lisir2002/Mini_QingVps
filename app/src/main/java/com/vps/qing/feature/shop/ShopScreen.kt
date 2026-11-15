@@ -106,7 +106,12 @@ import com.vps.qing.data.repository.ProductInfo
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
+fun ShopScreen(
+    vm: ShopViewModel,
+    onOpenWeb: (String) -> Unit,
+    /** v1.4.21：打开独立优惠码中心。 */
+    onOpenPromoCenter: () -> Unit = {}
+) {
     val state by vm.ui.collectAsState()
 
     // v1.4.11：搜索框改为顶栏搜索按钮触发，不再常驻商品列表上方
@@ -129,6 +134,14 @@ fun ShopScreen(vm: ShopViewModel, onOpenWeb: (String) -> Unit) {
                 title = Strings.SHOP_TITLE,
                 subtitle = "挑选适合你的云服务器",
                 actions = {
+                    // v1.4.21：优惠码中心入口
+                    CartoonIconChip(
+                        icon = AppIcons.Gift,
+                        onClick = onOpenPromoCenter,
+                        tint = CartoonColors.Peach,
+                        bg = CartoonColors.PeachSoft
+                    )
+                    Spacer(Modifier.width(UiT.spaceSm + 2.dp))
                     // 搜索按钮（v1.4.11）：点按展开/收起搜索框
                     CartoonIconChip(
                         icon = AppIcons.Search,

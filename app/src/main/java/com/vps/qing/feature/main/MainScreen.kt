@@ -61,6 +61,7 @@ import com.vps.qing.feature.dashboard.DashboardScreen
 import com.vps.qing.feature.message.AnnouncementPage
 import com.vps.qing.feature.message.MessagesScreen
 import com.vps.qing.feature.profile.ProfileScreen
+import com.vps.qing.feature.promo.PromoCenterScreen
 import com.vps.qing.feature.shop.CheckoutSheet
 import com.vps.qing.feature.shop.ConfigSheet
 import com.vps.qing.feature.shop.ShopScreen
@@ -116,6 +117,10 @@ fun MainScreen(
     var announcementFocus by rememberSaveable { mutableStateOf<String?>(null) }
     BackHandler(enabled = showAnnouncements) { showAnnouncements = false }
 
+    /** v1.4.21 独立优惠码中心：整页覆盖并隐藏底栏。 */
+    var showPromoCenter by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = showPromoCenter) { showPromoCenter = false }
+
     // v1.4.17：通知点击 → App 内原生页。公告落到独立公告页（可直达某条详情），
     // 订单 / 工单 / 安全 / 已购 / 权限 / 通知管理统一走个人中心子页导航栈。
     LaunchedEffect(Unit) {
@@ -159,7 +164,7 @@ fun MainScreen(
     BackHandler(enabled = checkoutOpen) { shopVm.closeCheckout() }
 
     // 底栏是否可见；可见时内容下沉到玻璃底栏之后（v1.4.10 透明画布），隐藏时保持原让位行为
-    val bottomBarVisible = !profileSubOpen && !configOpen && !showAnnouncements && !checkoutOpen
+    val bottomBarVisible = !profileSubOpen && !configOpen && !showAnnouncements && !checkoutOpen && !showPromoCenter
 
     // v1.4.10 透明画布：糖果背景铺满整个屏幕（含状态栏带、底栏之后、导航栏区域），
     // 顶栏/底栏玻璃之下不再露出窗口不透明白底，滚动内容可从玻璃栏下穿过。
@@ -190,8 +195,20 @@ fun MainScreen(
                 // 「选配页叠在采购页」的重影。根级背景仍由最外层 CartoonBackground 绘制，
                 // 透明画布风格完全不受影响。
                 if (!checkoutOpen && !configOpen) {
+                // v1.4.21 独立优惠码中心：整页覆盖并隐藏底栏
+                if (showPromoCenter) {
+                    PromoCenterScreen(
+                        onBack = { showPromoCenter = false },
+                        onGoZone = { fpgId, spgId, _ ->
+                            showPromoCenter = false
+                            shopVm.selectFirst(fpgId)
+                            shopVm.selectSecond(spgId)
+                            selected = 1
+                        }
+                    )
+                }
                 // 网站公告独立页面：整页覆盖并隐藏底栏（v1.4.7）
-                if (showAnnouncements) {
+                else if (showAnnouncements) {
                     AnnouncementPage(
                         onBack = { showAnnouncements = false },
                         onOpenWeb = onOpenWeb,
@@ -210,7 +227,11 @@ fun MainScreen(
                             showAnnouncements = true
                         }
                     )
-                1 -> ShopScreen(vm = shopVm, onOpenWeb = onOpenWeb)
+                1 -> ShopScreen(
+                    vm = shopVm,
+                    onOpenWeb = onOpenWeb,
+                    onOpenPromoCenter = { showPromoCenter = true }
+                )
                 2 -> MessagesScreen(
                     onOpenWeb = onOpenWeb,
                     onOpenAnnouncements = { showAnnouncements = true }

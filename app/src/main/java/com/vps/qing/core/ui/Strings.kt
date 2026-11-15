@@ -3,7 +3,7 @@ package com.vps.qing.core.ui
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.4.20"
+    const val APP_VERSION = "1.4.21"
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"
@@ -124,6 +124,24 @@ object Strings {
     const val CONFIG_ANNOUNCEMENT = "站点公告"
     const val CONFIG_MORE = "更多"
     const val CONFIG_CONDITION_PREFIX = "满"
+
+    // v1.4.21 独立优惠码中心
+    const val PROMO_CENTER = "优惠码中心"
+    const val PROMO_SUBTITLE = "专区公告优惠码 · 官方校验"
+    const val PROMO_TIP_TITLE = "关于优惠码"
+    const val PROMO_TIP = "以下优惠码来自各专区公告；折扣以结算时官方校验结果为准。选中心仪的码，点「去选购」直达对应专区。"
+    const val PROMO_FOUND = "发现 %d 个优惠码"
+    const val PROMO_EMPTY = "暂未发现专区优惠码，可下拉刷新或手动输入校验"
+    const val PROMO_INPUT_HINT = "输入优惠码，如 Qwy202652"
+    const val PROMO_VERIFY = "校验"
+    const val PROMO_VERIFYING = "校验中…"
+    const val PROMO_TRY = "试算"
+    const val PROMO_GO_SHOP = "去选购"
+    const val PROMO_COPY = "复制"
+    const val PROMO_ZONE = "适用专区"
+    const val PROMO_DISCOUNT_OK = "可减 ￥%s"
+    const val PROMO_UNAVAILABLE = "当前不可用"
+    const val PROMO_MANUAL_RESULT = "校验结果"
 
     // ---- 消息 ----
     const val MESSAGES_PLACEHOLDER = "消息中心"

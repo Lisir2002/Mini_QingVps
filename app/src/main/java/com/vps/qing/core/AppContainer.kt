@@ -233,4 +233,26 @@ object AppContainer {
     } catch (e: Exception) {
         false
     }
+
+    /**
+     * v1.4.21：抓取站点 SSR HTML 页面（如 cart/goodsList.htm 专区公告）。
+     * 走 [webHttpClient]：不带 Auth / L1 / 类型守卫拦截器（这些是给 JSON API 用的，
+     * 会把 text/html 当异常抛掉），但复用同一连接池与磁盘缓存。
+     * 换到 IO 线程执行阻塞的 OkHttp 同步请求。
+     */
+    suspend fun fetchHtml(url: String): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val request = okhttp3.Request.Builder().url(url)
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android) QingVPS/1.4.21")
+            .header("Accept", "text/html,application/xhtml+xml")
+            .header("language", "zh-cn")
+            .build()
+        webHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw java.io.IOException("HTML ${response.code}")
+            response.body?.string().orEmpty()
+        }
+    }
+
+    /** 专区选购页 URL（专区公告就嵌在这个 SSR 页面里）。 */
+    fun zoneGoodsUrl(fpgId: String, spgId: String): String =
+        SITE_ORIGIN + "cart/goodsList.htm?fpg_id=$fpgId&spg_id=$spgId"
 }

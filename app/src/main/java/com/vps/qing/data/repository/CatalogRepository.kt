@@ -10,6 +10,7 @@ import com.vps.qing.core.network.safeApiCallEnvelope
 import com.vps.qing.core.network.string
 import com.vps.qing.data.api.QingVpsApiService
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import java.util.concurrent.ConcurrentHashMap
 
@@ -310,4 +311,81 @@ class CatalogRepository(private val api: QingVpsApiService) {
 
     suspend fun coupons(): ApiResult<List<CouponItem>> =
         safeApiCall({ api.coupons() }) { MessageParser.coupons(it) }
+
+    // ---- v1.4.21 独立优惠码中心 ----
+
+    /**
+     * 发现全站专区公告里的优惠码。
+     * 一级分组 → 二级分组 → 并发抓各专区 goodsList.htm → 解析公告 → 全局按 code 去重。
+     * 单个专区失败静默跳过（spg17 等可能无公告 / 临时反爬），不影响整体结果。
+     */
+    suspend fun discoverPromoCodes(): ApiResult<List<PromoCodeItem>> {
+        val first = when (val r = firstGroups()) {
+            is ApiResult.Success -> r.data
+            is ApiResult.Failure -> return ApiResult.Failure(r.code, r.msg, r.data)
+            is ApiResult.Error -> return ApiResult.Error(r.throwable)
+        }
+        // 并发拉所有二级分组
+        val zones: List<Pair<String, ProductGroup>> = coroutineScope {
+            first.map { g -> async { g.id to secondGroups(g.id) } }
+                .mapNotNull { deferred ->
+                    val (fpgId, res) = deferred.await()
+                    val list = (res as? ApiResult.Success)?.data ?: return@mapNotNull null
+                    list.map { fpgId to it }
+                }
+                .flatten()
+        }
+        if (zones.isEmpty()) return ApiResult.Success(emptyList())
+
+        // 并发抓专区 HTML 并解析（限流由 OkHttp dispatcher maxRequestsPerHost=12 兜底）
+        val found: List<PromoCodeItem> = coroutineScope {
+            zones.map { (fpgId, zone) ->
+                async {
+                    val url = com.vps.qing.core.AppContainer.zoneGoodsUrl(fpgId, zone.id)
+                    runCatching { com.vps.qing.core.AppContainer.fetchHtml(url) }
+                        .getOrNull()
+                        ?.let { PromoParser.fromZoneHtml(it, fpgId, zone.id, url) }
+                        .orEmpty()
+                }
+            }.awaitAll().flatten()
+        }
+        // 全局按 code 去重，保留信息最完整的一条（带专区名/日期的优先）
+        val dedup = LinkedHashMap<String, PromoCodeItem>()
+        found.forEach { item ->
+            val prev = dedup[item.code]
+            if (prev == null || (prev.zoneName.isBlank() && item.zoneName.isNotBlank())) {
+                dedup[item.code] = item
+            }
+        }
+        return ApiResult.Success(dedup.values.toList())
+    }
+
+    /**
+     * 调用官方 promo_code/apply 校验码。无论码是否可用都返回 Success（业务失败信息在 msg / discount 里），
+     * 只有网络异常才返回 Error，便于 UI 统一按「校验结果」处理。
+     */
+    suspend fun applyPromoCode(
+        scene: String,
+        promoCode: String,
+        productId: String,
+        qty: Int,
+        amount: Double,
+        billingCycleTime: Int,
+        hostId: String? = null
+    ): ApiResult<PromoApplyResult> = try {
+        val body = JsonObject().apply {
+            addProperty("scene", scene)
+            addProperty("promo_code", promoCode)
+            addProperty("product_id", productId.toIntOrNull() ?: 0)
+            addProperty("qty", qty)
+            addProperty("amount", amount)
+            addProperty("billing_cycle_time", billingCycleTime)
+            hostId?.let { addProperty("host_id", it.toIntOrNull() ?: 0) }
+        }
+        val env = api.applyPromoCode(body)
+        if (env.status == 401) com.vps.qing.core.network.UnauthorizedBus.fire()
+        ApiResult.Success(PromoParser.applyResult(env.data, env.status, env.msg))
+    } catch (e: Exception) {
+        ApiResult.Error(e)
+    }
 }

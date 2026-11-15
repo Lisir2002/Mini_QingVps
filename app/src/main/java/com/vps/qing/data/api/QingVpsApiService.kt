@@ -436,6 +436,17 @@ interface QingVpsApiService {
     /** 优惠券使用详情：data{...}（需登录）。 */
     @GET("coin/coupon/{id}/use_detail")
     suspend fun couponUseDetail(@Path("id") id: String): ApiEnvelope
+
+    // ---- v1.4.21 独立优惠码中心：官方 promo_code 插件校验接口 ----
+
+    /**
+     * 应用/校验优惠码（POST /console/v1/promo_code/apply）。
+     * body: {scene, promo_code, product_id, qty, amount, billing_cycle_time, host_id?}
+     * 成功 data.discount = 抵扣金额；失败 status=400 + 本地化错误码。
+     * 源码依据：docs/mofang-v10-promocode-research.md。
+     */
+    @POST("promo_code/apply")
+    suspend fun applyPromoCode(@Body body: JsonObject): ApiEnvelope
 }
 
 /** /captcha/tp_captcha/index/refresh 的响应。 */
