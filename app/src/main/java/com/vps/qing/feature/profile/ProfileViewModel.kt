@@ -23,6 +23,12 @@ import com.vps.qing.data.repository.CountryOption
 import com.vps.qing.data.repository.HostLine
 import com.vps.qing.data.repository.HostOpLog
 import com.vps.qing.data.repository.HostOption
+import com.vps.qing.data.repository.ChartPoint
+import com.vps.qing.data.repository.FlowInfo
+import com.vps.qing.data.repository.RealData
+import com.vps.qing.data.repository.DiskInfo
+import com.vps.qing.data.repository.BackupItem
+import com.vps.qing.data.repository.IpInfo
 import com.vps.qing.data.repository.MfImageGroup
 import com.vps.qing.data.repository.ModuleOption
 import com.vps.qing.data.repository.OrderDetail
@@ -171,21 +177,44 @@ data class ProductDetailUi(
     val loading: Boolean = false,
     val error: String? = null,
     val detail: PurchasedDetail? = null,
-    /** 当前 tab（0=概览 1=连接信息 2=重装系统 3=费用与订单）。 */
+    /** 当前 tab（顺序见 HostDetailTab）。 */
     val tab: Int = 0,
-    /** 重装可选镜像（进入重装 tab 懒加载）。 */
+    /** 重装可选镜像（进入管理 tab 懒加载）。 */
     val images: List<MfImageGroup> = emptyList(),
     val imagesLoading: Boolean = false,
     /** 实例操作日志。 */
     val logs: List<HostOpLog> = emptyList(),
     /** 重装/重置/电源等操作的局部进行标记（区别于全局 actionBusy）。 */
-    val opBusy: Boolean = false
+    val opBusy: Boolean = false,
+    // ---- v1.4.23：管理页数据 ----
+    /** 统计图表：type → 采样点。 */
+    val charts: Map<String, List<ChartPoint>> = emptyMap(),
+    val chartLoading: Boolean = false,
+    /** 统计时间范围下标：0=24h 1=3d 2=7d。 */
+    val chartRange: Int = 0,
+    /** 实时用量。 */
+    val realData: RealData? = null,
+    /** 流量包。 */
+    val flow: FlowInfo? = null,
+    /** 磁盘 / 快照 / 备份 / IP。 */
+    val disks: List<DiskInfo> = emptyList(),
+    val snapshots: List<BackupItem> = emptyList(),
+    val backups: List<BackupItem> = emptyList(),
+    val ips: List<IpInfo> = emptyList(),
+    /** 管理子区块各自的加载态（复用一个即可，进入页一次性加载）。 */
+    val manageLoading: Boolean = false
 )
 
+/** 已购机器详情 Tab，顺序对齐网站端「统计图表/管理/磁盘/网络/备份快照/应用预设」并保留 App 特有页。 */
 enum class HostDetailTab(val label: String) {
     OVERVIEW("概览"),
     CONNECT("连接信息"),
-    REINSTALL("重装系统"),
+    CHART("统计图表"),
+    REINSTALL("管理"),
+    DISK("磁盘"),
+    NETWORK("网络"),
+    BACKUP("备份快照"),
+    APP_PRESET("应用预设"),
     BILLING("费用与订单")
 }
 
@@ -475,9 +504,97 @@ class ProfileViewModel(
 
     fun setHostDetailTab(hostId: String, tab: Int) {
         setProductDetail(hostId) { it.copy(tab = tab) }
-        if (tab == HostDetailTab.REINSTALL.ordinal) {
-            ensureHostImages(hostId)
-            refreshHostLogs(hostId)
+        when (tab) {
+            HostDetailTab.REINSTALL.ordinal -> {
+                ensureHostImages(hostId)
+                refreshHostLogs(hostId)
+            }
+            HostDetailTab.CHART.ordinal -> ensureHostCharts(hostId)
+            HostDetailTab.DISK.ordinal -> refreshHostDisks(hostId)
+            HostDetailTab.NETWORK.ordinal -> refreshHostNetwork(hostId)
+            HostDetailTab.BACKUP.ordinal -> refreshHostBackups(hostId)
+        }
+    }
+
+    // ---- v1.4.23：管理页各子区块懒加载 ----
+
+    /** 统计时间范围切换：0=24h 1=3d 2=7d，重新拉四类曲线。 */
+    fun setChartRange(hostId: String, range: Int) {
+        setProductDetail(hostId) { it.copy(chartRange = range) }
+        loadHostCharts(hostId, range)
+    }
+
+    private fun chartStartTime(range: Int): Long {
+        val now = System.currentTimeMillis() / 1000
+        val seconds = when (range) {
+            1 -> 3L * 24 * 3600
+            2 -> 7L * 24 * 3600
+            else -> 24L * 3600
+        }
+        return now - seconds
+    }
+
+    private fun ensureHostCharts(hostId: String) {
+        val cur = _ui.value.productDetails[hostId]
+        if (cur?.charts?.isNotEmpty() == true) return
+        loadHostCharts(hostId, cur?.chartRange ?: 0)
+    }
+
+    /** 并发拉取 CPU/内存/磁盘IO/带宽四类曲线 + 实时用量 + 流量包。 */
+    private fun loadHostCharts(hostId: String, range: Int) {
+        viewModelScope.launch {
+            setProductDetail(hostId) { it.copy(chartLoading = true) }
+            val start = chartStartTime(range)
+            val types = listOf("cpu", "memory", "disk_io", "bw")
+            val results = types.map { type -> type to repo.cloudChart(hostId, type, start) }
+            val chartMap = results.associate { (type, r) ->
+                type to (if (r is ApiResult.Success) r.data.orEmpty() else emptyList())
+            }
+            setProductDetail(hostId) { it.copy(charts = chartMap, chartLoading = false) }
+            // 实时用量与流量包各自容错，失败不影响曲线
+            when (val r = repo.cloudRealData(hostId)) {
+                is ApiResult.Success -> setProductDetail(hostId) { it.copy(realData = r.data) }
+                else -> Unit
+            }
+            when (val r = repo.cloudFlow(hostId)) {
+                is ApiResult.Success -> setProductDetail(hostId) { it.copy(flow = r.data) }
+                else -> Unit
+            }
+        }
+    }
+
+    fun refreshHostCharts(hostId: String) = loadHostCharts(hostId, _ui.value.productDetails[hostId]?.chartRange ?: 0)
+
+    fun refreshHostDisks(hostId: String) {
+        viewModelScope.launch {
+            setProductDetail(hostId) { it.copy(manageLoading = true) }
+            when (val r = repo.cloudDisks(hostId)) {
+                is ApiResult.Success -> setProductDetail(hostId) { it.copy(disks = r.data.orEmpty(), manageLoading = false) }
+                else -> setProductDetail(hostId) { it.copy(manageLoading = false) }
+            }
+        }
+    }
+
+    fun refreshHostNetwork(hostId: String) {
+        viewModelScope.launch {
+            setProductDetail(hostId) { it.copy(manageLoading = true) }
+            when (val r = repo.cloudIps(hostId)) {
+                is ApiResult.Success -> setProductDetail(hostId) { it.copy(ips = r.data.orEmpty(), manageLoading = false) }
+                else -> setProductDetail(hostId) { it.copy(manageLoading = false) }
+            }
+        }
+    }
+
+    fun refreshHostBackups(hostId: String) {
+        viewModelScope.launch {
+            setProductDetail(hostId) { it.copy(manageLoading = true) }
+            val snap = repo.cloudSnapshots(hostId)
+            val back = repo.cloudBackups(hostId)
+            val snaps = if (snap is ApiResult.Success) snap.data.orEmpty() else emptyList()
+            val backs = if (back is ApiResult.Success) back.data.orEmpty() else emptyList()
+            setProductDetail(hostId) {
+                it.copy(snapshots = snaps, backups = backs, manageLoading = false)
+            }
         }
     }
 

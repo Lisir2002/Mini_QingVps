@@ -3,6 +3,7 @@ package com.vps.qing.feature.profile
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +45,10 @@ import com.vps.qing.core.ui.CartoonBackground
 import com.vps.qing.core.ui.CartoonButton
 import com.vps.qing.core.ui.CartoonIconChip
 import com.vps.qing.core.ui.CartoonKit
+import com.vps.qing.core.ui.ChartSeries
+import com.vps.qing.core.ui.GlassDropdown
+import com.vps.qing.core.ui.ChipFlowRow
+import com.vps.qing.core.ui.LineChartCard
 import com.vps.qing.core.ui.EmptyHint
 import com.vps.qing.core.ui.GlassCard
 import com.vps.qing.core.ui.GlassPullRefreshBox
@@ -58,10 +64,18 @@ import com.vps.qing.data.repository.HostOpLog
 import com.vps.qing.data.repository.HostOpsBodies
 import com.vps.qing.data.repository.MfImageGroup
 import com.vps.qing.data.repository.PurchasedDetail
+import com.vps.qing.data.repository.BackupItem
+import com.vps.qing.data.repository.DiskInfo
+import com.vps.qing.data.repository.IpInfo
+import com.vps.qing.feature.profile.HostDetailTab.APP_PRESET
 import com.vps.qing.feature.profile.HostDetailTab.BILLING
+import com.vps.qing.feature.profile.HostDetailTab.CHART
 import com.vps.qing.feature.profile.HostDetailTab.CONNECT
+import com.vps.qing.feature.profile.HostDetailTab.DISK
+import com.vps.qing.feature.profile.HostDetailTab.NETWORK
 import com.vps.qing.feature.profile.HostDetailTab.OVERVIEW
 import com.vps.qing.feature.profile.HostDetailTab.REINSTALL
+import com.vps.qing.feature.profile.HostDetailTab.BACKUP
 
 /**
  * 已购产品详情（v1.4.2 建立 / v1.4.22 重构为 tab 导航）：
@@ -80,7 +94,13 @@ fun PurchasedProductPage(
     onReinstall: (Int, String, String) -> Unit = { _, _, _ -> },
     onPower: (String) -> Unit = {},
     onResetPassword: (String, String) -> Unit = { _, _ -> },
-    onRefreshLogs: () -> Unit = {}
+    onRefreshLogs: () -> Unit = {},
+    onSetChartRange: (Int) -> Unit = {},
+    onRefreshCharts: () -> Unit = {},
+    onRefreshDisks: () -> Unit = {},
+    onRefreshNetwork: () -> Unit = {},
+    onRefreshBackups: () -> Unit = {},
+    onOpenWebManage: () -> Unit = {}
 ) {
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -134,7 +154,13 @@ fun PurchasedProductPage(
                             onReinstall = onReinstall,
                             onPower = onPower,
                             onResetPassword = onResetPassword,
-                            onRefreshLogs = onRefreshLogs
+                            onRefreshLogs = onRefreshLogs,
+                            onSetChartRange = onSetChartRange,
+                            onRefreshCharts = onRefreshCharts,
+                            onRefreshDisks = onRefreshDisks,
+                            onRefreshNetwork = onRefreshNetwork,
+                            onRefreshBackups = onRefreshBackups,
+                            onOpenWebManage = onOpenWebManage
                         )
                     }
                 }
@@ -153,10 +179,16 @@ private fun ProductDetailBody(
     onReinstall: (Int, String, String) -> Unit,
     onPower: (String) -> Unit,
     onResetPassword: (String, String) -> Unit,
-    onRefreshLogs: () -> Unit
+    onRefreshLogs: () -> Unit,
+    onSetChartRange: (Int) -> Unit,
+    onRefreshCharts: () -> Unit,
+    onRefreshDisks: () -> Unit,
+    onRefreshNetwork: () -> Unit,
+    onRefreshBackups: () -> Unit,
+    onOpenWebManage: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        // 顶部分段 Tab 导航
+        // 顶部分段 Tab 导航（可横向滚动）
         DetailTabRow(selected = state.tab, onSelect = onSelectTab)
         val listState = rememberLazyListState()
         // 切换 tab 后回到顶部，避免沿用上一 tab 的滚动位置
@@ -173,11 +205,23 @@ private fun ProductDetailBody(
             when (state.tab) {
                 OVERVIEW.ordinal -> overviewTab(d)
                 CONNECT.ordinal -> connectTab(d)
+                CHART.ordinal -> chartTab(
+                    state = state, onSetRange = onSetChartRange, onRefresh = onRefreshCharts
+                )
                 REINSTALL.ordinal -> reinstallTab(
                     d = d, hostId = hostId, state = state,
                     onReinstall = onReinstall, onPower = onPower,
                     onResetPassword = onResetPassword, onRefreshLogs = onRefreshLogs
                 )
+                DISK.ordinal -> diskTab(disks = state.disks, loading = state.manageLoading, onRefresh = onRefreshDisks)
+                NETWORK.ordinal -> networkTab(
+                    d = d, ips = state.ips, loading = state.manageLoading, onRefresh = onRefreshNetwork
+                )
+                BACKUP.ordinal -> backupTab(
+                    snapshots = state.snapshots, backups = state.backups,
+                    loading = state.manageLoading, onRefresh = onRefreshBackups
+                )
+                APP_PRESET.ordinal -> appPresetTab(onOpenWeb = onOpenWebManage)
                 BILLING.ordinal -> billingTab(d, onOpenOrder)
             }
             item { Spacer(Modifier.height(4.dp)) }
@@ -185,19 +229,24 @@ private fun ProductDetailBody(
     }
 }
 
-/** 顶部分段 Tab（玻璃胶囊风格，对齐设置页 SettingsTabRow）。 */
+/** 顶部分段 Tab（玻璃胶囊风格）；9 个 tab 横向可滚动，对齐网站端管理页。 */
 @Composable
 private fun DetailTabRow(selected: Int, onSelect: (Int) -> Unit) {
     val tabs = listOf(
         Strings.HOST_TAB_OVERVIEW, Strings.HOST_TAB_CONNECT,
-        Strings.HOST_TAB_REINSTALL, Strings.HOST_TAB_BILLING
+        Strings.HOST_TAB_CHART, Strings.HOST_TAB_MANAGE,
+        Strings.HOST_TAB_DISK, Strings.HOST_TAB_NETWORK,
+        Strings.HOST_TAB_BACKUP, Strings.HOST_TAB_APP_PRESET,
+        Strings.HOST_TAB_BILLING
     )
+    val scrollState = rememberScrollState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 8.dp)
             .clip(CartoonKit.PillShape)
             .background(CartoonColors.White.copy(alpha = 0.5f))
+            .horizontalScroll(scrollState)
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -205,11 +254,10 @@ private fun DetailTabRow(selected: Int, onSelect: (Int) -> Unit) {
             val on = selected == idx
             Box(
                 modifier = Modifier
-                    .weight(1f)
                     .clip(CartoonKit.PillShape)
                     .background(if (on) CartoonColors.Brand else androidx.compose.ui.graphics.Color.Transparent)
                     .clickable { onSelect(idx) }
-                    .padding(vertical = 9.dp),
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -448,10 +496,16 @@ private fun ReinstallFormCard(
     defaultPassword: String,
     onReinstall: (Int, String, String) -> Unit
 ) {
+    var selectedGroupId by remember { mutableStateOf<Int?>(null) }
     var selectedImageId by remember { mutableStateOf<Int?>(null) }
     var password by remember { mutableStateOf("") }
     var port by remember { mutableStateOf(defaultPort) }
     var showConfirm by remember { mutableStateOf(false) }
+
+    // 系统分组下拉 + 该分组镜像菜单区块（模仿选购页系统选择）
+    val groupItems = images.map { it.id.toString() to it.name.ifBlank { "系统" } }
+    val activeGroup = images.firstOrNull { it.id == selectedGroupId } ?: images.firstOrNull()
+    val imageOptions = activeGroup?.images?.map { it.id.toString() to it.name }.orEmpty()
 
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -462,33 +516,28 @@ private fun ReinstallFormCard(
             } else if (images.isEmpty()) {
                 Text("未获取到可选镜像，请下拉刷新重试", style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
             } else {
-                images.forEach { group ->
-                    Text(group.name.ifBlank { "系统" }, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = CartoonColors.Brand)
-                    group.images.chunked(2).forEach { pair ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            pair.forEach { img ->
-                                val on = selectedImageId == img.id
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(CartoonKit.ItemShape)
-                                        .background(if (on) CartoonColors.BrandSoft else CartoonColors.White.copy(alpha = 0.4f))
-                                        .clickable { selectedImageId = img.id }
-                                        .padding(10.dp)
-                                ) {
-                                    Text(
-                                        img.name,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (on) CartoonColors.Brand else CartoonColors.Ink,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
+                // ① 下拉：选择系统分组
+                GlassDropdown(
+                    items = groupItems,
+                    selectedId = (activeGroup?.id ?: selectedGroupId)?.toString(),
+                    onSelect = { id ->
+                        selectedGroupId = id.toIntOrNull()
+                        selectedImageId = null // 切换分组清空具体镜像选择
                     }
-                }
+                )
+                // ② 菜单区块：该分组下的镜像（胶囊流式选择）
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    activeGroup?.name?.ifBlank { "选择版本" } ?: "选择版本",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = CartoonColors.Brand
+                )
+                ChipFlowRow(
+                    options = imageOptions,
+                    selectedId = selectedImageId?.toString(),
+                    onSelect = { selectedImageId = it.toIntOrNull() }
+                )
             }
             OutlinedTextField(
                 value = password,
@@ -622,7 +671,277 @@ private fun OpLogCard(logs: List<HostOpLog>, onRefresh: () -> Unit) {
     }
 }
 
-// ==================== Tab 4：费用与订单 ====================
+// ==================== v1.4.23：统计图表 / 磁盘 / 网络 / 备份 / 应用预设 ====================
+
+private fun androidx.compose.foundation.lazy.LazyListScope.chartTab(
+    state: ProductDetailUi,
+    onSetRange: (Int) -> Unit,
+    onRefresh: () -> Unit
+) {
+    val ranges = listOf(Strings.HOST_TIME_24H, Strings.HOST_TIME_3D, Strings.HOST_TIME_7D)
+    item {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 时间范围胶囊选择（复用 ChipFlowRow 风格）
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ranges.forEachIndexed { idx, label ->
+                    val on = state.chartRange == idx
+                    Box(
+                        Modifier
+                            .clip(CartoonKit.PillShape)
+                            .background(if (on) CartoonColors.Brand else CartoonColors.White.copy(alpha = 0.6f))
+                            .clickable { onSetRange(idx) }
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+                            color = if (on) androidx.compose.ui.graphics.Color.White else CartoonColors.Ink
+                        )
+                    }
+                }
+            }
+            if (state.chartLoading && state.charts.isEmpty()) {
+                LoadingSkeleton(modifier = Modifier.fillMaxWidth(), rows = 3)
+            }
+        }
+    }
+    val cpu = state.charts["cpu"].orEmpty()
+    val memory = state.charts["memory"].orEmpty()
+    val diskIo = state.charts["disk_io"].orEmpty()
+    val bw = state.charts["bw"].orEmpty()
+
+    // 实时用量摘要
+    state.realData?.let { rd ->
+        item {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    StatCell(Strings.HOST_REAL_TIME + " CPU", rd.cpuUsage.ifBlank { "--" }, Modifier.weight(1f))
+                    StatCell("内存使用", rd.memoryUsage.ifBlank { "--" }, Modifier.weight(1f))
+                }
+            }
+        }
+    }
+    // 流量包
+    state.flow?.let { f ->
+        if (f.total.isNotBlank() || f.used.isNotBlank()) {
+            item {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        StatCell(Strings.HOST_FLOW_TOTAL, f.total.ifBlank { "--" }, Modifier.weight(1f))
+                        StatCell(Strings.HOST_FLOW_USED, f.used.ifBlank { "--" }, Modifier.weight(1f))
+                        StatCell(Strings.HOST_FLOW_LEAVE, f.leave.ifBlank { "--" }, Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+    // CPU
+    item {
+        LineChartCard(
+            title = Strings.HOST_CHART_CPU,
+            series = listOf(ChartSeries("使用量", cpu.map { (it.value ?: 0f).toFloat() }, CartoonColors.Brand)),
+            unit = "%"
+        )
+    }
+    // 内存（字节 → GB）
+    item {
+        LineChartCard(
+            title = Strings.HOST_CHART_MEMORY,
+            series = listOf(
+                ChartSeries("总内存", memory.map { ((it.total ?: 0.0) / 1_073_741_824.0).toFloat() }, CartoonColors.Sky),
+                ChartSeries("已用", memory.map { ((it.used ?: 0.0) / 1_073_741_824.0).toFloat() }, CartoonColors.Mint)
+            ),
+            unit = "GB"
+        )
+    }
+    // 磁盘IO（字节/s → MB/s + IOPS）
+    item {
+        LineChartCard(
+            title = Strings.HOST_CHART_DISK_IO,
+            series = listOf(
+                ChartSeries("读取", diskIo.map { ((it.readBytes ?: 0.0) / 1_048_576.0).toFloat() }, CartoonColors.Brand),
+                ChartSeries("写入", diskIo.map { ((it.writeBytes ?: 0.0) / 1_048_576.0).toFloat() }, CartoonColors.Coral)
+            ),
+            unit = "MB/s"
+        )
+    }
+    // 带宽（bps → Mbps）
+    item {
+        LineChartCard(
+            title = Strings.HOST_CHART_BW,
+            series = listOf(
+                ChartSeries("进带宽", bw.map { ((it.inBw ?: 0.0) / 1_048_576.0).toFloat() }, CartoonColors.Mint),
+                ChartSeries("出带宽", bw.map { ((it.outBw ?: 0.0) / 1_048_576.0).toFloat() }, CartoonColors.Lilac)
+            ),
+            unit = "Mbps"
+        )
+    }
+    item {
+        TextButton(onClick = onRefresh) { Text(Strings.REFRESH) }
+    }
+}
+
+@Composable
+private fun StatCell(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+        Spacer(Modifier.height(4.dp))
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
+    }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.diskTab(
+    disks: List<DiskInfo>,
+    loading: Boolean,
+    onRefresh: () -> Unit
+) {
+    item { SectionTitle(Strings.HOST_TAB_DISK, CartoonColors.Brand) }
+    if (loading && disks.isEmpty()) {
+        item { LoadingSkeleton(modifier = Modifier.fillMaxWidth(), rows = 2) }
+    } else if (disks.isEmpty()) {
+        item { EmptyHint(icon = AppIcons.Info, text = Strings.HOST_EMPTY_DATA, modifier = Modifier.fillMaxWidth()) }
+    } else {
+        disks.forEach { disk ->
+            item {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(disk.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
+                        if (disk.sizeGb > 0) KeyValueRow(Strings.HOST_DISK_SIZE, "${disk.sizeGb} GB")
+                        if (disk.type.isNotBlank()) KeyValueRow("类型", disk.type)
+                        val mounted = disk.status == 1
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(Strings.HOST_DISK_STATUS, style = MaterialTheme.typography.labelMedium, color = CartoonColors.InkSub, modifier = Modifier.width(84.dp))
+                            Text(
+                                if (mounted) Strings.HOST_DISK_MOUNTED else Strings.HOST_DISK_UNMOUNTED,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (mounted) CartoonColors.Mint else CartoonColors.Coral
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+    item { TextButton(onClick = onRefresh) { Text(Strings.REFRESH) } }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.networkTab(
+    d: PurchasedDetail,
+    ips: List<IpInfo>,
+    loading: Boolean,
+    onRefresh: () -> Unit
+) {
+    item { SectionTitle(Strings.HOST_IPV4, CartoonColors.Brand) }
+    if (loading && ips.isEmpty()) {
+        item { LoadingSkeleton(modifier = Modifier.fillMaxWidth(), rows = 2) }
+    } else if (ips.isEmpty() && d.ip.isBlank()) {
+        item { EmptyHint(icon = AppIcons.Info, text = Strings.HOST_EMPTY_DATA, modifier = Modifier.fillMaxWidth()) }
+    } else {
+        // 接口有 IP 列表时逐条展示；否则用详情里的主 IP 兜底
+        val rows = ips.ifEmpty { listOf(IpInfo(d.ip, "", "")) }
+        rows.forEach { row ->
+            item {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        KeyValueRow(Strings.HOST_IPV4, row.ip.ifBlank { "--" })
+                        if (row.subnetMask.isNotBlank()) KeyValueRow(Strings.HOST_SUBNET_MASK, row.subnetMask)
+                        if (row.gateway.isNotBlank()) KeyValueRow(Strings.HOST_GATEWAY, row.gateway)
+                    }
+                }
+            }
+        }
+    }
+    item { SectionTitle(Strings.HOST_IPV6, CartoonColors.Sky) }
+    item {
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                Text(
+                    if (d.ipv6Num.isNotBlank() && d.ipv6Num != "0") "${d.ipv6Num} 个" else Strings.HOST_EMPTY_DATA,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = CartoonColors.Ink
+                )
+            }
+        }
+    }
+    if (d.securityGroup.isNotBlank()) {
+        item { KeyValueRow(Strings.HOST_SECURITY_GROUP, d.securityGroup) }
+    }
+    item { TextButton(onClick = onRefresh) { Text(Strings.REFRESH) } }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.backupTab(
+    snapshots: List<BackupItem>,
+    backups: List<BackupItem>,
+    loading: Boolean,
+    onRefresh: () -> Unit
+) {
+    if (loading && snapshots.isEmpty() && backups.isEmpty()) {
+        item { LoadingSkeleton(modifier = Modifier.fillMaxWidth(), rows = 2) }
+    } else {
+        item { SectionTitle(Strings.HOST_SNAPSHOT, CartoonColors.Lilac) }
+        if (snapshots.isEmpty()) {
+            item { GlassCard(Modifier.fillMaxWidth()) { Text(Strings.HOST_EMPTY_DATA, modifier = Modifier.padding(14.dp), style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub) } }
+        } else {
+            snapshots.forEach { item { BackupRow(it) } }
+        }
+        item { SectionTitle(Strings.HOST_BACKUP, CartoonColors.Sky) }
+        if (backups.isEmpty()) {
+            item { GlassCard(Modifier.fillMaxWidth()) { Text(Strings.HOST_EMPTY_DATA, modifier = Modifier.padding(14.dp), style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub) } }
+        } else {
+            backups.forEach { item { BackupRow(it) } }
+        }
+    }
+    item { TextButton(onClick = onRefresh) { Text(Strings.REFRESH) } }
+}
+
+@Composable
+private fun BackupRow(item: BackupItem) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(item.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
+            val time = if (item.createTime > 0) formatEpoch(item.createTime) else "--"
+            Text(time, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+            if (item.notes.isNotBlank()) {
+                Text(item.notes, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+            }
+        }
+    }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.appPresetTab(onOpenWeb: () -> Unit) {
+    item {
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(AppIcons.Category, null, tint = CartoonColors.Brand, modifier = Modifier.size(28.dp))
+                Text(Strings.HOST_TAB_APP_PRESET, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
+                Text(Strings.HOST_APP_PRESET_TIP, style = MaterialTheme.typography.bodySmall, color = CartoonColors.InkSub)
+                CartoonButton(
+                    text = Strings.HOST_OPEN_WEB_MANAGE,
+                    icon = AppIcons.Forward,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onOpenWeb
+                )
+            }
+        }
+    }
+}
+
+private fun formatEpoch(seconds: Long): String = try {
+    java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+        .format(java.util.Date(seconds * 1000))
+} catch (e: Exception) {
+    seconds.toString()
+}
+
+// ==================== 费用与订单 ====================
 
 private fun androidx.compose.foundation.lazy.LazyListScope.billingTab(
     d: PurchasedDetail,

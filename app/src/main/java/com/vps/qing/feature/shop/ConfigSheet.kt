@@ -46,6 +46,8 @@ import com.vps.qing.core.ui.GlassTopBar
 import com.vps.qing.core.ui.theme.CartoonColors
 import com.vps.qing.core.ui.CartoonKit
 import com.vps.qing.core.ui.GlassSurface
+import com.vps.qing.core.ui.ChipFlowRow
+import com.vps.qing.core.ui.GlassDropdown
 import com.vps.qing.core.ui.LoadingSkeleton
 import com.vps.qing.core.ui.QuantityStepper
 import com.vps.qing.core.ui.Strings
@@ -264,48 +266,6 @@ private fun ChipRow(
         FieldLabel(label)
         Spacer(Modifier.height(6.dp))
         ChipFlowRow(options, selectedId, enabled = true, onSelect = onSelect)
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ChipFlowRow(
-    options: List<Pair<String, String>>,
-    selectedId: String?,
-    enabled: Boolean,
-    onSelect: (String) -> Unit
-) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        options.forEach { (value, label) ->
-            val selected = value == selectedId
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        when {
-                            selected -> CartoonColors.Brand
-                            !enabled -> CartoonColors.White.copy(alpha = 0.45f)
-                            else -> CartoonColors.White.copy(alpha = 0.7f)
-                        }
-                    )
-                    .clickable(enabled = enabled) { onSelect(value) }
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    label,
-                    color = when {
-                        selected -> Color.White
-                        else -> CartoonColors.Ink
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
     }
 }
 
@@ -900,100 +860,3 @@ private fun ConfigOptionRow(
     }
 }
 
-/**
- * 磨砂玻璃下拉框：点击展开候选项列表（半透明玻璃面板 + 描边），
- * 选中后收起。收起态为带 chevron 的玻璃条。
- */
-@Composable
-private fun GlassDropdown(
-    items: List<Pair<String, String>>,
-    selectedId: String?,
-    onSelect: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val selectedLabel = items.firstOrNull { it.first == selectedId }?.second
-        ?: items.firstOrNull()?.second.orEmpty()
-    // v1.4.15：展开高度按实际条目数自适应（每项约 42dp + 上下 12dp 内边距），
-    // 上限 240dp 再滚动。此前写死 200dp，操作系统分组只有 4 项时底部会有大片空白「空行」。
-    val expandedHeight = ((items.size * 42 + 12).coerceIn(0, 240)).dp
-    val height by animateDpAsState(targetValue = if (expanded) expandedHeight else 0.dp)
-
-    Column {
-        GlassSurface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .clickable { expanded = !expanded },
-            shape = RoundedCornerShape(16.dp),
-            alpha = UiT.glassCard,
-            elevation = 2.dp
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    selectedLabel,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = CartoonColors.Ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Icon(
-                    AppIcons.ChevronDown, null,
-                    tint = CartoonColors.Brand,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-        if (expanded) {
-            Spacer(Modifier.height(4.dp))
-            GlassSurface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(height),
-                shape = RoundedCornerShape(16.dp),
-                alpha = 0.9f,
-                elevation = 8.dp
-            ) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(6.dp)
-                ) {
-                    items.forEach { (id, label) ->
-                        val selected = id == selectedId
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (selected) CartoonColors.BrandSoft else Color.Transparent)
-                                .clickable {
-                                    onSelect(id)
-                                    expanded = false
-                                }
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                label,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (selected) CartoonColors.Brand else CartoonColors.Ink,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (selected) {
-                                Icon(AppIcons.Check, null, tint = CartoonColors.Brand, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}

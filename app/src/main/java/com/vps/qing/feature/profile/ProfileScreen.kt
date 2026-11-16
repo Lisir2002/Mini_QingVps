@@ -205,7 +205,13 @@ fun ProfileScreen(
                     onReinstall = { imageId, pwd, port -> vm.reinstallHost(hostId, imageId, pwd, port) },
                     onPower = { action -> vm.hostPower(hostId, action) },
                     onResetPassword = { pwd, port -> vm.resetHostPassword(hostId, pwd, port) },
-                    onRefreshLogs = { vm.refreshHostLogs(hostId) }
+                    onRefreshLogs = { vm.refreshHostLogs(hostId) },
+                    onSetChartRange = { range -> vm.setChartRange(hostId, range) },
+                    onRefreshCharts = { vm.refreshHostCharts(hostId) },
+                    onRefreshDisks = { vm.refreshHostDisks(hostId) },
+                    onRefreshNetwork = { vm.refreshHostNetwork(hostId) },
+                    onRefreshBackups = { vm.refreshHostBackups(hostId) },
+                    onOpenWebManage = { onOpenWeb(AppContainer.webUrl("host_detail.htm?id=$hostId")) }
                 )
             }
             token.startsWith("order:") -> {

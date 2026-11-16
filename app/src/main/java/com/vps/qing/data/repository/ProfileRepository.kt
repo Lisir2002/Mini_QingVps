@@ -303,4 +303,34 @@ class ProfileRepository(
     /** 实例操作日志。 */
     suspend fun cloudLog(hostId: String): ApiResult<List<HostOpLog>> =
         safeApiCall({ api.cloudLog(hostId) }) { HostOpsBodies.parseLog(it) }
+
+    // ---- v1.4.23：已购机器管理 ----
+
+    /** 统计图表采样点。 */
+    suspend fun cloudChart(hostId: String, type: String, startTime: Long): ApiResult<List<ChartPoint>> =
+        safeApiCall({ api.cloudChart(hostId, type, startTime) }) { HostOpsBodies.parseChart(it) }
+
+    /** 流量包。 */
+    suspend fun cloudFlow(hostId: String): ApiResult<FlowInfo> =
+        safeApiCall({ api.cloudFlow(hostId) }) { HostOpsBodies.parseFlow(it) }
+
+    /** 实时用量。 */
+    suspend fun cloudRealData(hostId: String): ApiResult<RealData> =
+        safeApiCall({ api.cloudRealData(hostId) }) { HostOpsBodies.parseRealData(it) }
+
+    /** 磁盘列表。 */
+    suspend fun cloudDisks(hostId: String): ApiResult<List<DiskInfo>> =
+        safeApiCall({ api.cloudDisks(hostId) }) { HostOpsBodies.parseDisks(it) }
+
+    /** 快照列表。 */
+    suspend fun cloudSnapshots(hostId: String): ApiResult<List<BackupItem>> =
+        safeApiCall({ api.cloudSnapshots(hostId) }) { HostOpsBodies.parseBackups(it) }
+
+    /** 备份列表。 */
+    suspend fun cloudBackups(hostId: String): ApiResult<List<BackupItem>> =
+        safeApiCall({ api.cloudBackups(hostId) }) { HostOpsBodies.parseBackups(it) }
+
+    /** IP 列表。 */
+    suspend fun cloudIps(hostId: String): ApiResult<List<IpInfo>> =
+        safeApiCall({ api.cloudIps(hostId) }) { HostOpsBodies.parseIps(it) }
 }

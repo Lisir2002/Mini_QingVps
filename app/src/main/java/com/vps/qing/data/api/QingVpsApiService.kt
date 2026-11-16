@@ -326,6 +326,40 @@ interface QingVpsApiService {
     @GET("remf_cloud/{id}/log")
     suspend fun cloudLog(@Path("id") id: String): ApiEnvelope
 
+    // ---- v1.4.23：已购机器管理（源码 route.php + 线上实测确认，详见 host-ops 调研）----
+
+    /** 统计图表：type=cpu|bw|disk_io|memory，start_time 秒级；data.list[]。 */
+    @GET("remf_cloud/{id}/chart")
+    suspend fun cloudChart(
+        @Path("id") id: String,
+        @Query("type") type: String,
+        @Query("start_time") startTime: Long
+    ): ApiEnvelope
+
+    /** 流量包：data{total,used,leave,reset_flow_date}。 */
+    @GET("remf_cloud/{id}/flow")
+    suspend fun cloudFlow(@Path("id") id: String): ApiEnvelope
+
+    /** 实时用量：data{cpu_usage,memory_total,memory_usable,memory_usage}。 */
+    @GET("remf_cloud/{id}/real_data")
+    suspend fun cloudRealData(@Path("id") id: String): ApiEnvelope
+
+    /** 磁盘列表：data.list[]。 */
+    @GET("remf_cloud/{id}/disk")
+    suspend fun cloudDisks(@Path("id") id: String): ApiEnvelope
+
+    /** 快照列表：data.list[],count。 */
+    @GET("remf_cloud/{id}/snapshot")
+    suspend fun cloudSnapshots(@Path("id") id: String): ApiEnvelope
+
+    /** 备份列表：data.list[],count。 */
+    @GET("remf_cloud/{id}/backup")
+    suspend fun cloudBackups(@Path("id") id: String): ApiEnvelope
+
+    /** IP 列表：data.list[{ip,subnet_mask,gateway}],count。 */
+    @GET("remf_cloud/{id}/ip")
+    suspend fun cloudIps(@Path("id") id: String): ApiEnvelope
+
     // ---- v1.4.3：工单中心（插件 idcsmart_ticket）----
     // 端点全部来自站点前端 ticket.js / addTicket.js / ticketDetails.js 实测，非猜测。
     // 插件页面：plugin/27/ticket.htm、addTicket.htm、ticketDetails.htm

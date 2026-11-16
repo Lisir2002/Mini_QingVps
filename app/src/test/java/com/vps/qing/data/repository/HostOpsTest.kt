@@ -87,4 +87,112 @@ class HostOpsTest {
         assertEquals(11, groups[0].images[1].id)
         assertEquals(10.5, groups[0].images[1].price, 0.0)
     }
+
+    // ---- v1.4.23：管理页解析 ----
+
+    @Test
+    fun `CPU图表解析value与time`() {
+        val data = JsonParser.parseString("""{"list":[
+            {"time":1700000000,"value":12.5},
+            {"time":1700000060,"value":8.0}
+        ]}""")
+        val pts = HostOpsBodies.parseChart(data)
+        assertEquals(2, pts.size)
+        assertEquals(1700000000L, pts[0].time)
+        assertEquals(12.5, pts[0].value!!, 0.0)
+    }
+
+    @Test
+    fun `磁盘IO图表解析四字段`() {
+        val data = JsonParser.parseString("""{"list":[
+            {"time":1700000000,"read_bytes":1048576,"write_bytes":2097152,"read_iops":100,"write_iops":200}
+        ]}""")
+        val pts = HostOpsBodies.parseChart(data)
+        assertEquals(1, pts.size)
+        assertEquals(1048576.0, pts[0].readBytes!!, 0.0)
+        assertEquals(2097152.0, pts[0].writeBytes!!, 0.0)
+        assertEquals(100.0, pts[0].readIops!!, 0.0)
+        assertEquals(200.0, pts[0].writeIops!!, 0.0)
+    }
+
+    @Test
+    fun `内存图表解析total与used`() {
+        val data = JsonParser.parseString("""{"list":[
+            {"time":1700000000,"total":2147483648,"used":1073741824}
+        ]}""")
+        val pts = HostOpsBodies.parseChart(data)
+        assertEquals(2147483648.0, pts[0].total!!, 0.0)
+        assertEquals(1073741824.0, pts[0].used!!, 0.0)
+    }
+
+    @Test
+    fun `带宽图表解析进出带宽`() {
+        val data = JsonParser.parseString("""{"list":[
+            {"time":1700000000,"in_bw":1000.5,"out_bw":2000.25}
+        ]}""")
+        val pts = HostOpsBodies.parseChart(data)
+        assertEquals(1000.5, pts[0].inBw!!, 0.0)
+        assertEquals(2000.25, pts[0].outBw!!, 0.0)
+    }
+
+    @Test
+    fun `图表解析缺少time时跳过`() {
+        val data = JsonParser.parseString("""{"list":[
+            {"value":12.5},
+            {"time":1700000000,"value":8.0}
+        ]}""")
+        val pts = HostOpsBodies.parseChart(data)
+        assertEquals(1, pts.size)
+        assertEquals(8.0, pts[0].value!!, 0.0)
+    }
+
+    @Test
+    fun `流量包解析`() {
+        val data = JsonParser.parseString("""{"total":"100GB","used":"30GB","leave":"70GB","reset_flow_date":"2026-12-01"}""")
+        val flow = HostOpsBodies.parseFlow(data)
+        assertEquals("100GB", flow.total)
+        assertEquals("30GB", flow.used)
+        assertEquals("70GB", flow.leave)
+        assertEquals("2026-12-01", flow.resetDate)
+    }
+
+    @Test
+    fun `磁盘列表解析并识别系统盘`() {
+        val data = JsonParser.parseString("""{"list":[
+            {"id":1,"name":"kvm-system","size":40,"type":"ssd","type2":"system","status":1},
+            {"id":2,"name":"data","size":100,"type":"hdd","type2":"data","status":0}
+        ]}""")
+        val disks = HostOpsBodies.parseDisks(data)
+        assertEquals(2, disks.size)
+        assertEquals("kvm-system", disks[0].name)
+        assertEquals("system", disks[0].type2)
+        assertEquals(1, disks[0].status)
+        assertEquals(100L, disks[1].sizeGb)
+    }
+
+    @Test
+    fun `快照备份解析`() {
+        val data = JsonParser.parseString("""{"list":[
+            {"id":5,"name":"snap1","create_time":1700000000,"notes":"before update"},
+            {"id":6,"name":"","create_time":1}
+        ]}""")
+        val items = HostOpsBodies.parseBackups(data)
+        assertEquals(1, items.size)
+        assertEquals("snap1", items[0].name)
+        assertEquals("before update", items[0].notes)
+        assertEquals(1700000000L, items[0].createTime)
+    }
+
+    @Test
+    fun `IP列表解析多字段`() {
+        val data = JsonParser.parseString("""{"list":[
+            {"ip":"1.2.3.4","subnet_mask":"255.255.255.0","gateway":"1.2.3.1"},
+            {"ip":"","gateway":"1.2.3.1"}
+        ]}""")
+        val ips = HostOpsBodies.parseIps(data)
+        assertEquals(1, ips.size)
+        assertEquals("1.2.3.4", ips[0].ip)
+        assertEquals("255.255.255.0", ips[0].subnetMask)
+        assertEquals("1.2.3.1", ips[0].gateway)
+    }
 }
