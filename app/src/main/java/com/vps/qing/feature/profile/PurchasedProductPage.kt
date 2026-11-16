@@ -203,7 +203,7 @@ private fun ProductDetailBody(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             when (state.tab) {
-                OVERVIEW.ordinal -> overviewTab(d)
+                OVERVIEW.ordinal -> overviewTab(d, state)
                 CONNECT.ordinal -> connectTab(d)
                 CHART.ordinal -> chartTab(
                     state = state, onSetRange = onSetChartRange, onRefresh = onRefreshCharts
@@ -274,7 +274,10 @@ private fun DetailTabRow(selected: Int, onSelect: (Int) -> Unit) {
 
 // ==================== Tab 1：概览 ====================
 
-private fun androidx.compose.foundation.lazy.LazyListScope.overviewTab(d: PurchasedDetail) {
+private fun androidx.compose.foundation.lazy.LazyListScope.overviewTab(
+    d: PurchasedDetail,
+    state: ProductDetailUi
+) {
     item {
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -305,7 +308,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.overviewTab(d: Purcha
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     statusBadge(d.status)
                     Spacer(Modifier.width(8.dp))
-                    powerBadge(d.powerStatus)
+                    powerBadge(currentPowerLabel(state, d))
                 }
                 if (d.ip.isNotBlank()) KeyValueRow("IP 地址", d.ip)
                 val region = listOf(d.country, d.city, d.area).filter { it.isNotBlank() }
@@ -471,7 +474,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.reinstallTab(
     }
     item { SectionTitle(Strings.HOST_POWER_TITLE, CartoonColors.Lilac) }
     item {
-        PowerCard(busy = state.opBusy, onPower = onPower)
+        PowerStatusBanner(state = state, detail = d)
+    }
+    item {
+        PowerCard(state = state, onPower = onPower)
     }
     item {
         ResetPasswordCard(
@@ -583,8 +589,65 @@ private fun ReinstallFormCard(
     }
 }
 
+/**
+ * 计算当前电源显示文案（概览 tab 与管理 tab 共用）。
+ * 优先使用实时轮询状态 + 动作推导；无轮询数据时回退到详情里的 powerStatus。
+ */
+private fun currentPowerLabel(state: ProductDetailUi, detail: PurchasedDetail): String {
+    val pending = state.pendingPowerAction
+    if (pending != null || state.powerState.raw.isNotBlank()) {
+        return HostOpsBodies.powerLabel(state.powerState, pending, state.sawPowerOff)
+    }
+    // 无实时数据时，用详情接口自带的电源状态做静态映射
+    return when (detail.powerStatus.lowercase()) {
+        "on" -> "已开机"
+        "off" -> "已关机"
+        "fault" -> "故障"
+        "operating" -> "操作中"
+        else -> detail.powerStatus.ifBlank { "电源状态未知" }
+    }
+}
+
+/** 电源实时状态横幅：显示细分文案（正在开机/正在关机/正在重启-关机中/正在重启-开机中/已开机…）。 */
 @Composable
-private fun PowerCard(busy: Boolean, onPower: (String) -> Unit) {
+private fun PowerStatusBanner(state: ProductDetailUi, detail: PurchasedDetail) {
+    val label = currentPowerLabel(state, detail)
+    val busy = state.pendingPowerAction != null || state.powerPolling
+    val on = label == "已开机"
+    val accent = when {
+        busy -> CartoonColors.Brand
+        on -> CartoonColors.Mint
+        label == "已关机" -> CartoonColors.Coral
+        else -> CartoonColors.InkSub
+    }
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CartoonKit.PillShape)
+                    .background(accent)
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("当前电源状态", style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+                Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = accent)
+            }
+            if (busy) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = CartoonColors.Brand
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PowerCard(state: ProductDetailUi, onPower: (String) -> Unit) {
+    val busy = state.opBusy || state.pendingPowerAction != null
     GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val actions = listOf(
@@ -597,8 +660,9 @@ private fun PowerCard(busy: Boolean, onPower: (String) -> Unit) {
             actions.chunked(2).forEach { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     pair.forEach { (label, action) ->
+                        val thisActionBusy = state.pendingPowerAction == action
                         CartoonButton(
-                            text = label,
+                            text = if (thisActionBusy) "处理中…" else label,
                             modifier = Modifier.weight(1f),
                             enabled = !busy,
                             onClick = { onPower(action) }
@@ -992,17 +1056,18 @@ private fun androidx.compose.foundation.lazy.LazyListScope.billingTab(
 
 // ==================== 通用小组件 ====================
 
-/** 电源状态徽章：on=运行中，off=已关机。 */
+/** 电源状态徽章：显示实时细分文案，按是否运行着色。 */
 @Composable
-private fun powerBadge(status: String) {
-    val on = status.equals("on", true)
-    val (bg, fg) = if (on) {
-        CartoonColors.MintSoft to CartoonColors.Mint
-    } else {
-        CartoonColors.PeachSoft to CartoonColors.Coral
+private fun powerBadge(label: String) {
+    val on = label == "已开机"
+    val busy = label.startsWith("正在")
+    val (bg, fg) = when {
+        on -> CartoonColors.MintSoft to CartoonColors.Mint
+        busy -> CartoonColors.BrandSoft to CartoonColors.Brand
+        else -> CartoonColors.PeachSoft to CartoonColors.Coral
     }
     Text(
-        if (status.isBlank()) "电源状态未知" else if (on) "运行中" else "已关机",
+        label.ifBlank { "电源状态未知" },
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.Bold,
         color = fg,

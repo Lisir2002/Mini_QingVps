@@ -195,4 +195,54 @@ class HostOpsTest {
         assertEquals("255.255.255.0", ips[0].subnetMask)
         assertEquals("1.2.3.1", ips[0].gateway)
     }
+
+    // ---- v1.4.24：电源实时状态解析与细分文案状态机 ----
+
+    @Test
+    fun `电源状态解析_on与operating`() {
+        val on = HostOpsBodies.parseStatus(JsonParser.parseString("""{"status":"on","desc":"运行中"}"""))
+        assertEquals("on", on.raw)
+        assertEquals("运行中", on.desc)
+        assertTrue(on.stable)
+
+        val op = HostOpsBodies.parseStatus(JsonParser.parseString("""{"status":"operating","desc":"开机中"}"""))
+        assertEquals("operating", op.raw)
+        assertTrue(!op.stable)
+    }
+
+    @Test
+    fun `电源细分文案_稳定态`() {
+        val on = HostOpsBodies.parseStatus(JsonParser.parseString("""{"status":"on","desc":"运行中"}"""))
+        assertEquals("已开机", HostOpsBodies.powerLabel(on, null, false))
+        val off = HostOpsBodies.parseStatus(JsonParser.parseString("""{"status":"off","desc":"已关机"}"""))
+        assertEquals("已关机", HostOpsBodies.powerLabel(off, null, false))
+        val fault = HostOpsBodies.parseStatus(JsonParser.parseString("""{"status":"fault","desc":"故障"}"""))
+        assertEquals("故障", HostOpsBodies.powerLabel(fault, null, false))
+    }
+
+    @Test
+    fun `电源细分文案_正在开机与关机`() {
+        val op = HostOpsBodies.parseStatus(JsonParser.parseString("""{"status":"operating","desc":"操作中"}"""))
+        assertEquals("正在开机", HostOpsBodies.powerLabel(op, "on", false))
+        assertEquals("正在关机", HostOpsBodies.powerLabel(op, "off", false))
+        assertEquals("正在关机", HostOpsBodies.powerLabel(op, "hard_off", false))
+    }
+
+    @Test
+    fun `电源细分文案_重启两阶段`() {
+        val op = HostOpsBodies.parseStatus(JsonParser.parseString("""{"status":"operating","desc":"重启中"}"""))
+        // 尚未观察到 off：关机中阶段
+        assertEquals("正在重启-关机中", HostOpsBodies.powerLabel(op, "reboot", false))
+        // 观察到 off 后：开机中阶段
+        assertEquals("正在重启-开机中", HostOpsBodies.powerLabel(op, "reboot", true))
+        assertEquals("正在重启-开机中", HostOpsBodies.powerLabel(op, "hard_reboot", true))
+    }
+
+    @Test
+    fun `电源细分文案_无动作时用服务器desc`() {
+        val op = HostOpsBodies.parseStatus(JsonParser.parseString("""{"status":"operating","desc":"初始化中"}"""))
+        assertEquals("初始化中", HostOpsBodies.powerLabel(op, null, false))
+        val blank = HostOpsBodies.parseStatus(JsonParser.parseString("""{"status":"pending"}"""))
+        assertEquals("操作中", HostOpsBodies.powerLabel(blank, null, false))
+    }
 }

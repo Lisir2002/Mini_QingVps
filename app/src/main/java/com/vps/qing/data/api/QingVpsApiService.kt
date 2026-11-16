@@ -326,6 +326,10 @@ interface QingVpsApiService {
     @GET("remf_cloud/{id}/log")
     suspend fun cloudLog(@Path("id") id: String): ApiEnvelope
 
+    /** 电源实时状态：data{status,desc}。官方前端操作后递归轮询此接口直到稳定。 */
+    @GET("remf_cloud/{id}/status")
+    suspend fun cloudStatus(@Path("id") id: String): ApiEnvelope
+
     // ---- v1.4.23：已购机器管理（源码 route.php + 线上实测确认，详见 host-ops 调研）----
 
     /** 统计图表：type=cpu|bw|disk_io|memory，start_time 秒级；data.list[]。 */

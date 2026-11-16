@@ -124,3 +124,38 @@ App 基址已含 `/console/v1/`，故 Retrofit 路径直接用 `remf_cloud/...`�
 - ViewModel：`ProductDetailUi` 扩展各 Tab 数据 + 懒加载；Tab 结构由 4 个扩为网站同款。
 - UI：统计图表用 Compose 自绘折线/面积图（不引第三方图表库）；重装系统选择复用 `core/ui/SelectionKit.kt`
   的 `GlassDropdown` + `ChipFlowRow`（下拉 + 菜单区块，模仿选购页）；下拉刷新统一走 `core/ui/RefreshKit.kt`。
+
+---
+
+## v1.4.24 补充：电源状态实时轮询（修复「管理 Tab 点击无效果」）
+
+### 问题定位
+用户反馈管理 Tab 所有操作「点击无效果」。逐一排查排除了接口路径/方法/请求体/回调链/按钮/反馈机制/
+hostId 来源等所有静态环节（接口线上实测均返回标准 401，证明存在且写法正确）。**真正根因**：
+官方前端在电源/重装/重置成功后会立即调用 status 接口递归轮询、并把中文 `desc` 实时渲染，
+而 App 缺失该轮询，操作后只重拉**非实时**的详情，界面状态不变 → 主观「无效果」。
+
+### 官方接口依据（源码 + 线上实测）
+- 路由：`GET remf_cloud/:id/status` → `CloudController@status`（route.php:35，线上实测存在）。
+- 返回（`@return` 注释 875-881 行）：`data.status`（`on`=开机 / `off`=关机 / `operating`=操作中 / `fault`=故障）
+  + `data.desc`（中文状态描述）。
+- 前端 `cloudDetail.js:getCloudStatus()`（1794 行）：`id` 在 URL；成功后
+  `this.status = res.data.data.status`、`this.statusText = res.data.data.desc`；
+  **当 `status == "operating"` 时递归调用自身**，直到稳定态才停止。
+- 每次操作成功回调里都调用 `getCloudStatus()`：开机 1939、关机 1959、重启、重装 1623、重置密码 2632。
+
+### 细分状态推导（网站端四态 → App 六态文案）
+status 只有四态，网站端的「正在开机/正在关机/正在重启-关机中/正在重启-开机中」是
+「operating + 用户动作 + 状态迁移轨迹」推断。App 复刻为纯函数 `HostOpsBodies.powerLabel(state, action, sawOff)`：
+- 稳定态：`on→已开机`、`off→已关机`、`fault→故障`；
+- operating 且 action=on/off：正在开机/正在关机；
+- operating 且 action=reboot/hard_reboot：未观察到 off→「正在重启-关机中」，观察到 off 后→「正在重启-开机中」；
+- 无 action 的 operating：直接用服务器 desc。
+
+### 实现要点
+- API/仓库/ViewModels：`cloudStatus` 接口 + `PowerState` 解析 + `pollPowerStatus()` 递归轮询
+  （每 1.2s 一次，上限 75 轮防死循环；重启需观察 off→on 轨迹才算完成；完成/失败都清理状态）。
+- 操作提交成功**立即**设 `pendingPowerAction` 给出可见反馈（按钮「处理中…」+ 状态横幅 + 转圈），
+  再后台轮询；轮询结束刷新详情（系统镜像/端口/密码实时更新）与日志。
+- 进入管理 Tab / 下拉刷新时也拉取一次 status，保持状态常新。
+- 5 例纯函数单测覆盖稳定态、开机/关机、重启两阶段、desc 回退。

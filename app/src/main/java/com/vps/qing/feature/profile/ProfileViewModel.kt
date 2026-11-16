@@ -22,7 +22,9 @@ import com.vps.qing.data.repository.CertPluginConfig
 import com.vps.qing.data.repository.CountryOption
 import com.vps.qing.data.repository.HostLine
 import com.vps.qing.data.repository.HostOpLog
+import com.vps.qing.data.repository.HostOpsBodies
 import com.vps.qing.data.repository.HostOption
+import com.vps.qing.data.repository.PowerState
 import com.vps.qing.data.repository.ChartPoint
 import com.vps.qing.data.repository.FlowInfo
 import com.vps.qing.data.repository.RealData
@@ -202,7 +204,16 @@ data class ProductDetailUi(
     val backups: List<BackupItem> = emptyList(),
     val ips: List<IpInfo> = emptyList(),
     /** 管理子区块各自的加载态（复用一个即可，进入页一次性加载）。 */
-    val manageLoading: Boolean = false
+    val manageLoading: Boolean = false,
+    // ---- v1.4.24：电源实时状态反馈 ----
+    /** 服务器最新电源状态（status 接口轮询结果）。 */
+    val powerState: PowerState = PowerState(),
+    /** 最近发起、尚未确认结束的动作；驱动「正在开机/正在关机/正在重启」细分文案。 */
+    val pendingPowerAction: String? = null,
+    /** 本次重启是否已观察到 off 中间态（用于区分「正在重启-关机中」与「正在重启-开机中」）。 */
+    val sawPowerOff: Boolean = false,
+    /** 是否正在轮询电源状态（用于 UI 显示刷新指示）。 */
+    val powerPolling: Boolean = false
 )
 
 /** 已购机器详情 Tab，顺序对齐网站端「统计图表/管理/磁盘/网络/备份快照/应用预设」并保留 App 特有页。 */
@@ -508,6 +519,7 @@ class ProfileViewModel(
             HostDetailTab.REINSTALL.ordinal -> {
                 ensureHostImages(hostId)
                 refreshHostLogs(hostId)
+                refreshPowerStatus(hostId)
             }
             HostDetailTab.CHART.ordinal -> ensureHostCharts(hostId)
             HostDetailTab.DISK.ordinal -> refreshHostDisks(hostId)
@@ -625,16 +637,84 @@ class ProfileViewModel(
         }
     }
 
-    /** 重装系统：成功即刷新详情与日志，让新镜像/新端口即时可见。 */
+    /**
+     * 电源状态实时轮询（v1.4.24，复刻官方 cloudDetail.js 的 getCloudStatus 递归逻辑）。
+     *
+     * @param pendingAction 触发本次轮询的动作；为 null 表示仅拉取一次当前状态（进入页面时用）。
+     * @param maxRounds 最大轮询轮数，防止异常情况下无限轮询（每轮约 1.2s）。
+     */
+    private fun pollPowerStatus(hostId: String, pendingAction: String? = null, maxRounds: Int = 75) {
+        viewModelScope.launch {
+            if (pendingAction != null) {
+                setProductDetail(hostId) {
+                    it.copy(pendingPowerAction = pendingAction, sawPowerOff = false, powerPolling = true)
+                }
+            }
+            var rounds = 0
+            var sawOff = false
+            while (rounds < maxRounds) {
+                rounds++
+                when (val r = repo.cloudStatus(hostId)) {
+                    is ApiResult.Success -> {
+                        val st = r.data
+                        // 追踪重启轨迹：只要观察到 off，就进入「开机中」阶段
+                        if (st.raw == "off") sawOff = true
+                        setProductDetail(hostId) {
+                            it.copy(powerState = st, sawPowerOff = sawOff, powerPolling = pendingAction != null)
+                        }
+                        // 判断动作是否完成：
+                        // - 稳定态(on/off/fault)即结束；
+                        // - 重启必须看过 off 再回到 on 才算真正完成，避免过早结束。
+                        val done = when (pendingAction) {
+                            null, "on", "off", "hard_off" -> st.stable
+                            "reboot", "hard_reboot" -> sawOff && st.raw == "on"
+                            else -> st.stable
+                        }
+                        if (done) {
+                            setProductDetail(hostId) {
+                                it.copy(
+                                    pendingPowerAction = null, sawPowerOff = false,
+                                    powerPolling = false, powerState = st
+                                )
+                            }
+                            // 状态落定后刷新详情（系统/镜像/端口/密码）与日志，确保配置实时同步
+                            refreshProductDetail(hostId)
+                            refreshHostLogs(hostId)
+                            return@launch
+                        }
+                    }
+                    is ApiResult.Failure, is ApiResult.Error -> {
+                        // 单次拉取失败不中断轮询，稍后再试；达到上限后静默清理
+                        if (rounds >= maxRounds) {
+                            setProductDetail(hostId) {
+                                it.copy(pendingPowerAction = null, sawPowerOff = false, powerPolling = false)
+                            }
+                            return@launch
+                        }
+                    }
+                }
+                delay(1200L)
+            }
+            setProductDetail(hostId) {
+                it.copy(pendingPowerAction = null, sawPowerOff = false, powerPolling = false)
+            }
+        }
+    }
+
+    /** 进入管理 tab / 下拉刷新时拉取一次当前电源状态。 */
+    fun refreshPowerStatus(hostId: String) = pollPowerStatus(hostId, null)
+
+    /** 重装系统：提交成功后立即给反馈并轮询状态，镜像/密码随详情刷新实时更新。 */
     fun reinstallHost(hostId: String, imageId: Int, password: String, port: String) {
         viewModelScope.launch {
             setProductDetail(hostId) { it.copy(opBusy = true) }
             when (val r = repo.reinstall(hostId, imageId, password, port)) {
                 is ApiResult.Success -> {
                     setProductDetail(hostId) { it.copy(opBusy = false) }
-                    ok("已提交重装请求")
-                    refreshProductDetail(hostId)
+                    ok("已提交重装请求，正在安装系统…")
                     refreshHostLogs(hostId)
+                    // 重装期间状态会经历 operating，轮询直到稳定；结束后刷新详情里的系统镜像
+                    pollPowerStatus(hostId, "reboot")
                 }
                 is ApiResult.Failure, is ApiResult.Error -> {
                     setProductDetail(hostId) { it.copy(opBusy = false) }
@@ -644,7 +724,7 @@ class ProfileViewModel(
         }
     }
 
-    /** 电源操作。 */
+    /** 电源操作：提交成功后立刻进入细分状态反馈并轮询。 */
     fun hostPower(hostId: String, action: String) {
         viewModelScope.launch {
             setProductDetail(hostId) { it.copy(opBusy = true) }
@@ -652,8 +732,8 @@ class ProfileViewModel(
                 is ApiResult.Success -> {
                     setProductDetail(hostId) { it.copy(opBusy = false) }
                     ok("操作已提交：${powerLabel(action)}")
-                    refreshProductDetail(hostId)
                     refreshHostLogs(hostId)
+                    pollPowerStatus(hostId, action)
                 }
                 is ApiResult.Failure, is ApiResult.Error -> {
                     setProductDetail(hostId) { it.copy(opBusy = false) }
@@ -663,15 +743,16 @@ class ProfileViewModel(
         }
     }
 
-    /** 重置密码。 */
+    /** 重置密码：提交成功后刷新详情让新密码/端口实时可见。 */
     fun resetHostPassword(hostId: String, password: String, port: String) {
         viewModelScope.launch {
             setProductDetail(hostId) { it.copy(opBusy = true) }
             when (val r = repo.resetHostPassword(hostId, password, port)) {
                 is ApiResult.Success -> {
                     setProductDetail(hostId) { it.copy(opBusy = false) }
-                    ok("密码已重置")
+                    ok("密码已重置，正在同步配置…")
                     refreshProductDetail(hostId)
+                    refreshHostLogs(hostId)
                 }
                 is ApiResult.Failure, is ApiResult.Error -> {
                     setProductDetail(hostId) { it.copy(opBusy = false) }

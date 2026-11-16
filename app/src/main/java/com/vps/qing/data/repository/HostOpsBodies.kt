@@ -61,6 +61,54 @@ object HostOpsBodies {
     }
 
     /** 解析 GET /remf_cloud/{id}/log 的 data.list[]（字段兼容 name/description/time）。 */
+    /**
+     * 解析 GET remf_cloud/{id}/status。
+     * 官方 CloudController::status @return：data.status(on/off/operating/fault) + data.desc。
+     * 部分版本 desc 在 data 顶层或嵌套，做多级兼容。
+     */
+    fun parseStatus(data: JsonElement?): PowerState {
+        val status = data.string("status", "power_status", "state").orEmpty()
+        val desc = data.string("desc", "description", "status_text", "msg").orEmpty()
+        return PowerState(
+            raw = status.lowercase(),
+            desc = desc,
+            stable = status.equals("on", true) || status.equals("off", true) || status.equals("fault", true)
+        )
+    }
+
+    /**
+     * 由「服务器原始状态 + 本地最近发起的动作」推导电源显示文案。
+     *
+     * 官方 status 只有 on/off/operating/fault 四态，网站端却能显示
+     * 「正在开机/正在关机/正在重启-关机中/正在重启-开机中」这类细分，
+     * 是通过「operating + 用户动作 + 状态迁移轨迹」推断。这里复刻该逻辑：
+     * - 稳定态直接显示 已开机/已关机/故障；
+     * - operating（或请求刚提交、状态尚未翻转）时按最近动作细分；
+     * - 重启依据是否观察到 off 中间态，分为「关机中」「开机中」。
+     *
+     * @param state 服务器当前状态
+     * @param pendingAction 最近发起且尚未确认结束的动作
+     * @param sawOff 本次重启是否已观察到 off 中间态（轨迹 on→off→on）
+     */
+    fun powerLabel(state: PowerState, pendingAction: String?, sawOff: Boolean): String {
+        if (state.stable) {
+            return when (state.raw) {
+                "on" -> "已开机"
+                "off" -> "已关机"
+                "fault" -> "故障"
+                else -> state.desc.ifBlank { state.raw.ifBlank { "未知" } }
+            }
+        }
+        // operating 或请求刚提交（尚未翻转）时，按最近动作给出即时细分反馈
+        when (pendingAction) {
+            "on" -> return "正在开机"
+            "off", "hard_off" -> return "正在关机"
+            "reboot", "hard_reboot" ->
+                return if (sawOff) "正在重启-开机中" else "正在重启-关机中"
+        }
+        return state.desc.ifBlank { "操作中" }
+    }
+
     fun parseLog(data: JsonElement?): List<HostOpLog> =
         data.arrayAt("list")?.mapNotNull { el ->
             val text = el.string("description", "name", "content", "remark")
@@ -157,6 +205,16 @@ object HostOpsBodies {
 
 /** 实例操作日志条目。 */
 data class HostOpLog(val text: String, val time: String, val ip: String)
+
+/**
+ * 电源实时状态（GET remf_cloud/{id}/status）。
+ * raw：服务器原始值 on/off/operating/fault；desc：服务器中文描述；stable：是否为稳定态。
+ */
+data class PowerState(
+    val raw: String = "",
+    val desc: String = "",
+    val stable: Boolean = false
+)
 
 /** 单个图表采样点（各 type 只用得到其中部分字段）。 */
 data class ChartPoint(

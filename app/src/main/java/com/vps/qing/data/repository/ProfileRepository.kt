@@ -304,6 +304,10 @@ class ProfileRepository(
     suspend fun cloudLog(hostId: String): ApiResult<List<HostOpLog>> =
         safeApiCall({ api.cloudLog(hostId) }) { HostOpsBodies.parseLog(it) }
 
+    /** 电源实时状态（操作后轮询用）。 */
+    suspend fun cloudStatus(hostId: String): ApiResult<PowerState> =
+        safeApiCall({ api.cloudStatus(hostId) }) { HostOpsBodies.parseStatus(it) }
+
     // ---- v1.4.23：已购机器管理 ----
 
     /** 统计图表采样点。 */

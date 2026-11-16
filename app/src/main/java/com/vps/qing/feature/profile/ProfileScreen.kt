@@ -199,7 +199,10 @@ fun ProfileScreen(
                     hostId = hostId,
                     state = state.productDetails[hostId] ?: ProductDetailUi(),
                     onBack = popPage,
-                    onRefresh = { vm.refreshProductDetail(hostId) },
+                    onRefresh = {
+                        vm.refreshProductDetail(hostId)
+                        vm.refreshPowerStatus(hostId)
+                    },
                     onOpenOrder = openOrderDetail,
                     onSelectTab = { vm.setHostDetailTab(hostId, it) },
                     onReinstall = { imageId, pwd, port -> vm.reinstallHost(hostId, imageId, pwd, port) },
