@@ -3,7 +3,7 @@ package com.vps.qing.core.ui
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.4.21"
+    const val APP_VERSION = "1.4.22"
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"
@@ -142,6 +142,35 @@ object Strings {
     const val PROMO_DISCOUNT_OK = "可减 ￥%s"
     const val PROMO_UNAVAILABLE = "当前不可用"
     const val PROMO_MANUAL_RESULT = "校验结果"
+
+    // ---- 已购机器操作（v1.4.22）----
+    const val HOST_TAB_OVERVIEW = "概览"
+    const val HOST_TAB_CONNECT = "连接信息"
+    const val HOST_TAB_REINSTALL = "重装系统"
+    const val HOST_TAB_BILLING = "费用与订单"
+    const val HOST_COPIED = "已复制到剪贴板"
+    const val HOST_COPY_ALL = "一键复制全部"
+    const val HOST_SSH_CMD = "SSH 连接命令"
+    const val HOST_CONNECT_TIP = "以下为实例连接信息，点右侧「复制」逐项复制，或一键复制全部。"
+    const val HOST_SHOW = "显示"
+    const val HOST_HIDE = "隐藏"
+    const val HOST_REINSTALL_WARN = "重装会清空系统盘数据且不可恢复，请务必提前备份。新密码将用于登录系统。"
+    const val HOST_SELECT_IMAGE = "选择操作系统"
+    const val HOST_NEW_PASSWORD = "新密码"
+    const val HOST_NEW_PASSWORD_HINT = "留空则使用当前密码（部分系统不支持）"
+    const val HOST_PORT = "端口"
+    const val HOST_REINSTALL_CONFIRM = "确认重装"
+    const val HOST_REINSTALLING = "正在提交…"
+    const val HOST_POWER_TITLE = "电源操作"
+    const val HOST_POWER_ON = "开机"
+    const val HOST_POWER_OFF = "关机"
+    const val HOST_POWER_REBOOT = "重启"
+    const val HOST_POWER_HARD_OFF = "强制关机"
+    const val HOST_POWER_HARD_REBOOT = "强制重启"
+    const val HOST_OP_LOG = "操作日志"
+    const val HOST_OP_LOG_EMPTY = "暂无操作记录"
+    const val HOST_RESET_PASSWORD = "重置密码"
+    const val HOST_NO_CLOUD_CONFIG = "该商品未提供实例操作接口（非云主机模块），仅展示配置与费用信息。"
 
     // ---- 消息 ----
     const val MESSAGES_PLACEHOLDER = "消息中心"

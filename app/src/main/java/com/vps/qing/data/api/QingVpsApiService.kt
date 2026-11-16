@@ -308,6 +308,24 @@ interface QingVpsApiService {
     @GET("remf_cloud/{id}")
     suspend fun cloudDetail(@Path("id") id: String): ApiEnvelope
 
+    // ---- v1.4.22：已购机器操作（mf_cloud / remf_cloud，源码 route.php 实测）----
+
+    /** 重装系统：body{image_id,password,port}（可选 ssh_key_id/code）。 */
+    @POST("remf_cloud/{id}/reinstall")
+    suspend fun reinstall(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
+
+    /** 重置密码：body{password,port}。 */
+    @POST("remf_cloud/{id}/reset_password")
+    suspend fun resetPassword(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
+
+    /** 电源操作：action = on / off / reboot / hard_off / hard_reboot。 */
+    @POST("remf_cloud/{id}/{action}")
+    suspend fun powerAction(@Path("id") id: String, @Path("action") action: String): ApiEnvelope
+
+    /** 实例操作日志：data.list[]。 */
+    @GET("remf_cloud/{id}/log")
+    suspend fun cloudLog(@Path("id") id: String): ApiEnvelope
+
     // ---- v1.4.3：工单中心（插件 idcsmart_ticket）----
     // 端点全部来自站点前端 ticket.js / addTicket.js / ticketDetails.js 实测，非猜测。
     // 插件页面：plugin/27/ticket.htm、addTicket.htm、ticketDetails.htm

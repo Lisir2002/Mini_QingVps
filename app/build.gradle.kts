@@ -12,8 +12,8 @@ android {
         applicationId = "com.vps.qing"
         minSdk = 26
         targetSdk = 35
-        versionCode = 30
-        versionName = "1.4.21"
+        versionCode = 31
+        versionName = "1.4.22"
     }
 
     signingConfigs {

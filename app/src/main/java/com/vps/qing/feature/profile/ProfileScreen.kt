@@ -200,7 +200,12 @@ fun ProfileScreen(
                     state = state.productDetails[hostId] ?: ProductDetailUi(),
                     onBack = popPage,
                     onRefresh = { vm.refreshProductDetail(hostId) },
-                    onOpenOrder = openOrderDetail
+                    onOpenOrder = openOrderDetail,
+                    onSelectTab = { vm.setHostDetailTab(hostId, it) },
+                    onReinstall = { imageId, pwd, port -> vm.reinstallHost(hostId, imageId, pwd, port) },
+                    onPower = { action -> vm.hostPower(hostId, action) },
+                    onResetPassword = { pwd, port -> vm.resetHostPassword(hostId, pwd, port) },
+                    onRefreshLogs = { vm.refreshHostLogs(hostId) }
                 )
             }
             token.startsWith("order:") -> {

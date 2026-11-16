@@ -21,7 +21,9 @@ import com.vps.qing.data.repository.isUnpaidHostStatus
 import com.vps.qing.data.repository.CertPluginConfig
 import com.vps.qing.data.repository.CountryOption
 import com.vps.qing.data.repository.HostLine
+import com.vps.qing.data.repository.HostOpLog
 import com.vps.qing.data.repository.HostOption
+import com.vps.qing.data.repository.MfImageGroup
 import com.vps.qing.data.repository.ModuleOption
 import com.vps.qing.data.repository.OrderDetail
 import com.vps.qing.data.repository.OrderLine
@@ -164,12 +166,28 @@ data class OrderDetailUi(
     val detail: OrderDetail? = null
 )
 
-/** 已购产品详情子页面状态（v1.4.2）。 */
+/** 已购产品详情子页面状态（v1.4.2 建立 / v1.4.22 增加操作能力）。 */
 data class ProductDetailUi(
     val loading: Boolean = false,
     val error: String? = null,
-    val detail: PurchasedDetail? = null
+    val detail: PurchasedDetail? = null,
+    /** 当前 tab（0=概览 1=连接信息 2=重装系统 3=费用与订单）。 */
+    val tab: Int = 0,
+    /** 重装可选镜像（进入重装 tab 懒加载）。 */
+    val images: List<MfImageGroup> = emptyList(),
+    val imagesLoading: Boolean = false,
+    /** 实例操作日志。 */
+    val logs: List<HostOpLog> = emptyList(),
+    /** 重装/重置/电源等操作的局部进行标记（区别于全局 actionBusy）。 */
+    val opBusy: Boolean = false
 )
+
+enum class HostDetailTab(val label: String) {
+    OVERVIEW("概览"),
+    CONNECT("连接信息"),
+    REINSTALL("重装系统"),
+    BILLING("费用与订单")
+}
 
 /**
  * 账号与服务：v1.3.1 起每项独立子页面 + 懒加载；
@@ -451,6 +469,104 @@ class ProfileViewModel(
             val cur = transform(it.productDetails[hostId] ?: ProductDetailUi())
             it.copy(productDetails = it.productDetails + (hostId to cur))
         }
+    }
+
+    // ---- v1.4.22：已购机器操作（tab / 镜像 / 重装 / 电源 / 日志）----
+
+    fun setHostDetailTab(hostId: String, tab: Int) {
+        setProductDetail(hostId) { it.copy(tab = tab) }
+        if (tab == HostDetailTab.REINSTALL.ordinal) {
+            ensureHostImages(hostId)
+            refreshHostLogs(hostId)
+        }
+    }
+
+    /** 进入重装 tab 时懒加载镜像列表（按商品 id），避免详情页首屏多等一个请求。 */
+    private fun ensureHostImages(hostId: String) {
+        val productId = _ui.value.productDetails[hostId]?.detail?.productId.orEmpty()
+        if (productId.isBlank()) return
+        if (_ui.value.productDetails[hostId]?.images?.isNotEmpty() == true) return
+        viewModelScope.launch {
+            setProductDetail(hostId) { it.copy(imagesLoading = true) }
+            when (val r = repo.cloudImages(productId)) {
+                is ApiResult.Success -> setProductDetail(hostId) {
+                    it.copy(imagesLoading = false, images = r.data.orEmpty())
+                }
+                is ApiResult.Failure, is ApiResult.Error -> setProductDetail(hostId) {
+                    it.copy(imagesLoading = false)
+                }
+            }
+        }
+    }
+
+    fun refreshHostLogs(hostId: String) {
+        viewModelScope.launch {
+            when (val r = repo.cloudLog(hostId)) {
+                is ApiResult.Success -> setProductDetail(hostId) { it.copy(logs = r.data.orEmpty()) }
+                else -> Unit
+            }
+        }
+    }
+
+    /** 重装系统：成功即刷新详情与日志，让新镜像/新端口即时可见。 */
+    fun reinstallHost(hostId: String, imageId: Int, password: String, port: String) {
+        viewModelScope.launch {
+            setProductDetail(hostId) { it.copy(opBusy = true) }
+            when (val r = repo.reinstall(hostId, imageId, password, port)) {
+                is ApiResult.Success -> {
+                    setProductDetail(hostId) { it.copy(opBusy = false) }
+                    ok("已提交重装请求")
+                    refreshProductDetail(hostId)
+                    refreshHostLogs(hostId)
+                }
+                is ApiResult.Failure, is ApiResult.Error -> {
+                    setProductDetail(hostId) { it.copy(opBusy = false) }
+                    fail(r)
+                }
+            }
+        }
+    }
+
+    /** 电源操作。 */
+    fun hostPower(hostId: String, action: String) {
+        viewModelScope.launch {
+            setProductDetail(hostId) { it.copy(opBusy = true) }
+            when (val r = repo.power(hostId, action)) {
+                is ApiResult.Success -> {
+                    setProductDetail(hostId) { it.copy(opBusy = false) }
+                    ok("操作已提交：${powerLabel(action)}")
+                    refreshProductDetail(hostId)
+                    refreshHostLogs(hostId)
+                }
+                is ApiResult.Failure, is ApiResult.Error -> {
+                    setProductDetail(hostId) { it.copy(opBusy = false) }
+                    fail(r)
+                }
+            }
+        }
+    }
+
+    /** 重置密码。 */
+    fun resetHostPassword(hostId: String, password: String, port: String) {
+        viewModelScope.launch {
+            setProductDetail(hostId) { it.copy(opBusy = true) }
+            when (val r = repo.resetHostPassword(hostId, password, port)) {
+                is ApiResult.Success -> {
+                    setProductDetail(hostId) { it.copy(opBusy = false) }
+                    ok("密码已重置")
+                    refreshProductDetail(hostId)
+                }
+                is ApiResult.Failure, is ApiResult.Error -> {
+                    setProductDetail(hostId) { it.copy(opBusy = false) }
+                    fail(r)
+                }
+            }
+        }
+    }
+
+    private fun powerLabel(action: String) = when (action) {
+        "on" -> "开机"; "off" -> "关机"; "reboot" -> "重启"
+        "hard_off" -> "强制关机"; "hard_reboot" -> "强制重启"; else -> action
     }
 
     // ---- v1.4.3：工单详情 ----

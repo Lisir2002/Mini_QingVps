@@ -4,12 +4,16 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.vps.qing.core.network.ApiResult
 import com.vps.qing.core.network.TokenManager
+import com.vps.qing.core.network.arrayAt
 import com.vps.qing.core.network.objectAt
 import com.vps.qing.core.network.safeApiCall
 import com.vps.qing.core.network.string
 import com.vps.qing.data.api.QingVpsApiService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+
+// v1.4.22：镜像列表复用选购页的 MfParser（同站点同端点）
+private val hostImageParser = MfParser
 
 /**
  * GET /account 需要登录态，暂无法匿名实测完整响应。字段名参考站点 account.js / topMenu.js
@@ -277,4 +281,26 @@ class ProfileRepository(
         }
         return safeApiCall({ api.updateAccountPassword(body) }) { Unit }
     }
+
+    // ---- v1.4.22：已购机器操作 ----
+
+    /** 重装可选镜像列表（按商品 id）。复用选购页解析器。 */
+    suspend fun cloudImages(productId: String): ApiResult<List<MfImageGroup>> =
+        safeApiCall({ api.mfImages(productId) }) { hostImageParser.parseImages(it) }
+
+    /** 重装系统：成功返回 Unit。 */
+    suspend fun reinstall(hostId: String, imageId: Int, password: String, port: String): ApiResult<Unit> =
+        safeApiCall({ api.reinstall(hostId, HostOpsBodies.reinstall(imageId, password, port)) }) { Unit }
+
+    /** 重置密码。 */
+    suspend fun resetHostPassword(hostId: String, password: String, port: String): ApiResult<Unit> =
+        safeApiCall({ api.resetPassword(hostId, HostOpsBodies.resetPassword(password, port)) }) { Unit }
+
+    /** 电源操作：on / off / reboot / hard_off / hard_reboot。 */
+    suspend fun power(hostId: String, action: String): ApiResult<Unit> =
+        safeApiCall({ api.powerAction(hostId, action) }) { Unit }
+
+    /** 实例操作日志。 */
+    suspend fun cloudLog(hostId: String): ApiResult<List<HostOpLog>> =
+        safeApiCall({ api.cloudLog(hostId) }) { HostOpsBodies.parseLog(it) }
 }
