@@ -12,8 +12,8 @@ android {
         applicationId = "com.vps.qing"
         minSdk = 26
         targetSdk = 35
-        versionCode = 34
-        versionName = "1.4.25"
+        versionCode = 36
+        versionName = "1.4.27"
     }
 
     signingConfigs {
@@ -33,7 +33,10 @@ android {
             signingConfig = signingConfigs.getByName("fixed")
         }
         release {
-            isMinifyEnabled = false
+            // v1.4.27：开启 R8 代码压缩/混淆 + 资源压缩，减小包体、提升启动与运行性能。
+            // 反射点（Gson 信封、ServicePanel 枚举 valueOf、Compose）已在 proguard-rules.pro 精确 keep。
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("fixed")
         }

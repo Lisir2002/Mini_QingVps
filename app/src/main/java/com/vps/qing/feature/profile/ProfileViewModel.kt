@@ -37,6 +37,7 @@ import com.vps.qing.data.repository.OrderDetail
 import com.vps.qing.data.repository.OrderLine
 import com.vps.qing.data.repository.ProfileRepository
 import com.vps.qing.data.repository.PurchasedDetail
+import com.vps.qing.data.repository.RenewCycle
 import com.vps.qing.data.repository.ServiceParser
 import com.vps.qing.data.repository.SubAccountBodies
 import com.vps.qing.data.repository.SubAccountDetail
@@ -213,7 +214,17 @@ data class ProductDetailUi(
     /** 本次重启是否已观察到 off 中间态（用于区分「正在重启-关机中」与「正在重启-开机中」）。 */
     val sawPowerOff: Boolean = false,
     /** 是否正在轮询电源状态（用于 UI 显示刷新指示）。 */
-    val powerPolling: Boolean = false
+    val powerPolling: Boolean = false,
+    // ---- v1.4.26：续费（官方 addon idcsmart_renew）----
+    /** 可续费周期列表（进入费用 Tab 懒加载）。 */
+    val renewCycles: List<RenewCycle> = emptyList(),
+    val renewLoading: Boolean = false,
+    /** 当前选中的周期下标（提交时取 billing_cycle 原样回传）。 */
+    val renewSelected: Int = 0,
+    /** 提交续费中。 */
+    val renewSubmitting: Boolean = false,
+    /** 自动续费状态（null=未加载）。 */
+    val autoRenewEnabled: Boolean? = null
 )
 
 /** 已购机器详情 Tab，顺序对齐网站端「统计图表/管理/磁盘/网络/备份快照/应用预设」并保留 App 特有页。 */
@@ -526,7 +537,88 @@ class ProfileViewModel(
             HostDetailTab.DISK.ordinal -> refreshHostDisks(hostId)
             HostDetailTab.NETWORK.ordinal -> refreshHostNetwork(hostId)
             HostDetailTab.BACKUP.ordinal -> refreshHostBackups(hostId)
+            HostDetailTab.BILLING.ordinal -> refreshRenew(hostId)
         }
+    }
+
+    /** 费用 Tab：拉取续费周期与自动续费状态（下拉刷新/进入 Tab 时调用）。 */
+    fun refreshRenew(hostId: String) {
+        viewModelScope.launch {
+            setProductDetail(hostId) { it.copy(renewLoading = true) }
+            val cycles = repo.renewPage(hostId)
+            val auto = repo.renewAutoStatus(hostId)
+            setProductDetail(hostId) {
+                it.copy(
+                    renewLoading = false,
+                    renewCycles = if (cycles is ApiResult.Success) cycles.data else it.renewCycles,
+                    renewSelected = 0,
+                    autoRenewEnabled = if (auto is ApiResult.Success) auto.data else it.autoRenewEnabled
+                )
+            }
+        }
+    }
+
+    /** 切换续费周期选中项。 */
+    fun selectRenewCycle(hostId: String, index: Int) {
+        setProductDetail(hostId) { it.copy(renewSelected = index) }
+    }
+
+    /**
+     * 提交续费。回调 [onNeedPay] 携带（订单ID, 金额, 商品名）交给主容器拉起原生支付面板。
+     * code=Paid（余额/免费）则直接提示并刷新详情到期时间；Unpaid 则拉起支付。
+     */
+    fun submitRenew(hostId: String, onNeedPay: (String, String, List<String>) -> Unit) {
+        viewModelScope.launch {
+            val cur = _ui.value.productDetails[hostId] ?: return@launch
+            val cycle = cur.renewCycles.getOrNull(cur.renewSelected)
+            if (cycle == null) {
+                failMessage("暂无可续费周期")
+                return@launch
+            }
+            setProductDetail(hostId) { it.copy(renewSubmitting = true) }
+            when (val r = repo.submitRenew(hostId, cycle.billingCycle)) {
+                is ApiResult.Success -> {
+                    setProductDetail(hostId) { it.copy(renewSubmitting = false) }
+                    val result = r.data
+                    if (result.paid) {
+                        ok("续费成功")
+                        refreshProductDetail(hostId)
+                        refreshHostLogs(hostId)
+                        refreshRenew(hostId)
+                    } else if (result.orderId.isNotBlank()) {
+                        val name = cur.detail?.name.orEmpty().ifBlank { "产品续费" }
+                        val amount = cycle.price.let { p ->
+                            if (p <= 0) cur.detail?.renewAmount.orEmpty() else String.format("%.2f", p)
+                        }
+                        onNeedPay(result.orderId, amount, listOf(name))
+                    } else {
+                        failMessage(result.message.ifBlank { "续费订单创建失败" })
+                    }
+                }
+                is ApiResult.Failure, is ApiResult.Error -> {
+                    setProductDetail(hostId) { it.copy(renewSubmitting = false) }
+                    fail(r)
+                }
+            }
+        }
+    }
+
+    /** 自动续费开关。 */
+    fun setAutoRenew(hostId: String, enabled: Boolean) {
+        viewModelScope.launch {
+            when (val r = repo.updateRenewAuto(hostId, enabled)) {
+                is ApiResult.Success -> {
+                    ok(if (enabled) "已开启自动续费" else "已关闭自动续费")
+                    setProductDetail(hostId) { it.copy(autoRenewEnabled = enabled) }
+                    refreshProductDetail(hostId)
+                }
+                is ApiResult.Failure, is ApiResult.Error -> fail(r)
+            }
+        }
+    }
+
+    private fun failMessage(msg: String) {
+        _ui.update { it.copy(actionBusy = false, actionMessage = null, actionError = msg) }
     }
 
     // ---- v1.4.23：管理页各子区块懒加载 ----

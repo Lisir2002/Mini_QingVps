@@ -300,6 +300,26 @@ interface QingVpsApiService {
     @GET("host/{id}/specific_info")
     suspend fun hostSpecificInfo(@Path("id") id: String): ApiEnvelope
 
+    // ---- v1.4.26：续费（官方 addon idcsmart_renew，路由 host/{id}/renew）----
+    // 依据：官方 IndexController @url /console/v1/host/:id/renew（GET 续费页 / POST 提交）
+    // 与 /console/v1/host/:id/renew/auto（GET 状态 / PUT 开关）。
+
+    /** 续费页：data.host[] = 可续费周期（id/billing_cycle/duration/price/base_price/renew_amount/max_renew）。 */
+    @GET("host/{id}/renew")
+    suspend fun renewPage(@Path("id") id: String): ApiEnvelope
+
+    /** 提交续费：body = {id, billing_cycle, customfield:{promo_code}}；code=Paid 或 Unpaid+data.id 订单ID。 */
+    @POST("host/{id}/renew")
+    suspend fun submitRenew(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
+
+    /** 自动续费状态：data.status 1开启 0关闭。 */
+    @GET("host/{id}/renew/auto")
+    suspend fun renewAutoStatus(@Path("id") id: String): ApiEnvelope
+
+    /** 自动续费开关：body = {id, status:1|0}。 */
+    @PUT("host/{id}/renew/auto")
+    suspend fun updateRenewAuto(@Path("id") id: String, @Body body: JsonObject): ApiEnvelope
+
     /**
      * mf_cloud 实例详情：data 含 cpu/memory/bw/system_disk/image/power_status 等，
      * 即网页产品管理页「配置信息」卡片的数据源（cloud.js cloudDetail）。

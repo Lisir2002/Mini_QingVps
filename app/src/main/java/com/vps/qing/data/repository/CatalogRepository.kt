@@ -312,6 +312,25 @@ class CatalogRepository(private val api: QingVpsApiService) {
     suspend fun coupons(): ApiResult<List<CouponItem>> =
         safeApiCall({ api.coupons() }) { MessageParser.coupons(it) }
 
+    // ---- v1.4.27 购前须知（SSR 专区页「公告·购买前必读」）----
+
+    /**
+     * 抓取真正的购前须知：专区选购页 SSR HTML 里的「公告·购买前必读」区块。
+     * 全站统一（各专区内容一致），用商品所属专区 fpg/spg 抓取；分组缺失时用默认专区兜底。
+     * 失败返回空列表，交由 UI 静默降级，不影响选配主流程。
+     */
+    suspend fun prePurchaseNotices(fpgId: String, spgId: String): ApiResult<List<NoticeParagraph>> {
+        val url = com.vps.qing.core.AppContainer.zoneGoodsUrl(
+            fpgId.ifBlank { "1" }, spgId.ifBlank { "1" }
+        )
+        return try {
+            val html = com.vps.qing.core.AppContainer.fetchHtml(url)
+            ApiResult.Success(PrePurchaseNoticeParser.parse(html))
+        } catch (e: Exception) {
+            ApiResult.Success(emptyList())
+        }
+    }
+
     // ---- v1.4.21 独立优惠码中心 ----
 
     /**

@@ -18,6 +18,38 @@
 
 ---
 
+## [1.4.27] - 2026-11-17
+
+### 修复
+
+- **购前须知数据源错误**：此前把全站公告前 3 条（放假/支付升级公告）误当成购前须知。
+  依据站点专区页 `cart/goodsList.htm` SSR 源码，真正的购前须知是「公告 · 购买前必读」区块
+  （基础服务条例：退款规则 / 使用须知 …）。改为直接解析该区块结构化条款，支持展开全文，
+  区域机器须知 / 优惠券保持不动。新增 5 例解析单测。
+
+### 优化
+
+- **开启 R8 混淆与资源压缩**：Release 构建启用 `isMinifyEnabled` + `isShrinkResources`，
+  APK 体积从约 8.8 MB 降至约 5.1 MB（-42%）。精确 keep Gson 信封、Compose、以及
+  `ServicePanel` 枚举常量（`valueOf` 按名反查，避免混淆后导航崩溃）。CI 发布产物同步改为 Release 包。
+- **新增山水水墨应用图标**：纯 SVG 绘制，远山/主峰/云雾留白/落日/飞雁/松枝/朱印，无文字，
+  意境取向（交付文件 `qingvps-ink-icon.svg`）。
+
+---
+
+## [1.4.26] - 2026-11-17
+
+### 新增
+
+- **已购机器在线续费**：对接魔方 V10 官方 addon `idcsmart_renew`，补齐此前缺失的续费下单 + 支付链路。
+  - 续费页 `GET /console/v1/host/{id}/renew`：拉取可续费周期（售价/时长/原价），在「费用与订单」Tab 内选择周期。
+  - 提交续费 `POST /console/v1/host/{id}/renew`：`billing_cycle` 原样回传；`code=Paid`（余额/免费）直接续费成功并刷新到期时间，`code=Unpaid` 拿 `data.id` 订单ID拉起原生支付面板。
+  - 自动续费开关 `GET/PUT /console/v1/host/{id}/renew/auto`：费用 Tab 内可视化切换，实时同步。
+  - 支付成功后复用现有 `startPayOrder` 支付流程，无需重复造轮子。
+  - 依据官方 `IndexController` 与前端 `cloudDetail.js subRenew()` 源码实现；新增 7 例解析单测，共 293 例全过。
+
+---
+
 ## [1.4.25] - 2026-11-17
 
 ### 修复

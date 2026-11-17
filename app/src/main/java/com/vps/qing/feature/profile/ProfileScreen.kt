@@ -203,9 +203,13 @@ fun ProfileScreen(
                         vm.refreshProductDetail(hostId)
                         vm.refreshPowerStatus(hostId)
                         vm.refreshHostLogs(hostId)
+                        vm.refreshRenew(hostId)
                     },
                     onOpenOrder = openOrderDetail,
                     onSelectTab = { vm.setHostDetailTab(hostId, it) },
+                    onSelectRenewCycle = { idx -> vm.selectRenewCycle(hostId, idx) },
+                    onSubmitRenew = { vm.submitRenew(hostId, onContinuePay) },
+                    onSetAutoRenew = { enabled -> vm.setAutoRenew(hostId, enabled) },
                     onReinstall = { imageId, pwd, port -> vm.reinstallHost(hostId, imageId, pwd, port) },
                     onPower = { action -> vm.hostPower(hostId, action) },
                     onResetPassword = { pwd, port -> vm.resetHostPassword(hostId, pwd, port) },

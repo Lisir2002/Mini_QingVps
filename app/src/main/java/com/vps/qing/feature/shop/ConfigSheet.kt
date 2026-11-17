@@ -25,6 +25,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -495,23 +496,22 @@ private fun PriceSummary(sheet: ConfigSheetState) {
 }
 
 /**
- * v1.4.20 选购页辅助信息区：
- *  - 购前须知：站点公告前 3 条（GET /announcement，购前必读的服务/放假/升级公告）；
+ * v1.4.27 选购页辅助信息区：
+ *  - 购前须知：专区页 SSR「公告·购买前必读」（基础服务条例：退款规则/使用须知…），
+ *    替代 v1.4.20 误用的全站公告（那是放假/升级公告，与购前须知无关）；
  *  - 区域机器须知：从商品 description 的「地区/IP/说明」等行提取，随商品变化；
  *  - 可用优惠券：GET /coin/client/coupon（登录后返回 JSON，未登录站点回 HTML → 静默降级为空）。
  * 三者均为站点真实数据，App 只做结构化展示。
  */
 @Composable
 private fun PurchaseInfoBlocks(sheet: ConfigSheetState) {
-    if (sheet.announcements.isEmpty() && sheet.regionNotices.isEmpty() &&
+    if (sheet.prePurchaseNotices.isEmpty() && sheet.regionNotices.isEmpty() &&
         !sheet.couponsLoading && sheet.coupons.isEmpty()
     ) return
 
-    if (sheet.announcements.isNotEmpty()) {
+    if (sheet.prePurchaseNotices.isNotEmpty()) {
         InfoCard(title = Strings.CONFIG_PRE_PURCHASE_NOTICE, tint = CartoonColors.Sky) {
-            sheet.announcements.take(3).forEachIndexed { i, a ->
-                NoticeLine(index = i + 1, text = a.title)
-            }
+            PrePurchaseNoticeContent(notices = sheet.prePurchaseNotices)
         }
     }
     if (sheet.regionNotices.isNotEmpty()) {
@@ -568,6 +568,40 @@ private fun InfoCard(
                 )
             }
             content()
+        }
+    }
+}
+
+/** 购前须知正文：章节标题加粗着色，条款逐行圆点；过长时默认折叠，可展开全文。 */
+@Composable
+private fun PrePurchaseNoticeContent(notices: List<com.vps.qing.data.repository.NoticeParagraph>) {
+    var expanded by remember { mutableStateOf(false) }
+    val collapsedLimit = 6
+    val showAll = expanded || notices.size <= collapsedLimit
+    val visible = if (showAll) notices else notices.take(collapsedLimit)
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        visible.forEach { p ->
+            if (p.heading) {
+                Text(
+                    p.text,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = CartoonColors.Sky,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                NoticeLine(index = null, text = p.text)
+            }
+        }
+        if (notices.size > collapsedLimit) {
+            TextButton(onClick = { expanded = !expanded }, modifier = Modifier.height(28.dp)) {
+                Text(
+                    if (expanded) "收起" else "展开全文（共 ${notices.size} 条）",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = CartoonColors.Brand
+                )
+            }
         }
     }
 }

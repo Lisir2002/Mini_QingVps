@@ -199,3 +199,64 @@ status 只有四态，网站端的「正在开机/正在关机/正在重启-关�
 - UI：新增 `HostDetailTab.OP_LOG` 独立 Tab（`Strings.HOST_TAB_OP_LOG`），从「管理」中拆出
   `OpLogCard`，进入即 `refreshHostLogs`，顶栏下拉刷新也带上日志刷新。
 - 6 例新增单测，共 286 例全过。
+
+---
+
+## v1.4.26：续费接口（addon idcsmart_renew，源码实证）
+
+### 依据来源
+- `plugins/addon/idcsmart_renew/controller/clientarea/IndexController.php`（C 端续费控制器）
+- `plugins/addon/idcsmart_renew/model/IdcsmartRenewModel.php`（续费页/下单逻辑）
+- `plugins/reserver/mf_cloud/template/clientarea/js/cloudDetail.js`（前端 `subRenew()` / `renewPage()`）
+- `plugins/reserver/mf_cloud/template/clientarea/api/cloud.js`（`renewPage` / `renew` / `renewAutoStatus`）
+
+### 官方接口（App 侧统一加 `console/v1/` 前缀）
+| 端点 | 方法 | 说明 |
+|---|---|---|
+| `host/{id}/renew` | GET | 续费页：`data.host[]` 可续费周期 |
+| `host/{id}/renew` | POST | 提交续费：body `{id, billing_cycle, customfield:{promo_code:[]}}` |
+| `host/{id}/renew/auto` | GET | 自动续费状态：`data.status` 1开0关 |
+| `host/{id}/renew/auto` | PUT | 自动续费开关：body `{id, status:1\|0}` |
+| `host/renew/batch` | GET/POST | 批量续费（本期未接入 UI） |
+
+### 关键结论（源码实证）
+- 周期字段来自 `CloudLogic::durationPrice` / 通用模块 `duration_price`：
+  `id / billing_cycle / duration(秒) / price(售价) / base_price / renew_amount / max_renew`。
+  提交时 **`billing_cycle` 必须原样回传**（云产品英文 `month/year`，通用产品中文 `小时`），App 不做翻译。
+- `renewPage` 前置校验：产品需 `status in [Active,Suspended]` 且 `billing_cycle != onetime`，否则返回 400（`host_cannot_renew`）→ App 侧周期为空时给出「不支持续费」提示。
+- `renew` 提交返回（`IdcsmartRenewModel::renew` 395 行）：
+  - 余额抵扣/免费自动续费 → `code=Paid`，直接续费成功；
+  - 需在线支付 → `code=Unpaid, data.id=订单ID`（前端 `subRenew()` 拿它 `showPayDialog(orderId, amount)`）。
+- 优惠码：`customfield.promo_code` 是**数组** `["code"]`（与官方一致，App 预留该参数）。
+
+### App 改动
+- API 层新增 4 个端点；`RenewModels.kt`（`RenewParser`）解析周期/结果/自动续费状态。
+- ViewModel：`refreshRenew / selectRenewCycle / submitRenew / setAutoRenew`；续费状态挂在 `ProductDetailUi`。
+- UI：费用与订单 Tab 新增「续费」区块（周期单选 + 应付金额 + 立即续费），自动续费改为可点击开关。
+- 支付衔接：`submitRenew` 拿到订单ID后回调 `onContinuePay → shopVm.startPayOrder`，复用现成支付面板。
+- 7 例新增单测（周期全字段/数组兼容/空数据/Unpaid订单ID/Paid/内嵌code/自动续费状态），共 293 例全过。
+
+---
+
+## v1.4.27：购前须知数据源修正 + R8 混淆（源码与线上实证）
+
+### 购前须知根因（线上 SSR 实证）
+- 现象：选购页「购前须知」显示「主题云2023年中秋国庆放假公告」等无关全站公告标题。
+- 错误实现（v1.4.20）：`ShopViewModel.openConfig()` 用 `catalog.announcements()`（GET /announcement
+  全站公告）前 3 条填充购前须知。
+- 线上抓取 `cart/goodsList.htm?fpg_id=&spg_id=` 真实 HTML 证实：真正的购前须知是页面顶部
+  「公告 · 购买前必读」区块（`id="announcementContentPC"` / 手机端 `announcementContent`），
+  内容为「基础服务条例：一、退款规则 / 二、使用须知 …」。
+- 该公告全站统一（对比 spg 17/20/25 内容一致），用商品 fpg/spg 抓取即可，分组缺失用默认专区兜底。
+- 修复：新增 `PrePurchaseNoticeParser`（纯 JVM，按 div 深度配对提取 + 清洗 HTML/样式），
+  Repository `prePurchaseNotices()` 复用 `AppContainer.fetchHtml`；UI 按章节标题/条款分行渲染，
+  默认折叠 6 条可展开。新增 5 例单测。
+
+### R8 混淆决策（反射点排查）
+- 排查全项目反射/字符串反查点：`ServicePanel.valueOf(token)`（导航 token）、
+  Gson 经 Retrofit 反序列化 `ApiEnvelope` / `CaptchaRefreshResponse`、Compose runtime。
+- 关键坑：仅 `-keepclassmembers enum ... valueOf()` 不够——R8 会把枚举常量名改成 b/c/d，
+  `valueOf("HOSTS")` 运行时抛 `IllegalArgumentException`。改用 `-keep enum ServicePanel { *; }`
+  整类保留；DEX `strings` 实测 HOSTS/SUB_ACCOUNTS/CERTIFICATION 明文存在，验证通过。
+- 效果：APK 8.8 MB → 5.1 MB；`minifyReleaseWithR8` + `shrinkReleaseRes` 均生效。
+- CI 由 assembleDebug 改 assembleRelease，发布产物真正带混淆（更新检测动态读 .apk asset，不受文件名影响）。

@@ -7,6 +7,7 @@ import com.vps.qing.core.network.TokenManager
 import com.vps.qing.core.network.arrayAt
 import com.vps.qing.core.network.objectAt
 import com.vps.qing.core.network.safeApiCall
+import com.vps.qing.core.network.safeApiCallEnvelope
 import com.vps.qing.core.network.string
 import com.vps.qing.data.api.QingVpsApiService
 import kotlinx.coroutines.async
@@ -307,6 +308,44 @@ class ProfileRepository(
     /** 电源实时状态（操作后轮询用）。 */
     suspend fun cloudStatus(hostId: String): ApiResult<PowerState> =
         safeApiCall({ api.cloudStatus(hostId) }) { HostOpsBodies.parseStatus(it) }
+
+    // ---- v1.4.26：续费（官方 addon idcsmart_renew）----
+
+    /** 可续费周期列表：GET host/{id}/renew → data.host[]。 */
+    suspend fun renewPage(hostId: String): ApiResult<List<RenewCycle>> =
+        safeApiCall({ api.renewPage(hostId) }) { RenewParser.cycles(it) }
+
+    /**
+     * 提交续费：POST host/{id}/renew。
+     * 顶层 code=Paid（已付）/ Unpaid（生成待支付订单，data.id 为订单ID）。
+     * 用 safeApiCallEnvelope 拿完整响应以读取顶层 code。
+     */
+    suspend fun submitRenew(
+        hostId: String,
+        billingCycle: String,
+        promoCode: String = ""
+    ): ApiResult<RenewResult> {
+        val body = JsonObject().apply {
+            addProperty("billing_cycle", billingCycle)
+            if (promoCode.isNotBlank()) {
+                val cf = JsonObject().apply { add("promo_code", com.google.gson.JsonArray().apply { add(promoCode) }) }
+                add("customfield", cf)
+            }
+        }
+        return safeApiCallEnvelope({ api.submitRenew(hostId, body) }) { env ->
+            RenewParser.result(env.code, env.data, env.msg)
+        }
+    }
+
+    /** 自动续费状态查询：GET host/{id}/renew/auto。 */
+    suspend fun renewAutoStatus(hostId: String): ApiResult<Boolean> =
+        safeApiCall({ api.renewAutoStatus(hostId) }) { RenewParser.autoStatus(it) }
+
+    /** 自动续费开关：PUT host/{id}/renew/auto，status=1|0。 */
+    suspend fun updateRenewAuto(hostId: String, enabled: Boolean): ApiResult<Unit> {
+        val body = JsonObject().apply { addProperty("status", if (enabled) 1 else 0) }
+        return safeApiCall({ api.updateRenewAuto(hostId, body) }) { Unit }
+    }
 
     // ---- v1.4.23：已购机器管理 ----
 

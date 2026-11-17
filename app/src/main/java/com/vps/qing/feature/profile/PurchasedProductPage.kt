@@ -64,6 +64,7 @@ import com.vps.qing.data.repository.HostOpLog
 import com.vps.qing.data.repository.HostOpsBodies
 import com.vps.qing.data.repository.MfImageGroup
 import com.vps.qing.data.repository.PurchasedDetail
+import com.vps.qing.data.repository.RenewCycle
 import com.vps.qing.data.repository.BackupItem
 import com.vps.qing.data.repository.DiskInfo
 import com.vps.qing.data.repository.IpInfo
@@ -101,7 +102,10 @@ fun PurchasedProductPage(
     onRefreshDisks: () -> Unit = {},
     onRefreshNetwork: () -> Unit = {},
     onRefreshBackups: () -> Unit = {},
-    onOpenWebManage: () -> Unit = {}
+    onOpenWebManage: () -> Unit = {},
+    onSelectRenewCycle: (Int) -> Unit = {},
+    onSubmitRenew: () -> Unit = {},
+    onSetAutoRenew: (Boolean) -> Unit = {}
 ) {
     CartoonBackground {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -161,7 +165,10 @@ fun PurchasedProductPage(
                             onRefreshDisks = onRefreshDisks,
                             onRefreshNetwork = onRefreshNetwork,
                             onRefreshBackups = onRefreshBackups,
-                            onOpenWebManage = onOpenWebManage
+                            onOpenWebManage = onOpenWebManage,
+                            onSelectRenewCycle = onSelectRenewCycle,
+                            onSubmitRenew = onSubmitRenew,
+                            onSetAutoRenew = onSetAutoRenew
                         )
                     }
                 }
@@ -186,7 +193,10 @@ private fun ProductDetailBody(
     onRefreshDisks: () -> Unit,
     onRefreshNetwork: () -> Unit,
     onRefreshBackups: () -> Unit,
-    onOpenWebManage: () -> Unit
+    onOpenWebManage: () -> Unit,
+    onSelectRenewCycle: (Int) -> Unit,
+    onSubmitRenew: () -> Unit,
+    onSetAutoRenew: (Boolean) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         // 顶部分段 Tab 导航（可横向滚动）
@@ -224,7 +234,11 @@ private fun ProductDetailBody(
                     loading = state.manageLoading, onRefresh = onRefreshBackups
                 )
                 APP_PRESET.ordinal -> appPresetTab(onOpenWeb = onOpenWebManage)
-                BILLING.ordinal -> billingTab(d, onOpenOrder)
+                BILLING.ordinal -> billingTab(
+                    d = d, state = state, onOpenOrder = onOpenOrder,
+                    onSelectRenewCycle = onSelectRenewCycle,
+                    onSubmitRenew = onSubmitRenew, onSetAutoRenew = onSetAutoRenew
+                )
             }
             item { Spacer(Modifier.height(4.dp)) }
         }
@@ -1009,6 +1023,57 @@ private fun androidx.compose.foundation.lazy.LazyListScope.appPresetTab(onOpenWe
     }
 }
 
+/** 续费周期单选行：周期描述 + 时长 + 售价，选中态高亮。 */
+@Composable
+private fun RenewCycleRow(cycle: RenewCycle, selected: Boolean, onClick: () -> Unit) {
+    val label = cycle.description.ifBlank { cycle.billingCycle.ifBlank { "续费周期" } }
+    val durationText = cycleDuration(cycle.duration)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(CartoonKit.ItemShape)
+            .background(if (selected) CartoonColors.MintSoft else CartoonColors.White.copy(alpha = 0.5f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.RadioButton(
+                selected = selected,
+                onClick = onClick,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Column {
+                Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = CartoonColors.Ink)
+                if (durationText.isNotBlank()) {
+                    Text(durationText, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
+                }
+            }
+        }
+        Text(
+            money(String.format("%.2f", cycle.price)),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = CartoonColors.Brand
+        )
+    }
+}
+
+/** 秒数转可读时长：30天=1个月，365天=1年，其余按天/小时。 */
+private fun cycleDuration(seconds: Long): String {
+    if (seconds <= 0) return ""
+    val days = seconds / 86400.0
+    return when {
+        kotlin.math.abs(days - 30) < 1 -> "1 个月"
+        kotlin.math.abs(days - 31) < 1 -> "1 个月"
+        kotlin.math.abs(days - 365) < 1 || kotlin.math.abs(days - 366) < 1 -> "1 年"
+        days >= 1 -> "${days.toLong()} 天"
+        else -> "${seconds / 3600} 小时"
+    }
+}
+
 private fun formatEpoch(seconds: Long): String = try {
     java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
         .format(java.util.Date(seconds * 1000))
@@ -1020,8 +1085,70 @@ private fun formatEpoch(seconds: Long): String = try {
 
 private fun androidx.compose.foundation.lazy.LazyListScope.billingTab(
     d: PurchasedDetail,
-    onOpenOrder: (String) -> Unit
+    state: ProductDetailUi,
+    onOpenOrder: (String) -> Unit,
+    onSelectRenewCycle: (Int) -> Unit,
+    onSubmitRenew: () -> Unit,
+    onSetAutoRenew: (Boolean) -> Unit
 ) {
+    // ---- v1.4.26：续费（官方 addon idcsmart_renew）----
+    item { SectionTitle("续费", CartoonColors.Mint) }
+    item {
+        GlassCard(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "选择续费周期后提交，生成订单即可在线支付；余额充足时直接续费成功。",
+                    style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub
+                )
+                when {
+                    state.renewLoading && state.renewCycles.isEmpty() -> {
+                        Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
+                            Text("正在获取可续费周期…", style = MaterialTheme.typography.labelMedium, color = CartoonColors.InkSub)
+                        }
+                    }
+                    state.renewCycles.isEmpty() -> {
+                        Text("当前无可续费周期（产品可能不支持续费或已到期）", style = MaterialTheme.typography.bodySmall, color = CartoonColors.InkSub)
+                    }
+                    else -> {
+                        state.renewCycles.forEachIndexed { index, cycle ->
+                            RenewCycleRow(
+                                cycle = cycle,
+                                selected = index == state.renewSelected,
+                                onClick = { onSelectRenewCycle(index) }
+                            )
+                        }
+                        val chosen = state.renewCycles.getOrNull(state.renewSelected)
+                        if (chosen != null) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("应付金额", style = MaterialTheme.typography.bodyMedium, color = CartoonColors.Ink)
+                                Text(
+                                    money(String.format("%.2f", chosen.price)),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold, color = CartoonColors.Brand
+                                )
+                            }
+                        }
+                        CartoonButton(
+                            text = "立即续费",
+                            onClick = onSubmitRenew,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !state.renewSubmitting,
+                            icon = AppIcons.Order,
+                            trailingContent = if (state.renewSubmitting) {
+                                { androidx.compose.material3.CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = androidx.compose.ui.graphics.Color.White
+                                ) }
+                            } else null
+                        )
+                    }
+                }
+            }
+        }
+    }
     item { SectionTitle("支付信息", CartoonColors.Lilac) }
     item {
         GlassCard(modifier = Modifier.fillMaxWidth()) {
@@ -1031,8 +1158,26 @@ private fun androidx.compose.foundation.lazy.LazyListScope.billingTab(
                 KeyValueRow("下次续费金额", money(d.renewAmount))
                 KeyValueRow("开通时间", d.activeTime.ifBlank { "--" })
                 KeyValueRow("下次续费时间", d.dueTime.ifBlank { "--" })
-                KeyValueRow("自动续费", if (d.autoRenew) "已开启" else "未开启")
-                KeyValueRow("优惠码", "--")
+                // 自动续费开关（官方 PUT host/{id}/renew/auto）
+                val autoOn = state.autoRenewEnabled ?: d.autoRenew
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(CartoonKit.ItemShape)
+                        .background(CartoonColors.White.copy(alpha = 0.5f))
+                        .clickable { onSetAutoRenew(!autoOn) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("自动续费", style = MaterialTheme.typography.bodyMedium, color = CartoonColors.Ink)
+                    Text(
+                        if (autoOn) "● 已开启" else "○ 未开启",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (autoOn) CartoonColors.Mint else CartoonColors.InkSub
+                    )
+                }
             }
         }
     }

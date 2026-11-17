@@ -13,8 +13,8 @@ import com.vps.qing.data.repository.CatalogRepository
 import com.vps.qing.data.repository.CheckoutParser
 import com.vps.qing.data.repository.ConfigOption
 import com.vps.qing.data.repository.GatewayOption
-import com.vps.qing.data.repository.ArticleItem
 import com.vps.qing.data.repository.CouponItem
+import com.vps.qing.data.repository.NoticeParagraph
 import com.vps.qing.data.repository.PayDeadline
 import com.vps.qing.data.repository.MfCloudCart
 import com.vps.qing.data.repository.MfSelection
@@ -51,8 +51,9 @@ data class ConfigSheetState(
     val cycleQuotes: Map<String, PriceQuote> = emptyMap(),
     /** 商品详情指标（计费方式 / 起价 / 模块），来自 GET /product/{id}。 */
     val indicators: ProductInfo? = null,
-    /** v1.4.20 选购页辅助信息：站点公告（购前须知载体）/ 区域机器须知 / 可用优惠券。 */
-    val announcements: List<ArticleItem> = emptyList(),
+    /** v1.4.27 购前须知：SSR 专区页「公告·购买前必读」结构化段落（替代错误的全站公告）。 */
+    val prePurchaseNotices: List<NoticeParagraph> = emptyList(),
+    /** 区域机器须知（商品 description 提取）。 */
     val regionNotices: List<String> = emptyList(),
     val coupons: List<CouponItem> = emptyList(),
     val couponsLoading: Boolean = false,
@@ -401,8 +402,12 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
             // 配置定义与商品指标并发拉取；配置强制刷新，避免站点改价后仍用旧缓存
             val cfgCall = async { catalog.productConfig(product.id, forceRefresh = true) }
             val infoCall = async { catalog.productIndicators(product.id) }
-            // v1.4.20：选购页公告（购前须知）与可用优惠券并发拉取，失败静默降级不影响主配置
-            val annCall = async { catalog.announcements() }
+            // v1.4.27：购前须知改为抓取专区页 SSR「公告·购买前必读」；优惠券并发拉取，失败静默降级
+            val noticeCall = async {
+                catalog.prePurchaseNotices(
+                    product.groupFirstId.orEmpty(), product.groupSecondId.orEmpty()
+                )
+            }
             val couponCall = async { catalog.coupons() }
             when (val r = cfgCall.await()) {
                 is ApiResult.Success -> {
@@ -441,9 +446,9 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
                     ))
                 }
             }
-            // v1.4.20：辅助信息回写。用商品 id 守卫，防止用户快速切换商品时旧响应覆盖新页面。
-            val ann = when (val ar = annCall.await()) {
-                is ApiResult.Success -> ar.data
+            // v1.4.27：辅助信息回写。用商品 id 守卫，防止用户快速切换商品时旧响应覆盖新页面。
+            val notices = when (val nr = noticeCall.await()) {
+                is ApiResult.Success -> nr.data
                 else -> emptyList()
             }
             val coupons = when (val cr = couponCall.await()) {
@@ -454,7 +459,7 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
                 val sheet = st.configSheet
                 if (sheet == null || sheet.product.id != product.id) st
                 else st.copy(configSheet = sheet.copy(
-                    announcements = ann, coupons = coupons, couponsLoading = false
+                    prePurchaseNotices = notices, coupons = coupons, couponsLoading = false
                 ))
             }
         }
