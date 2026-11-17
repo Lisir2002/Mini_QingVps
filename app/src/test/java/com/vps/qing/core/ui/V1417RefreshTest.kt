@@ -28,4 +28,10 @@ class V1417RefreshTest {
         val numeric = major * 1_000_000 + minor * 1_000 + patch
         assertTrue("$v 应不低于 1.4.18", numeric >= 1_004_018)
     }
+
+    @Test
+    fun `版本号直接来自BuildConfig的versionName`() {
+        // v1.4.25：关于页/我的页版本号必须等于构建配置，杜绝「已升版却显示旧版本号」
+        assertEquals(com.vps.qing.BuildConfig.VERSION_NAME, Strings.APP_VERSION)
+    }
 }

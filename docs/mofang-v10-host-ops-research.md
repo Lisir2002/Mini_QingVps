@@ -159,3 +159,43 @@ status 只有四态，网站端的「正在开机/正在关机/正在重启-关�
   再后台轮询；轮询结束刷新详情（系统镜像/端口/密码实时更新）与日志。
 - 进入管理 Tab / 下拉刷新时也拉取一次 status，保持状态常新。
 - 5 例纯函数单测覆盖稳定态、开机/关机、重启两阶段、desc 回退。
+
+---
+
+## v1.4.25 补充：修复「一直转圈 / 日志不显示 / 版本号不更新」
+
+用户反馈三点：① 关于页版本号已升级仍显示旧值；② 电源操作后一直转圈不落到对应状态；
+③ 多次重启/重装但操作日志为空，且日志应从「管理」拆成独立 Tab。
+
+### ① 版本号（非接口问题，构建配置单一数据源）
+- 根因：`Strings.APP_VERSION` 硬编码 `"1.4.22"`，`build.gradle` versionName 已是 1.4.24+，两处脱节。
+- 修复：`buildFeatures.buildConfig = true`，`APP_VERSION = BuildConfig.VERSION_NAME`（普通 val，
+  故 `const val` 改为 `val`）。显示处（AboutPage / ProfileScreen）无需改动，自动同步。
+
+### ② 电源一直转圈（源码实证，v1.4.24 结束条件写错）
+- 官方 `CloudLogic::status`（server/mf_cloud/logic/CloudLogic.php:76-119）映射：
+  `on/wait_reboot/paused → on`、`off → off`、`suspend → suspend`、
+  `task/cold_migrate/hot_migrate → operating`、其余 → fault。C 端只会拿到
+  **on/off/suspend/operating/fault 五态**。
+- 官方前端 `cloudDetail.js:getCloudStatus()`（1810 行）：**仅当 status=="operating" 递归，
+  否则 emit 停止**；操作按钮回调（doOn/doOff/doReboot/…）成功后统一 `this.status="operating"`
+  再调用它。没有「必须看到 off 再回到 on」的判定。
+- v1.4.24 的错误：`done = sawOff && raw=="on"`。因 wait_reboot 直接映射成 on（不经过 off），
+  `sawOff` 永远为 false → 转满 75 轮≈90s；且 stable 漏掉 suspend（暂停态也死循环）。
+- 修复：`HostOpsBodies.isPowerSettled(raw, action, offRounds, rounds)`：
+  - operating/空值不结束；
+  - 动作驱动至少 2 轮再落定（防读到旧状态过早结束）；
+  - 普通动作任意稳定态即结束；
+  - 重启时 off 是瞬时态不结束，但连续 off 达 `REBOOT_OFF_GRACE_ROUNDS=5` 兜底结束（防死转）。
+  - `parseStatus` 的 stable 补上 `suspend`，文案映射 `suspend→已暂停`。
+
+### ③ 操作日志（源码实证，缺分页参数）
+- 官方 `CloudController::log @return`：`data.list[].description / create_time / ip`、`data.count`。
+- 官方前端 `getLogList()`（cloudDetail.js:3574）：参数 `id + {...logParams}`，
+  `logParams = {page:1, limit:20, orderby:"id", sort:"desc", keywords:""}`（634 行）。
+- 后端 `SystemLogModel::systemLogList`：sort/orderby/limit 缺省时取站点 config，部分站点返回空/乱序。
+- v1.4.24 的 `@GET cloudLog` 只传 id，其它全缺省 → 列表空或不可见。
+- 修复：Retrofit `cloudLog` 补 `@Query page=1, limit=50, orderby="id", sort="desc"`。
+- UI：新增 `HostDetailTab.OP_LOG` 独立 Tab（`Strings.HOST_TAB_OP_LOG`），从「管理」中拆出
+  `OpLogCard`，进入即 `refreshHostLogs`，顶栏下拉刷新也带上日志刷新。
+- 6 例新增单测，共 286 例全过。

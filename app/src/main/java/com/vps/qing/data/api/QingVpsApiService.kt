@@ -322,9 +322,20 @@ interface QingVpsApiService {
     @POST("remf_cloud/{id}/{action}")
     suspend fun powerAction(@Path("id") id: String, @Path("action") action: String): ApiEnvelope
 
-    /** 实例操作日志：data.list[]。 */
+    /**
+     * 实例操作日志：data.list[]、data.count。
+     * v1.4.25：官方 cloudDetail.js 的 getLogList 明确传 page/limit/orderby/sort，
+     * 旧版一个参数都没传，后端 sort/orderby 取默认、limit 取站点默认，部分站点会返回空列表，
+     * 表现为「操作了很多却看不到日志」。按官方参数补齐，desc 排序取最新。
+     */
     @GET("remf_cloud/{id}/log")
-    suspend fun cloudLog(@Path("id") id: String): ApiEnvelope
+    suspend fun cloudLog(
+        @Path("id") id: String,
+        @Query("page") page: Int = 1,
+        @Query("limit") limit: Int = 50,
+        @Query("orderby") orderby: String = "id",
+        @Query("sort") sort: String = "desc"
+    ): ApiEnvelope
 
     /** 电源实时状态：data{status,desc}。官方前端操作后递归轮询此接口直到稳定。 */
     @GET("remf_cloud/{id}/status")

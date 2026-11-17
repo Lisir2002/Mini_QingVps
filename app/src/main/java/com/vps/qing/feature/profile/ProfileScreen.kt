@@ -202,6 +202,7 @@ fun ProfileScreen(
                     onRefresh = {
                         vm.refreshProductDetail(hostId)
                         vm.refreshPowerStatus(hostId)
+                        vm.refreshHostLogs(hostId)
                     },
                     onOpenOrder = openOrderDetail,
                     onSelectTab = { vm.setHostDetailTab(hostId, it) },

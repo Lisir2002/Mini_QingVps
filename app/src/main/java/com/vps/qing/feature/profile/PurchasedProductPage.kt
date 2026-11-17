@@ -73,6 +73,7 @@ import com.vps.qing.feature.profile.HostDetailTab.CHART
 import com.vps.qing.feature.profile.HostDetailTab.CONNECT
 import com.vps.qing.feature.profile.HostDetailTab.DISK
 import com.vps.qing.feature.profile.HostDetailTab.NETWORK
+import com.vps.qing.feature.profile.HostDetailTab.OP_LOG
 import com.vps.qing.feature.profile.HostDetailTab.OVERVIEW
 import com.vps.qing.feature.profile.HostDetailTab.REINSTALL
 import com.vps.qing.feature.profile.HostDetailTab.BACKUP
@@ -211,8 +212,9 @@ private fun ProductDetailBody(
                 REINSTALL.ordinal -> reinstallTab(
                     d = d, hostId = hostId, state = state,
                     onReinstall = onReinstall, onPower = onPower,
-                    onResetPassword = onResetPassword, onRefreshLogs = onRefreshLogs
+                    onResetPassword = onResetPassword
                 )
+                OP_LOG.ordinal -> opLogTab(state = state, onRefresh = onRefreshLogs)
                 DISK.ordinal -> diskTab(disks = state.disks, loading = state.manageLoading, onRefresh = onRefreshDisks)
                 NETWORK.ordinal -> networkTab(
                     d = d, ips = state.ips, loading = state.manageLoading, onRefresh = onRefreshNetwork
@@ -235,9 +237,9 @@ private fun DetailTabRow(selected: Int, onSelect: (Int) -> Unit) {
     val tabs = listOf(
         Strings.HOST_TAB_OVERVIEW, Strings.HOST_TAB_CONNECT,
         Strings.HOST_TAB_CHART, Strings.HOST_TAB_MANAGE,
-        Strings.HOST_TAB_DISK, Strings.HOST_TAB_NETWORK,
-        Strings.HOST_TAB_BACKUP, Strings.HOST_TAB_APP_PRESET,
-        Strings.HOST_TAB_BILLING
+        Strings.HOST_TAB_OP_LOG, Strings.HOST_TAB_DISK,
+        Strings.HOST_TAB_NETWORK, Strings.HOST_TAB_BACKUP,
+        Strings.HOST_TAB_APP_PRESET, Strings.HOST_TAB_BILLING
     )
     val scrollState = rememberScrollState()
     Row(
@@ -452,8 +454,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.reinstallTab(
     state: ProductDetailUi,
     onReinstall: (Int, String, String) -> Unit,
     onPower: (String) -> Unit,
-    onResetPassword: (String, String) -> Unit,
-    onRefreshLogs: () -> Unit
+    onResetPassword: (String, String) -> Unit
 ) {
     if (!d.hasCloudConfig) {
         item {
@@ -486,9 +487,19 @@ private fun androidx.compose.foundation.lazy.LazyListScope.reinstallTab(
             onReset = onResetPassword
         )
     }
+}
+
+/** v1.4.25：操作日志独立成 tab，从「管理」中拆出，进入即刷新、可下拉刷新。 */
+private fun androidx.compose.foundation.lazy.LazyListScope.opLogTab(state: ProductDetailUi, onRefresh: () -> Unit) {
+    if (state.detail?.hasCloudConfig != true) {
+        item {
+            EmptyHint(icon = AppIcons.Info, text = Strings.HOST_NO_CLOUD_CONFIG, modifier = Modifier.fillMaxWidth())
+        }
+        return
+    }
     item { SectionTitle(Strings.HOST_OP_LOG, CartoonColors.Sky) }
     item {
-        OpLogCard(logs = state.logs, onRefresh = onRefreshLogs)
+        OpLogCard(logs = state.logs, onRefresh = onRefresh)
     }
 }
 

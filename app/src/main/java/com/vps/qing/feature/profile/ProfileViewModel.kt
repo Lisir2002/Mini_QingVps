@@ -222,6 +222,7 @@ enum class HostDetailTab(val label: String) {
     CONNECT("连接信息"),
     CHART("统计图表"),
     REINSTALL("管理"),
+    OP_LOG("操作日志"),
     DISK("磁盘"),
     NETWORK("网络"),
     BACKUP("备份快照"),
@@ -518,9 +519,9 @@ class ProfileViewModel(
         when (tab) {
             HostDetailTab.REINSTALL.ordinal -> {
                 ensureHostImages(hostId)
-                refreshHostLogs(hostId)
                 refreshPowerStatus(hostId)
             }
+            HostDetailTab.OP_LOG.ordinal -> refreshHostLogs(hostId)
             HostDetailTab.CHART.ordinal -> ensureHostCharts(hostId)
             HostDetailTab.DISK.ordinal -> refreshHostDisks(hostId)
             HostDetailTab.NETWORK.ordinal -> refreshHostNetwork(hostId)
@@ -652,25 +653,27 @@ class ProfileViewModel(
             }
             var rounds = 0
             var sawOff = false
+            var offRounds = 0
             while (rounds < maxRounds) {
                 rounds++
                 when (val r = repo.cloudStatus(hostId)) {
                     is ApiResult.Success -> {
                         val st = r.data
-                        // 追踪重启轨迹：只要观察到 off，就进入「开机中」阶段
-                        if (st.raw == "off") sawOff = true
+                        // 追踪重启轨迹：观察到 off 就进入「开机中」阶段，并累计连续 off 轮数。
+                        if (st.raw == "off") {
+                            sawOff = true
+                            offRounds++
+                        } else {
+                            offRounds = 0
+                        }
                         setProductDetail(hostId) {
                             it.copy(powerState = st, sawPowerOff = sawOff, powerPolling = pendingAction != null)
                         }
-                        // 判断动作是否完成：
-                        // - 稳定态(on/off/fault)即结束；
-                        // - 重启必须看过 off 再回到 on 才算真正完成，避免过早结束。
-                        val done = when (pendingAction) {
-                            null, "on", "off", "hard_off" -> st.stable
-                            "reboot", "hard_reboot" -> sawOff && st.raw == "on"
-                            else -> st.stable
-                        }
-                        if (done) {
+                        // 对齐官方 getCloudStatus：operating 继续轮询，稳定态即落定结束。
+                        // 重启时 off 只是瞬时中间态，交给 isPowerSettled 专门处理，不再死等
+                        // 「sawOff 且回到 on」（官方 wait_reboot 直接映射成 on，根本不经过 off，
+                        // 旧条件永远不会满足 → 一直转圈）。
+                        if (HostOpsBodies.isPowerSettled(st.raw, pendingAction, offRounds, rounds)) {
                             setProductDetail(hostId) {
                                 it.copy(
                                     pendingPowerAction = null, sawPowerOff = false,

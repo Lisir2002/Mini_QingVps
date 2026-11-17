@@ -67,13 +67,14 @@ object HostOpsBodies {
      * 部分版本 desc 在 data 顶层或嵌套，做多级兼容。
      */
     fun parseStatus(data: JsonElement?): PowerState {
-        val status = data.string("status", "power_status", "state").orEmpty()
+        val status = data.string("status", "power_status", "state").orEmpty().lowercase()
         val desc = data.string("desc", "description", "status_text", "msg").orEmpty()
-        return PowerState(
-            raw = status.lowercase(),
-            desc = desc,
-            stable = status.equals("on", true) || status.equals("off", true) || status.equals("fault", true)
-        )
+        // 官方 CloudLogic::status 映射后只会返回 5 态：on/off/suspend/operating/fault。
+        // 稳定态 = 除 operating 外的已知终态（on/off/fault/suspend）；suspend（暂停/欠费停机）
+        // 也是终态，v1.4.24 漏掉它会导致实例处于暂停时轮询永不结束、一直转圈。
+        // 空值（解析异常）视为非稳定，让上层继续重试。
+        val stable = status in setOf("on", "off", "fault", "suspend")
+        return PowerState(raw = status, desc = desc, stable = stable)
     }
 
     /**
@@ -96,6 +97,7 @@ object HostOpsBodies {
                 "on" -> "已开机"
                 "off" -> "已关机"
                 "fault" -> "故障"
+                "suspend" -> "已暂停"
                 else -> state.desc.ifBlank { state.raw.ifBlank { "未知" } }
             }
         }
@@ -107,6 +109,31 @@ object HostOpsBodies {
                 return if (sawOff) "正在重启-开机中" else "正在重启-关机中"
         }
         return state.desc.ifBlank { "操作中" }
+    }
+
+    /** 重启过程中 status 短暂为 off 时，最多再等这几轮（每轮约 1.2s）便视为已落定，防止死转圈。 */
+    const val REBOOT_OFF_GRACE_ROUNDS = 5
+
+    /**
+     * 判断一次电源轮询是否可以结束（v1.4.25，对齐官方 cloudDetail.js:getCloudStatus）。
+     *
+     * 官方逻辑：只要 status=="operating" 就继续自查，落到稳定态就停止并把 desc 渲染出来。
+     * - on/off/hard_off 等操作：任意稳定态（on/off/fault/suspend）即结束；
+     * - 重启：off 是「关机再开机」过程中的瞬时态，不能当作完成，需继续等到 on；
+     *   但若 off 持续 [REBOOT_OFF_GRACE_ROUNDS] 轮（机器重启后停在关机态），也判为落定，避免无限轮询。
+     *
+     * @param offRounds 本次轮询中连续观察到 off 的轮数（仅重启用到）。
+     * @param rounds 已轮询轮数；操作后首轮可能读到动作生效前的旧稳定态，故动作驱动时至少等 2 轮再落定。
+     */
+    fun isPowerSettled(raw: String, pendingAction: String?, offRounds: Int, rounds: Int): Boolean {
+        if (raw.isBlank() || raw == "operating") return false
+        // 防止「刚提交就落到动作发生前的旧状态」而过早结束：动作驱动轮询至少 2 轮。
+        if (pendingAction != null && rounds < 2) return false
+        return when (pendingAction) {
+            "reboot", "hard_reboot" ->
+                if (raw == "off") offRounds >= REBOOT_OFF_GRACE_ROUNDS else true
+            else -> true
+        }
     }
 
     fun parseLog(data: JsonElement?): List<HostOpLog> =

@@ -12,8 +12,8 @@ android {
         applicationId = "com.vps.qing"
         minSdk = 26
         targetSdk = 35
-        versionCode = 33
-        versionName = "1.4.24"
+        versionCode = 34
+        versionName = "1.4.25"
     }
 
     signingConfigs {
@@ -50,6 +50,9 @@ android {
 
     buildFeatures {
         compose = true
+        // v1.4.25：让 Strings.APP_VERSION 直接读 BuildConfig.VERSION_NAME，
+        // 版本号只在此处维护，关于页/我的页不再手改硬编码，杜绝「升级后仍显示旧版本」。
+        buildConfig = true
     }
 
     testOptions {

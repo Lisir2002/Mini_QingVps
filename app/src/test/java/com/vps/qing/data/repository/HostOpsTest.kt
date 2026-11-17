@@ -245,4 +245,47 @@ class HostOpsTest {
         val blank = HostOpsBodies.parseStatus(JsonParser.parseString("""{"status":"pending"}"""))
         assertEquals("操作中", HostOpsBodies.powerLabel(blank, null, false))
     }
+
+    // ---- v1.4.25：修复「一直转圈」+ 日志参数 + suspend 稳定态 ----
+
+    @Test
+    fun `电源状态_suspend是稳定态而非死轮询`() {
+        val suspend = HostOpsBodies.parseStatus(JsonParser.parseString("""{"status":"suspend","desc":"已暂停"}"""))
+        assertTrue("suspend 必须是稳定态，否则实例暂停时轮询永不停", suspend.stable)
+        assertEquals("已暂停", HostOpsBodies.powerLabel(suspend, null, false))
+        // 官方未知态（解析异常空值）不能被当成稳定态
+        assertTrue(!HostOpsBodies.parseStatus(null).stable)
+    }
+
+    @Test
+    fun `轮询落定_operating与空值永不结束`() {
+        assertTrue(!HostOpsBodies.isPowerSettled("operating", null, 0, 10))
+        assertTrue(!HostOpsBodies.isPowerSettled("", "on", 0, 10))
+    }
+
+    @Test
+    fun `轮询落定_首两轮不因旧状态过早结束`() {
+        // 刚提交动作，首轮读到动作生效前的旧状态 on，不能立刻结束
+        assertTrue(!HostOpsBodies.isPowerSettled("on", "off", 0, 1))
+        // 进入第 2 轮且已稳定，可结束
+        assertTrue(HostOpsBodies.isPowerSettled("on", "off", 0, 2))
+    }
+
+    @Test
+    fun `轮询落定_普通动作稳定态即结束`() {
+        assertTrue(HostOpsBodies.isPowerSettled("on", "on", 0, 3))
+        assertTrue(HostOpsBodies.isPowerSettled("off", "off", 0, 3))
+        assertTrue(HostOpsBodies.isPowerSettled("fault", "on", 0, 3))
+    }
+
+    @Test
+    fun `轮询落定_重启时off是瞬时态且持续off会兜底结束`() {
+        // 重启第一轮读到 off：不能当完成，必须继续等到 on
+        assertTrue(!HostOpsBodies.isPowerSettled("off", "reboot", 1, 3))
+        // off 持续达到宽限轮数：兜底结束，避免无限转圈
+        assertTrue(HostOpsBodies.isPowerSettled("off", "reboot", HostOpsBodies.REBOOT_OFF_GRACE_ROUNDS, 8))
+        // 重启回到 on：立即结束
+        assertTrue(HostOpsBodies.isPowerSettled("on", "reboot", 0, 3))
+        assertTrue(HostOpsBodies.isPowerSettled("on", "hard_reboot", 0, 3))
+    }
 }

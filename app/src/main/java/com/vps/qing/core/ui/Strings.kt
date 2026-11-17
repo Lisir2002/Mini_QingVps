@@ -1,9 +1,16 @@
 package com.vps.qing.core.ui
 
+import com.vps.qing.BuildConfig
+
 /** 集中放置文案，方便后续替换成 stringResource / 多语言。 */
 object Strings {
     const val APP_NAME = "QingVPS"
-    const val APP_VERSION = "1.4.22"
+    /**
+     * v1.4.25：版本号直接取自 build.gradle 的 versionName（经 BuildConfig 生成），
+     * 单一数据源，不再手改硬编码。此前硬编码 "1.4.22" 导致用户已升级到新版、
+     * 关于页/我的页却仍显示旧版本。
+     */
+    val APP_VERSION: String = BuildConfig.VERSION_NAME
 
     const val LOGIN = "登录"
     const val REGISTER = "注册"
@@ -175,6 +182,7 @@ object Strings {
     // ---- 已购机器管理扩展（v1.4.23，对齐网站端管理页）----
     const val HOST_TAB_CHART = "统计图表"
     const val HOST_TAB_MANAGE = "管理"
+    const val HOST_TAB_OP_LOG = "操作日志"
     const val HOST_TAB_DISK = "磁盘"
     const val HOST_TAB_NETWORK = "网络"
     const val HOST_TAB_BACKUP = "备份快照"
