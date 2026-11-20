@@ -203,6 +203,73 @@ class MfCloudModelsTest {
         assertEquals("周期 1432", items[0].cycle)
     }
 
+    // ---------------- v1.4.28：同一 area 多 line 折叠为单一区域 + 独立线路 ----------------
+
+    @Test
+    fun `same area with multiple lines distinctAreas collapses to one and linesOf keeps all`() {
+        // 复现截图场景：中国香港·香港 一个 area 下有两条 line（电信/联通），
+        // 旧逻辑平铺成两个相同 chip 且 areaId 相同 → 同时选中。
+        val multiLinePage = JsonParser.parseString("""
+        {
+          "data_center": [
+            {"id": 1, "iso": "CN", "name": "中国香港",
+             "city": [{"name": "香港",
+               "area": [{"id": 529, "name": "香港",
+                 "line": [
+                   {"id": 746, "name": "香港电信", "data_center_id": 529, "bill_type": "bw"},
+                   {"id": 747, "name": "香港联通", "data_center_id": 529, "bill_type": "bw"}
+                 ]}
+               ]}]}
+          ],
+          "cpu": [{"value": 1}], "memory": [{"value": 1}],
+          "system_disk": [{"value": 30}], "data_disk": [],
+          "config": {}
+        }
+        """.trimIndent())
+        val cfg = MfParser.parseOrderPage("1", multiLinePage)
+
+        // 平铺仍保留 2 条（area×line），供线路行使用
+        assertEquals(2, cfg.areas.size)
+        // 区域去重后只有 1 个，label 相同且不再重复
+        assertEquals(1, cfg.distinctAreas.size)
+        assertEquals("中国香港 · 香港", cfg.distinctAreas[0].areaLabel)
+        // 该区域下两条线路都在
+        val lines = cfg.linesOf(529)
+        assertEquals(2, lines.size)
+        assertEquals(listOf(746, 747), lines.map { it.lineId })
+        assertEquals(listOf("香港电信", "香港联通"), lines.map { it.lineName })
+        // 每条线路各有独立 lineId，selectedId=lineId 时只会选中一个
+        assertEquals(1, lines.count { it.lineId == 746 })
+    }
+
+    @Test
+    fun `distinct areas keeps order and picks first line as representative`() {
+        val multiAreaPage = JsonParser.parseString("""
+        {
+          "data_center": [
+            {"id": 1, "name": "中国香港", "city": [{"name": "香港",
+              "area": [
+                {"id": 529, "name": "香港", "line": [
+                   {"id": 746, "name": "电信", "bill_type": "bw"},
+                   {"id": 747, "name": "联通", "bill_type": "bw"}]},
+                {"id": 530, "name": "九龙", "line": [
+                   {"id": 748, "name": "移动", "bill_type": "bw"}]}
+              ]}]}
+          ],
+          "cpu": [], "memory": [], "system_disk": [], "data_disk": [], "config": {}
+        }
+        """.trimIndent())
+        val cfg = MfParser.parseOrderPage("1", multiAreaPage)
+        val distinct = cfg.distinctAreas
+        assertEquals(2, distinct.size)
+        assertEquals(listOf(529, 530), distinct.map { it.areaId })
+        // 每个区域代表取首条线路
+        assertEquals(746, distinct[0].lineId)
+        assertEquals(748, distinct[1].lineId)
+        assertEquals(2, cfg.linesOf(529).size)
+        assertEquals(1, cfg.linesOf(530).size)
+    }
+
     @Test
     fun `generic configoption lines keep old translation path`() {
         val generic = """

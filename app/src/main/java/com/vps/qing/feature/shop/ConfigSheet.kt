@@ -153,14 +153,16 @@ private fun MfConfigBody(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 区域 / 线路
-        if (mf.areas.size > 1) {
+        // 区域（v1.4.28）：官方把同一 area 的多条 line 折叠成一个区域选项，
+        // 按 areaId 去重，避免 area×line 平铺导致多个相同 chip 同时选中。
+        val distinctAreas = mf.distinctAreas
+        if (distinctAreas.size > 1) {
             ChipRow(
                 label = Strings.MF_AREA,
-                options = mf.areas.map { it.areaId.toString() to it.label },
+                options = distinctAreas.map { it.areaId.toString() to it.areaLabel },
                 selectedId = sel.areaId.toString(),
                 onSelect = { id ->
-                    val target = mf.areas.firstOrNull { it.areaId.toString() == id } ?: return@ChipRow
+                    val target = distinctAreas.firstOrNull { it.areaId.toString() == id } ?: return@ChipRow
                     onMfSelect(
                         sel.copy(
                             areaId = target.areaId,
@@ -173,10 +175,29 @@ private fun MfConfigBody(
         } else {
             FieldLabel(Strings.MF_AREA)
             ChipFlowRow(
-                options = mf.areas.map { it.areaId.toString() to it.label },
+                options = distinctAreas.map { it.areaId.toString() to it.areaLabel },
                 selectedId = sel.areaId.toString(),
                 enabled = false,
                 onSelect = { }
+            )
+        }
+
+        // 线路（v1.4.28）：同一区域下有多条线路时单独成行，按 lineId 单选（对齐官方两级联动）。
+        val areaLines = mf.linesOf(sel.areaId)
+        if (areaLines.size > 1) {
+            ChipRow(
+                label = Strings.MF_LINE,
+                options = areaLines.map { it.lineId.toString() to it.lineName.ifBlank { "线路 ${it.lineId}" } },
+                selectedId = sel.lineId.toString(),
+                onSelect = { id ->
+                    val target = areaLines.firstOrNull { it.lineId.toString() == id } ?: return@ChipRow
+                    onMfSelect(
+                        sel.copy(
+                            lineId = target.lineId,
+                            bw = target.bw?.candidates()?.firstOrNull() ?: sel.bw
+                        )
+                    )
+                }
             )
         }
 
@@ -496,18 +517,15 @@ private fun PriceSummary(sheet: ConfigSheetState) {
 }
 
 /**
- * v1.4.27 选购页辅助信息区：
- *  - 购前须知：专区页 SSR「公告·购买前必读」（基础服务条例：退款规则/使用须知…），
- *    替代 v1.4.20 误用的全站公告（那是放假/升级公告，与购前须知无关）；
- *  - 区域机器须知：从商品 description 的「地区/IP/说明」等行提取，随商品变化；
- *  - 可用优惠券：GET /coin/client/coupon（登录后返回 JSON，未登录站点回 HTML → 静默降级为空）。
- * 三者均为站点真实数据，App 只做结构化展示。
+ * v1.4.28 选购页辅助信息区：
+ *  - 购前须知：专区页 SSR「公告·购买前必读」（基础服务条例：退款规则/使用须知…）；
+ *  - 区域机器须知：从商品 description 的「地区/IP/说明」等行提取，随商品变化。
+ * v1.4.28 起移除「可用优惠券」卡片：选配后由站点后端自动应用最优优惠券，
+ * 用户无需手动查看/选券（算价链路 config_options.promo_code 留空即自动匹配）。
  */
 @Composable
 private fun PurchaseInfoBlocks(sheet: ConfigSheetState) {
-    if (sheet.prePurchaseNotices.isEmpty() && sheet.regionNotices.isEmpty() &&
-        !sheet.couponsLoading && sheet.coupons.isEmpty()
-    ) return
+    if (sheet.prePurchaseNotices.isEmpty() && sheet.regionNotices.isEmpty()) return
 
     if (sheet.prePurchaseNotices.isNotEmpty()) {
         InfoCard(title = Strings.CONFIG_PRE_PURCHASE_NOTICE, tint = CartoonColors.Sky) {
@@ -517,21 +535,6 @@ private fun PurchaseInfoBlocks(sheet: ConfigSheetState) {
     if (sheet.regionNotices.isNotEmpty()) {
         InfoCard(title = Strings.CONFIG_REGION_NOTICE, tint = CartoonColors.Lemon) {
             sheet.regionNotices.forEach { line -> NoticeLine(index = null, text = line) }
-        }
-    }
-    InfoCard(title = Strings.CONFIG_COUPON, tint = CartoonColors.Peach) {
-        when {
-            sheet.couponsLoading -> Text(
-                Strings.CONFIG_LOADING,
-                style = MaterialTheme.typography.labelSmall,
-                color = CartoonColors.InkSub
-            )
-            sheet.coupons.isEmpty() -> Text(
-                Strings.CONFIG_COUPON_NONE,
-                style = MaterialTheme.typography.labelSmall,
-                color = CartoonColors.InkSub
-            )
-            else -> sheet.coupons.take(4).forEach { c -> CouponLine(coupon = c) }
         }
     }
 }
@@ -632,47 +635,6 @@ private fun NoticeLine(index: Int?, text: String) {
             color = CartoonColors.InkSub,
             modifier = Modifier.weight(1f)
         )
-    }
-}
-
-@Composable
-private fun CouponLine(coupon: com.vps.qing.data.repository.CouponItem) {
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(CartoonColors.PeachSoft)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (coupon.amount.isNotBlank()) {
-            Text(
-                "￥${coupon.amount}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = CartoonColors.Coral
-            )
-            Spacer(Modifier.width(8.dp))
-        }
-        Column(Modifier.weight(1f)) {
-            Text(
-                coupon.name.ifBlank { "优惠券" },
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = CartoonColors.Ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            val cond = buildString {
-                if (coupon.condition.isNotBlank()) append(Strings.CONFIG_CONDITION_PREFIX).append(coupon.condition).append("可用")
-                if (coupon.expireTime.isNotBlank()) {
-                    if (isNotEmpty()) append(" · ")
-                    append("有效期 ").append(coupon.expireTime)
-                }
-            }
-            if (cond.isNotBlank()) {
-                Text(cond, style = MaterialTheme.typography.labelSmall, color = CartoonColors.InkSub)
-            }
-        }
     }
 }
 

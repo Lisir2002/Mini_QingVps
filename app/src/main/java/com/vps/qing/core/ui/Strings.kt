@@ -102,7 +102,8 @@ object Strings {
     const val WEB_ORDER = "前往网页选购"
 
     // ---- mf_cloud 深度适配（大带宽等套餐型）----
-    const val MF_AREA = "区域 / 线路"
+    const val MF_AREA = "区域"
+    const val MF_LINE = "线路"
     const val MF_CPU = "CPU"
     const val MF_MEMORY = "内存"
     const val MF_SYSTEM_DISK = "系统盘"

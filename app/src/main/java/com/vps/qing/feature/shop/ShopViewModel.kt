@@ -13,7 +13,6 @@ import com.vps.qing.data.repository.CatalogRepository
 import com.vps.qing.data.repository.CheckoutParser
 import com.vps.qing.data.repository.ConfigOption
 import com.vps.qing.data.repository.GatewayOption
-import com.vps.qing.data.repository.CouponItem
 import com.vps.qing.data.repository.NoticeParagraph
 import com.vps.qing.data.repository.PayDeadline
 import com.vps.qing.data.repository.MfCloudCart
@@ -55,8 +54,6 @@ data class ConfigSheetState(
     val prePurchaseNotices: List<NoticeParagraph> = emptyList(),
     /** 区域机器须知（商品 description 提取）。 */
     val regionNotices: List<String> = emptyList(),
-    val coupons: List<CouponItem> = emptyList(),
-    val couponsLoading: Boolean = false,
     val quoting: Boolean = false,
     /** 实时算价失败提示；此时不展示任何「看起来像成交价」的数字。 */
     val quoteError: String? = null,
@@ -394,21 +391,20 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
             it.copy(configSheet = ConfigSheetState(
                 product = product,
                 // 区域机器须知来自商品自身 description（列表已带回），无需额外请求
-                regionNotices = CatalogParser.regionNoticesFromHtml(product.descriptionHtml),
-                couponsLoading = true
+                regionNotices = CatalogParser.regionNoticesFromHtml(product.descriptionHtml)
             ))
         }
         viewModelScope.launch {
             // 配置定义与商品指标并发拉取；配置强制刷新，避免站点改价后仍用旧缓存
             val cfgCall = async { catalog.productConfig(product.id, forceRefresh = true) }
             val infoCall = async { catalog.productIndicators(product.id) }
-            // v1.4.27：购前须知改为抓取专区页 SSR「公告·购买前必读」；优惠券并发拉取，失败静默降级
+            // v1.4.28：购前须知抓取专区页 SSR「公告·购买前必读」（优惠券卡片已移除，不再拉取）；
+            // 选配后由站点后端自动应用最优优惠券，算价链路 promo_code 留空即可。
             val noticeCall = async {
                 catalog.prePurchaseNotices(
                     product.groupFirstId.orEmpty(), product.groupSecondId.orEmpty()
                 )
             }
-            val couponCall = async { catalog.coupons() }
             when (val r = cfgCall.await()) {
                 is ApiResult.Success -> {
                     val cfg = r.data
@@ -451,16 +447,10 @@ class ShopViewModel(private val catalog: CatalogRepository) : ViewModel() {
                 is ApiResult.Success -> nr.data
                 else -> emptyList()
             }
-            val coupons = when (val cr = couponCall.await()) {
-                is ApiResult.Success -> cr.data
-                else -> emptyList()
-            }
             _ui.update { st ->
                 val sheet = st.configSheet
                 if (sheet == null || sheet.product.id != product.id) st
-                else st.copy(configSheet = sheet.copy(
-                    prePurchaseNotices = notices, coupons = coupons, couponsLoading = false
-                ))
+                else st.copy(configSheet = sheet.copy(prePurchaseNotices = notices))
             }
         }
     }

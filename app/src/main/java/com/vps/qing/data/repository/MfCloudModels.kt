@@ -73,6 +73,12 @@ data class MfAreaOption(
 ) {
     /** 展示名：国家 · 区域（如「美国 · 美国4837」）。 */
     val label: String get() = listOf(countryName, areaName).filter { it.isNotBlank() }.distinct().joinToString(" · ")
+
+    /**
+     * 区域 chip 展示名（v1.4.28）：官方前端把同一 area 的多条 line 合并为一个区域选项，
+     * 区域只用「国家 · 区域」，线路另有独立选择行。此处保持一致，label 即区域名。
+     */
+    val areaLabel: String get() = label
 }
 
 /** 操作系统镜像。 */
@@ -101,6 +107,19 @@ data class MfCloudConfig(
 ) {
     val networkType: String get() = if (supportNormalNetwork) "normal" else "vpc"
     val images: List<MfImage> get() = imageGroups.flatMap { it.images }
+
+    /**
+     * v1.4.28：官方按 area 一个选项展示（area×line 笛卡尔积折叠）。
+     * 按 areaId 去重，每个区域保留首个 line 作为代表，避免 UI 出现多个相同且同时被选中的 chip。
+     */
+    val distinctAreas: List<MfAreaOption> get() =
+        areas.fold(linkedMapOf<Int, MfAreaOption>()) { acc, a ->
+            if (!acc.containsKey(a.areaId)) acc[a.areaId] = a
+            acc
+        }.values.toList()
+
+    /** 指定区域下的所有线路选项（供线路选择行使用）。 */
+    fun linesOf(areaId: Int): List<MfAreaOption> = areas.filter { it.areaId == areaId }
 
     fun imageName(imageId: Int): String? = images.firstOrNull { it.id == imageId }?.name
         ?: imageGroups.firstOrNull { it.images.any { i -> i.id == imageId } }

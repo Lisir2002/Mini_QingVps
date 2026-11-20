@@ -260,3 +260,30 @@ status 只有四态，网站端的「正在开机/正在关机/正在重启-关�
   整类保留；DEX `strings` 实测 HOSTS/SUB_ACCOUNTS/CERTIFICATION 明文存在，验证通过。
 - 效果：APK 8.8 MB → 5.1 MB；`minifyReleaseWithR8` + `shrinkReleaseRes` 均生效。
 - CI 由 assembleDebug 改 assembleRelease，发布产物真正带混淆（更新检测动态读 .apk asset，不受文件名影响）。
+
+---
+
+## v1.4.28：图标接入 / 区域线路去重 / 优惠券入口精简
+
+### 区域线路重复根因（官方前端源码实证）
+- 现象：选购配置页「区域 / 线路」出现两个文案相同的「中国香港 · 香港」，且同时被选中（紫色）。
+- 根因：`MfParser.parseOrderPage` 按 `data_center → city → area → line` 四层展开，`MfAreaOption.label`
+  只取「国家·区域」不含线路名，同一 area 下 N 条 line 生成 N 个 areaId 相同、label 相同的选项；
+  UI 以 `selectedId = areaId` 判定选中 → N 个 chip 同时命中。
+- 官方做法（`plugins/reserver/mf_cloud/template/clientarea/js/mf_cloud.js` + `goods.html`）：
+  - 区域 `calcAreaList` = area 列表，`el-radio-group v-model="area_name"` 按 `c.name` 单选；
+  - 线路 `lineList` = 选中 area 下的 line 列表，`v-model="lineName"` 独立单选；
+  - 即「区域 + 线路」两级联动，区域一个选项、线路单独一行。
+- 修复：`MfCloudConfig.distinctAreas`（按 areaId 去重，保留首条 line 代表）+ `linesOf(areaId)`；
+  UI 区域 chip 按 areaId 去重单选，多线路时新增独立线路行按 lineId 单选。2 例单测覆盖。
+
+### 应用图标接入
+- SVG 不能直接作 Android launcher 图标。用 cairosvg 渲染：legacy 圆角 PNG（各密度 48/72/96/144/192）
+  + adaptive 前景 PNG（108dp 各密度，透明底、主体缩放居中到安全区）
+  + 宣纸渐变背景 drawable + `mipmap-anydpi-v26` adaptive-icon（含 monochrome）。
+- Manifest application 新增 `android:icon` / `android:roundIcon`；aapt2 核实 icon 指向 adaptive 配置。
+
+### 优惠券入口精简
+- 依据：`config_options.promo_code` 传空串时站点后端自动匹配最优优惠券（选配算价已如此）。
+- 移除 ConfigSheet「可用优惠券」卡片、ShopScreen 顶栏优惠码中心入口、MainScreen 路由与状态；
+  保留 CouponItem 解析等底层代码（无副作用），不做破坏性删除。
